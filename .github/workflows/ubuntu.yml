@@ -1,0 +1,41 @@
+name: Ubuntu
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  ci_test_compilers:
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        compiler: [g++-5, g++-6, g++-7, g++-8, g++-9, g++-10, clang++-10]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install ${{ matrix.compiler }} 
+      - name: cmake
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+      - name: build
+        run: cmake --build build 
+      - name: test
+        run: cd build && ctest --output-on-failure
+
+  ci_test_standards:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        standard: [11, 14, 17, 20]
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v2
+      - name: cmake
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+      - name: build
+        run: cmake --build build
+      - name: test
+        run: cd build && ctest --output-on-failure

@@ -1,0 +1,27 @@
+name: Windows
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  mingw:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        architecture: [x64, x86]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up MinGW
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: ${{ matrix.architecture }}
+      - name: cmake
+        run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CROSSCOMPILING=1 -DRUN_HAVE_STD_REGEX=0 -DAMC_ENABLE_ASAN=OFF
+      - name: build
+        run: cmake --build build
+      - name: test
+        run: cd build && ctest --output-on-failure

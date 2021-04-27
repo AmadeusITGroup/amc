@@ -1,0 +1,18 @@
+#==============================================================================#
+# File extensions to be ignored anywhere in the tree.
+#==============================================================================#
+
+*.so*
+*.cflags
+*.cxxflags
+*.config
+*.creator
+*.creator*
+*.files
+*.includes
+*.cmake
+*.code-workspace
+*.orig
+*.tmp
+
+**/build*/
