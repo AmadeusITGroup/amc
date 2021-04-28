@@ -30,6 +30,11 @@ function(add_unit_test name)
 endfunction()
 
 add_unit_test(
+  amc_isdetected_test
+  amc_isdetected_test.cpp
+)
+
+add_unit_test(
   vectors_test
   vectors_test.cpp
 )

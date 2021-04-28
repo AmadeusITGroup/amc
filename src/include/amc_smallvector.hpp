@@ -5,49 +5,20 @@
 #include <stdexcept>
 
 #include "amc_allocator.hpp"
+#include "amc_isdetected.hpp"
 #include "amc_vectorcommon.hpp"
 
 namespace amc {
-
-/// Helper macro that generates a type allowing to detect specific 'member' in given templated class.
-/// Taken from https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Member_Detector
-/// Example of usage:
-///
-///    struct A {int my_memberA;};
-///    struct B {int my_memberB;};
-///    struct C {void my_memberA();};
-///
-///    AMC_GENERATE_HAS_MEMBER(my_memberA);
-///
-///    static_assert(has_member_my_memberA<A>::value, "");
-///    static_assert(!has_member_my_memberA<B>::value, "");
-///    static_assert(has_member_my_memberA<C>::value, "");
-#define AMC_GENERATE_HAS_MEMBER(member)                                           \
-  template <class T>                                                              \
-  class HasMember_##member {                                                      \
-   private:                                                                       \
-    using Yes = char[2];                                                          \
-    using No = char[1];                                                           \
-                                                                                  \
-    struct Fallback {                                                             \
-      int member;                                                                 \
-    };                                                                            \
-    struct Derived : T, Fallback {};                                              \
-                                                                                  \
-    template <class U>                                                            \
-    static No &test(decltype(U::member) *);                                       \
-    template <typename U>                                                         \
-    static Yes &test(U *);                                                        \
-                                                                                  \
-   public:                                                                        \
-    static constexpr bool RESULT = sizeof(test<Derived>(nullptr)) == sizeof(Yes); \
-  };                                                                              \
-                                                                                  \
-  template <class T>                                                              \
-  struct has_member_##member : public std::integral_constant<bool, HasMember_##member<T>::RESULT> {}
-
-AMC_GENERATE_HAS_MEMBER(reallocate);
 namespace vec {
+
+/// Implement the member detection idiom to know if allocator provides 'reallocate' method.
+template <class T>
+using has_reallocate_t = decltype(std::declval<T>().reallocate(
+    std::declval<typename T::pointer>(), std::declval<typename T::size_type>(), std::declval<typename T::size_type>(),
+    std::declval<typename T::size_type>()));
+
+template <class T>
+using has_reallocate = is_detected<has_reallocate_t, T>;
 
 template <class SizeType>
 inline SizeType SafeNextCapacity(SizeType oldCapa, uintmax_t newSize, bool exact) {
@@ -69,7 +40,7 @@ inline SizeType SafeNextCapacity(SizeType oldCapa, uintmax_t newSize, bool exact
 template <class Alloc>
 struct CanReallocate
     : public std::integral_constant<bool, is_trivially_relocatable<typename Alloc::value_type>::value &&
-                                              has_member_reallocate<Alloc>::value> {};
+                                              has_reallocate<Alloc>::value> {};
 
 template <class Alloc, class T, class SizeType, typename std::enable_if<CanReallocate<Alloc>::value, bool>::type = true>
 inline T *Reallocate(Alloc &alloc, T *p, SizeType oldCapa, SizeType newCapa, SizeType size) {
@@ -178,6 +149,4 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() {
  */
 template <class T, uintmax_t N, class Alloc = amc::allocator<T>, class SizeType = uint32_t>
 using SmallVector = Vector<T, Alloc, SizeType, vec::DynamicGrowingPolicy, vec::SanitizeInlineSize<N, SizeType>()>;
-
-#undef AMC_GENERATE_HAS_MEMBER
 }  // namespace amc
