@@ -1,5 +1,6 @@
 [![Ubuntu](https://github.com/AmadeusITGroup/amc/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/ubuntu.yml)
 [![Windows](https://github.com/AmadeusITGroup/amc/actions/workflows/windows.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/windows.yml)
+[![MacOS](https://github.com/AmadeusITGroup/amc/actions/workflows/macos.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/macos.yml)
 
 # AMadeus (C++) Containers
 
@@ -107,5 +108,5 @@ To compile and launch the tests in `Debug` mode, simply launch
 
 This library has been tested on Ubuntu 18.04 and Windows 10 (Visual Studio 2019), cmake 3.19.4 and the following compilers:
  - GCC from version 5.5 to 10
- - Clang from version 10 (earlier versions of Clang fail to compile the [C++ member detector idiom](https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Member_Detector))
+ - Clang from version 6.0
  - MSVC 19.28
