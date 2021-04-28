@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-18.04
     strategy:
       matrix:
-        compiler: [g++-5, g++-6, g++-7, g++-8, g++-9, g++-10, clang++-10]
+        compiler: [g++-5, g++-6, g++-7, g++-8, g++-9, g++-10, clang++-6.0, clang++-10]
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
