@@ -24,6 +24,7 @@ endif()
 option(AMC_ENABLE_TESTS "Build the unit tests" ${MAIN_PROJECT})
 option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${MAIN_PROJECT})
 option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" ${ASAN_BUILD})
+option(AMC_ENABLE_GCOV "Compile for gcov" OFF)
 
 # Activate all warnings, in all build modes
 if(MAIN_PROJECT)
@@ -36,9 +37,13 @@ endif(MAIN_PROJECT)
 
 if(AMC_ENABLE_ASAN)
   if(NOT MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all")
+    add_compile_options(-g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all)
   endif()
 endif()
+
+if(AMC_ENABLE_GCOV)
+  add_compile_options(-fprofile-arcs -fprofile-abs-path -ftest-coverage)
+endif(AMC_ENABLE_GCOV)
 
 # Create interface library for header files
 add_library(amc INTERFACE)

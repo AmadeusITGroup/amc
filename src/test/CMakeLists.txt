@@ -22,6 +22,9 @@ function(add_unit_test name)
    add_executable(${name} ${MY_UNPARSED_ARGUMENTS})
    target_link_libraries(${name} PRIVATE gtest gmock gmock_main)
    target_include_directories(${name} PRIVATE ../include)
+   if(AMC_ENABLE_GCOV)
+     target_link_libraries(${name} PRIVATE gcov)
+   endif(AMC_ENABLE_GCOV)
 
    add_test(NAME ${name} COMMAND ${name})
    set_tests_properties(${name} PROPERTIES
