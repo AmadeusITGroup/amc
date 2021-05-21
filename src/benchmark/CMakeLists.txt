@@ -23,6 +23,9 @@ function(add_bench name)
   target_include_directories(${name} PRIVATE ../include)
   target_include_directories(${name} PRIVATE ../test)
   target_link_libraries(${name} PRIVATE benchmark::benchmark)
+  if (AMC_ENABLE_ASAN)
+    target_link_options(${name} PRIVATE -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero)
+  endif()
 endfunction()
 
 add_bench(

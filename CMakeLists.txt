@@ -6,6 +6,7 @@ project(amc VERSION 1.0
 # This library needs C++11, except for SmallSet which requires std::variant from C++17.
 # Emulations of newer C++ functions is provided for non C++14 / C++17 compilers.
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 ##
 ## MAIN_PROJECT CHECK
@@ -36,7 +37,7 @@ endif(MAIN_PROJECT)
 
 if(AMC_ENABLE_ASAN)
   if(NOT MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all")
+    add_compile_options(-g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all)
   endif()
 endif()
 
