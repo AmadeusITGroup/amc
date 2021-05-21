@@ -1,6 +1,7 @@
 [![Ubuntu](https://github.com/AmadeusITGroup/amc/actions/workflows/ubuntu.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/ubuntu.yml)
 [![Windows](https://github.com/AmadeusITGroup/amc/actions/workflows/windows.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/windows.yml)
 [![MacOS](https://github.com/AmadeusITGroup/amc/actions/workflows/macos.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/macos.yml)
+[![Coverage Status](https://coveralls.io/repos/github/AmadeusITGroup/amc/badge.svg)](https://coveralls.io/github/AmadeusITGroup/amc)
 
 # AMadeus (C++) Containers
 

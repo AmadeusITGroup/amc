@@ -39,3 +39,20 @@ jobs:
         run: cmake --build build
       - name: test
         run: cd build && ctest --output-on-failure
+
+  ci_test_coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: cmake
+        run: cmake -S . -B build
+      - name: build
+        run: cmake --build build --target ci_test_coverage
+      - name: archive coverage report
+        uses: actions/upload-artifact@v2
+        with:
+          name: code-coverage-report
+      - name: Coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
