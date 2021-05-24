@@ -17,13 +17,16 @@ if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   set(MAIN_PROJECT ON)
 endif()
 
+# By default, build benchmarks only if not Debug and main project
 set(ASAN_BUILD OFF)
+set(BENCH_BUILD ${MAIN_PROJECT})
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(ASAN_BUILD ON)
+  set(BENCH_BUILD OFF)
 endif()
 
 option(AMC_ENABLE_TESTS "Build the unit tests" ${MAIN_PROJECT})
-option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${MAIN_PROJECT})
+option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${BENCH_BUILD})
 option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" ${ASAN_BUILD})
 
 # Activate all warnings, in all build modes
