@@ -3,11 +3,13 @@
 #include <cstring>
 #include <memory>
 #include <utility>
+
 #include "amc_config.hpp"
 #include "amc_type_traits.hpp"
 
 #ifndef AMC_CXX17
 #include <iterator>
+
 #include "amc_utility.hpp"
 #endif
 
@@ -15,8 +17,8 @@ namespace amc {
 
 // destroy
 #ifdef AMC_CXX17
-using std::destroy_at;
 using std::destroy;
+using std::destroy_at;
 using std::destroy_n;
 #else
 template <class T>
@@ -26,7 +28,9 @@ void destroy_at(T *p, typename std::enable_if<!std::is_array<T>::value>::type * 
 
 template <class T>
 void destroy_at(T *p, typename std::enable_if<std::is_array<T>::value>::type * = 0) {
-  for (auto &elem : *p) { destroy_at(std::addressof(elem)); }
+  for (auto &elem : *p) {
+    destroy_at(std::addressof(elem));
+  }
 }
 
 template <class ForwardIt>
@@ -67,7 +71,9 @@ inline void construct_at_impl(T *pos, const T &v, NonTriviallyCopyableArray) {
     typedef
         typename std::conditional<std::is_array<ElemT>::value, NonTriviallyCopyableArray, NonTriviallyCopyable>::type
             TypeTraits;
-    for (ElemT &elem : *pos) { construct_at_impl(&elem, v[i++], TypeTraits()); }
+    for (ElemT &elem : *pos) {
+      construct_at_impl(&elem, v[i++], TypeTraits());
+    }
   } catch (...) {
     amc::destroy(*pos, *pos + --i);
     throw;
@@ -87,7 +93,9 @@ inline void construct_at_impl(T *pos, T &&v, NonTriviallyCopyableArray) {
     typedef
         typename std::conditional<std::is_array<ElemT>::value, NonTriviallyCopyableArray, NonTriviallyCopyable>::type
             TypeTraits;
-    for (ElemT &elem : *pos) { construct_at_impl(&elem, ::std::move(v[i++]), TypeTraits()); }
+    for (ElemT &elem : *pos) {
+      construct_at_impl(&elem, ::std::move(v[i++]), TypeTraits());
+    }
   } catch (...) {
     amc::destroy(*pos, *pos + --i);
     throw;
@@ -101,18 +109,16 @@ inline void construct_at_impl(T *pos, const T &v, TriviallyCopyable) {
 
 template <typename, class T, class... Args>
 struct construct_at {
-  inline T *operator()(T *pos, Args &&... args) {
+  inline T *operator()(T *pos, Args &&...args) {
     return ::new (const_cast<void *>(static_cast<const volatile void *>(pos))) T(std::forward<Args>(args)...);
   }
 };
 
 template <class T, class B, class... Args>
 struct construct_at<typename std::enable_if<std::is_same<B, T>::value>::type, T, B, Args...> {
-  typedef typename std::conditional<
-      std::is_trivially_copyable<T>::value,
-      TriviallyCopyable,
-      typename std::conditional<std::is_array<T>::value, NonTriviallyCopyableArray, NonTriviallyCopyable>::type>::type
-      TypeTraits;
+  typedef typename std::conditional<std::is_trivially_copyable<T>::value, TriviallyCopyable,
+                                    typename std::conditional<std::is_array<T>::value, NonTriviallyCopyableArray,
+                                                              NonTriviallyCopyable>::type>::type TypeTraits;
 
   inline T *operator()(T *pos, const T &v) const {
     construct_at_impl(pos, v, TypeTraits());
@@ -124,10 +130,10 @@ struct construct_at<typename std::enable_if<std::is_same<B, T>::value>::type, T,
     return pos;
   }
 };
-}
+}  // namespace memory_details
 
 template <class T, class... Args>
-T *construct_at(T *pos, Args &&... args) {
+T *construct_at(T *pos, Args &&...args) {
   return memory_details::construct_at<void, T, Args...>()(pos, std::forward<Args>(args)...);
 }
 #endif
@@ -140,12 +146,11 @@ using std::uninitialized_value_construct;
 using std::uninitialized_value_construct_n;
 #else
 template <class ForwardIt>
-void uninitialized_default_construct(ForwardIt first,
-                                     ForwardIt last,
+void uninitialized_default_construct(ForwardIt first, ForwardIt last,
                                      typename std::enable_if<!std::is_trivially_default_constructible<
                                          typename std::iterator_traits<ForwardIt>::value_type>::value>::type * = 0) {
   typedef typename std::iterator_traits<ForwardIt>::value_type Value;
-  ForwardIt                                                    current = first;
+  ForwardIt current = first;
   try {
     for (; current != last; ++current) {
       ::new (static_cast<void *>(std::addressof(*current))) Value;
@@ -156,20 +161,18 @@ void uninitialized_default_construct(ForwardIt first,
   }
 }
 template <class ForwardIt>
-void uninitialized_default_construct(ForwardIt,
-                                     ForwardIt,
+void uninitialized_default_construct(ForwardIt, ForwardIt,
                                      typename std::enable_if<std::is_trivially_default_constructible<
                                          typename std::iterator_traits<ForwardIt>::value_type>::value>::type * = 0) {}
 
 template <class ForwardIt, class Size>
 ForwardIt uninitialized_default_construct_n(
-    ForwardIt first,
-    Size      n,
+    ForwardIt first, Size n,
     typename std::enable_if<
         !std::is_trivially_default_constructible<typename std::iterator_traits<ForwardIt>::value_type>::value>::type * =
         0) {
   typedef typename std::iterator_traits<ForwardIt>::value_type Value;
-  ForwardIt                                                    current = first;
+  ForwardIt current = first;
   try {
     for (; n > 0; (void)++current, --n) {
       ::new (static_cast<void *>(std::addressof(*current))) Value;
@@ -182,16 +185,14 @@ ForwardIt uninitialized_default_construct_n(
 }
 template <class ForwardIt, class Size>
 ForwardIt uninitialized_default_construct_n(
-    ForwardIt,
-    Size,
+    ForwardIt, Size,
     typename std::enable_if<
         std::is_trivially_default_constructible<typename std::iterator_traits<ForwardIt>::value_type>::value>::type * =
         0) {}
 
 template <class ForwardIt>
 void uninitialized_value_construct(
-    ForwardIt first,
-    ForwardIt last,
+    ForwardIt first, ForwardIt last,
     typename std::enable_if<!std::is_trivial<typename std::iterator_traits<ForwardIt>::value_type>::value>::type * =
         0) {
   ForwardIt current = first;
@@ -206,16 +207,14 @@ void uninitialized_value_construct(
 }
 template <class ForwardIt>
 void uninitialized_value_construct(
-    ForwardIt first,
-    ForwardIt last,
+    ForwardIt first, ForwardIt last,
     typename std::enable_if<std::is_trivial<typename std::iterator_traits<ForwardIt>::value_type>::value>::type * = 0) {
   return std::fill(first, last, typename std::iterator_traits<ForwardIt>::value_type());
 }
 
 template <class ForwardIt, class Size>
 ForwardIt uninitialized_value_construct_n(
-    ForwardIt first,
-    Size      n,
+    ForwardIt first, Size n,
     typename std::enable_if<!std::is_trivial<typename std::iterator_traits<ForwardIt>::value_type>::value>::type * =
         0) {
   ForwardIt current = first;
@@ -231,8 +230,7 @@ ForwardIt uninitialized_value_construct_n(
 }
 template <class ForwardIt, class Size>
 ForwardIt uninitialized_value_construct_n(
-    ForwardIt first,
-    Size      n,
+    ForwardIt first, Size n,
     typename std::enable_if<std::is_trivial<typename std::iterator_traits<ForwardIt>::value_type>::value>::type * = 0) {
   return std::fill_n(first, n, typename std::iterator_traits<ForwardIt>::value_type());
 }
@@ -250,18 +248,16 @@ struct MemMove {};
 // Type factory deducing the optimization mode from the 3 defined above.
 template <class InputIt, class OutputIt, bool IsMemMovePossible>
 struct ImplModeFactory {
-  typedef typename std::iterator_traits<InputIt>::value_type  InputType;
+  typedef typename std::iterator_traits<InputIt>::value_type InputType;
   typedef typename std::iterator_traits<OutputIt>::value_type OutputType;
-  typedef typename std::conditional<std::is_pointer<InputIt>::value && std::is_pointer<OutputIt>::value,
-                                    MemMove,
+  typedef typename std::conditional<std::is_pointer<InputIt>::value && std::is_pointer<OutputIt>::value, MemMove,
                                     MemMoveInALoop>::type MemMoveType;
   typedef
       typename std::conditional<IsMemMovePossible && std::is_same<InputType, OutputType>::value &&
                                     !std::is_rvalue_reference<typename std::iterator_traits<InputIt>::reference>::value,
-                                MemMoveType,
-                                Default>::type type;
+                                MemMoveType, Default>::type type;
 };
-}
+}  // namespace memory_details
 
 #ifdef AMC_CXX17
 using std::uninitialized_copy;
@@ -288,7 +284,7 @@ inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt de
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt dest, MemMove) {
   typedef typename std::iterator_traits<InputIt>::value_type ValueType;
-  typename std::iterator_traits<InputIt>::difference_type    count = last - first;
+  typename std::iterator_traits<InputIt>::difference_type count = last - first;
   if (count > 0) {
     // We can use memcpy here as for uninitialized_copy, we know that ranges do not overlap
     std::memcpy(dest, first, count * sizeof(ValueType));
@@ -359,9 +355,7 @@ std::pair<InputIt, OutputIt> uninitialized_move_n_impl(InputIt first, Size count
 }
 
 template <class InputIt, class Size, class OutputIt>
-inline std::pair<InputIt, OutputIt> uninitialized_move_n_impl(InputIt first,
-                                                              Size     count,
-                                                              OutputIt dest,
+inline std::pair<InputIt, OutputIt> uninitialized_move_n_impl(InputIt first, Size count, OutputIt dest,
                                                               MemMoveInALoop) {
   for (; count > 0; ++dest, void(), ++first, --count) {
     typedef typename std::iterator_traits<InputIt>::value_type ValueType;
@@ -375,41 +369,37 @@ inline std::pair<InputIt, OutputIt> uninitialized_move_n_impl(InputIt first, Siz
   return std::pair<InputIt, OutputIt>(first + count, uninitialized_copy_n_impl(first, count, dest, MemMove()));
 }
 
-} // namepace memorydetails
+}  // namespace memory_details
 
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_copy(InputIt first, InputIt last, OutputIt dest) {
   typedef typename memory_details::ImplModeFactory<
-      InputIt,
-      OutputIt,
-      std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type ImplMode;
+      InputIt, OutputIt, std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type
+      ImplMode;
   return memory_details::uninitialized_copy_impl(first, last, dest, ImplMode());
 }
 
 template <class InputIt, class Size, class OutputIt>
 inline OutputIt uninitialized_copy_n(InputIt first, Size count, OutputIt dest) {
   typedef typename memory_details::ImplModeFactory<
-      InputIt,
-      OutputIt,
-      std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type ImplMode;
+      InputIt, OutputIt, std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type
+      ImplMode;
   return memory_details::uninitialized_copy_n_impl(first, count, dest, ImplMode());
 }
 
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_move(InputIt first, InputIt last, OutputIt dest) {
   typedef typename memory_details::ImplModeFactory<
-      InputIt,
-      OutputIt,
-      std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type ImplMode;
+      InputIt, OutputIt, std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type
+      ImplMode;
   return memory_details::uninitialized_move_impl(first, last, dest, ImplMode());
 }
 
 template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_move_n(InputIt first, Size count, OutputIt dest) {
   typedef typename memory_details::ImplModeFactory<
-      InputIt,
-      OutputIt,
-      std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type ImplMode;
+      InputIt, OutputIt, std::is_trivially_copyable<typename std::iterator_traits<InputIt>::value_type>::value>::type
+      ImplMode;
   return memory_details::uninitialized_move_n_impl(first, count, dest, ImplMode());
 }
 #endif
@@ -458,7 +448,7 @@ inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputI
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputIt dest, MemMove) {
   typedef typename std::iterator_traits<InputIt>::value_type ValueType;
-  typename std::iterator_traits<InputIt>::difference_type    count = last - first;
+  typename std::iterator_traits<InputIt>::difference_type count = last - first;
   if (count > 0) {
 #if __GNUC__ >= 8
     // Do not raise class-memaccess warning for trivially relocatable types
@@ -481,9 +471,7 @@ inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first,
 }
 
 template <class InputIt, class Size, class OutputIt>
-inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first,
-                                                                  Size     count,
-                                                                  OutputIt dest,
+inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first, Size count, OutputIt dest,
                                                                   MemMoveInALoop) {
   for (; count > 0; ++dest, void(), ++first, --count) {
     relocate_at_impl(std::addressof(*first), std::addressof(*dest), MemMove());
@@ -507,33 +495,30 @@ inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first,
   }
   return std::pair<InputIt, OutputIt>(first + count, dest + count);
 }
-}
+}  // namespace memory_details
 
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_relocate(InputIt first, InputIt last, OutputIt dest) {
   typedef typename memory_details::ImplModeFactory<
-      InputIt,
-      OutputIt,
-      amc::is_trivially_relocatable<typename std::iterator_traits<InputIt>::value_type>::value>::type ImplMode;
+      InputIt, OutputIt, amc::is_trivially_relocatable<typename std::iterator_traits<InputIt>::value_type>::value>::type
+      ImplMode;
   return memory_details::uninitialized_relocate_impl(first, last, dest, ImplMode());
 }
 
 template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_relocate_n(InputIt first, Size count, OutputIt dest) {
   typedef typename memory_details::ImplModeFactory<
-      InputIt,
-      OutputIt,
-      amc::is_trivially_relocatable<typename std::iterator_traits<InputIt>::value_type>::value>::type ImplMode;
+      InputIt, OutputIt, amc::is_trivially_relocatable<typename std::iterator_traits<InputIt>::value_type>::value>::type
+      ImplMode;
   return memory_details::uninitialized_relocate_n_impl(first, count, dest, ImplMode());
 }
 
 /// Relocate element pointed by 'elem' at a raw memory location 'dest'
 template <class T>
 inline T *relocate_at(T *elem, T *dest) {
-  typedef typename std::conditional<amc::is_trivially_relocatable<T>::value,
-                                    memory_details::MemMove,
+  typedef typename std::conditional<amc::is_trivially_relocatable<T>::value, memory_details::MemMove,
                                     memory_details::Default>::type ImplMode;
   return memory_details::relocate_at_impl(elem, dest, ImplMode());
 }
 
-}
+}  // namespace amc
