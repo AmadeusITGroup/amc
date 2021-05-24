@@ -203,7 +203,7 @@ class FlatSet : private Compare {
   iterator insert(const_iterator hint, node_type &&nh) {
     if (nh) {
       iterator retIt = insert(hint, std::move(*nh._optV));
-      nh._optV       = std::nullopt;
+      nh._optV = std::nullopt;
       return retIt;
     }
     return end();
@@ -211,12 +211,12 @@ class FlatSet : private Compare {
 #endif
 
   template <class... Args>
-  std::pair<iterator, bool> emplace(Args &&... args) {
+  std::pair<iterator, bool> emplace(Args &&...args) {
     return insert(T(std::forward<Args &&>(args)...));
   }
 
   template <class... Args>
-  iterator emplace_hint(const_iterator hint, Args &&... args) {
+  iterator emplace_hint(const_iterator hint, Args &&...args) {
     return insert(hint, T(std::forward<Args &&>(args)...));
   }
 
