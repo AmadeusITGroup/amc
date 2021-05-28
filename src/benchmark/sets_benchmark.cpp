@@ -10,7 +10,7 @@
 #include "testhelpers.hpp"
 #include "testtypes.hpp"
 
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
 #include "amc_smallset.hpp"
 #endif
 
@@ -149,7 +149,7 @@ BENCHMARK_TEMPLATE(LookUp, REFInt, 100000);
 BENCHMARK_TEMPLATE(LookUp, REFUnoInt, 100000);
 BENCHMARK_TEMPLATE(LookUp, AMCInt, 100000);
 
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
 BENCHMARK_TEMPLATE(CommonUsage, amc::SmallSet<uint32_t, 50>, 50);
 BENCHMARK_TEMPLATE(CommonUsage, std::unordered_set<uint32_t>, 50);
 #endif

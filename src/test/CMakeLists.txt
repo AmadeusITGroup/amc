@@ -27,7 +27,7 @@ function(add_unit_test name)
    set_tests_properties(${name} PROPERTIES
                         ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1 abort_on_error=1 print_stacktrace=1; LSAN_OPTIONS=detect_leaks=1 malloc_context_size=2 print_suppressions=0"
                         WORKING_DIRECTORY ${CMAKE_HOME_DIRECTORY})
-   if (AMC_ENABLE_ASAN)
+   if (AMC_ENABLE_ASAN AND NOT MSVC)
      target_link_options(${name} PRIVATE -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero)
    endif()
 endfunction()

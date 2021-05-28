@@ -38,10 +38,8 @@ if(MAIN_PROJECT)
   endif(MSVC)
 endif(MAIN_PROJECT)
 
-if(AMC_ENABLE_ASAN)
-  if(NOT MSVC)
-    add_compile_options(-g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all)
-  endif()
+if(AMC_ENABLE_ASAN AND NOT MSVC)
+  add_compile_options(-g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all)
 endif()
 
 # Create interface library for header files

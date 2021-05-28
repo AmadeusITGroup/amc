@@ -123,6 +123,9 @@ class SmallSet {
 
   static_assert(N <= 64, "N should be small as search has linear complexity for small sets");
 
+  static_assert(std::is_same<T, typename SetType::value_type>::value, "Set value type should be T");
+  static_assert(std::is_same<Alloc, typename SetType::allocator_type>::value, "Allocator should match set's");
+
  public:
   using key_type = T;
   using value_type = T;
@@ -471,11 +474,12 @@ class SmallSet {
       bool operator()(const_pointer pLhs, const_reference rhs) const { return *pLhs < rhs; }
       bool operator()(const_reference lhs, const_pointer pRhs) const { return lhs < *pRhs; }
     };
+
     if (isSmall()) {
-      PtrVec sortedPtrs = ComputeSortedPtrVec(_vec);
+      auto sortedPtrs = ComputeSortedPtrVec(_vec);
       if (o.isSmall()) {
         // We are both small, we need to sort both containers
-        PtrVec oSortedPtrs = ComputeSortedPtrVec(o._vec);
+        auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
         return std::lexicographical_compare(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
                                             oSortedPtrs.end(), LessPtrFunc());
       }
@@ -485,12 +489,13 @@ class SmallSet {
     }
     if (o.isSmall()) {
       // other is small: as we do not order elements in the small container, we need to sort them.
-      PtrVec oSortedPtrs = ComputeSortedPtrVec(o._vec);
+      auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
       return std::lexicographical_compare(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
                                           LessPtrFunc());
     }
     return _set < o._set;
   }
+
   bool operator<=(const SmallSet &o) const { return !(o < *this); }
   bool operator>(const SmallSet &o) const { return o < *this; }
   bool operator>=(const SmallSet &o) const { return !(*this < o); }
@@ -528,7 +533,9 @@ class SmallSet {
 
   struct FindFunctor {
     FindFunctor(Compare comp, const_reference v) : _comp(comp), _v(v) {}
+
     bool operator()(const_reference o) const { return !_comp(_v, o) && !_comp(o, _v); }
+
     Compare _comp;
     const_reference _v;
   };

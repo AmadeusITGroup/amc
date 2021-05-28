@@ -9,7 +9,7 @@
 #include "amc_flatset.hpp"
 #include "testtypes.hpp"
 
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
 #include "amc_smallset.hpp"
 #endif
 
@@ -25,11 +25,19 @@ class SetListTest : public ::testing::Test {
 
 typedef ::testing::Types<
 // clang-format off
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
                          SmallSet<char, 2>,
                          SmallSet<char, 3>,
                          SmallSet<char, 10>,
                          SmallSet<uint32_t, 4, std::greater<uint32_t>>,
+                         SmallSet<char, 5, std::less<char>, amc::allocator<char>>,
+                         SmallSet<char, 6, std::less<char>, std::allocator<char>>,
+                         SmallSet<char, 10, std::less<char>, amc::allocator<char>, FlatSet<char>>,
+                         SmallSet<uint32_t, 1, std::greater<uint32_t>, amc::allocator<uint32_t>>,
+                         SmallSet<int64_t, 2, std::less<int64_t>, std::allocator<int64_t>, FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>>>,
+                         SmallSet<uint16_t, 3, std::less<uint16_t>, amc::allocator<uint16_t>>,
+                         SmallSet<uint8_t, 10, std::less<uint8_t>, std::allocator<uint8_t>>,
+                         SmallSet<int32_t, 4, std::greater<int32_t>, std::allocator<int32_t>>,
                          SmallSet<ComplexTriviallyRelocatableType, 8>, 
                          SmallSet<ComplexTriviallyRelocatableType, 5, std::less<ComplexTriviallyRelocatableType>, amc::allocator<ComplexTriviallyRelocatableType>, FlatSet<ComplexTriviallyRelocatableType>>, 
                          SmallSet<Foo, 7>,
@@ -38,6 +46,14 @@ typedef ::testing::Types<
                          FlatSet<uint32_t, std::less<uint32_t>, FixedCapacityVector<uint32_t, 20>::allocator_type, FixedCapacityVector<uint32_t, 20> >,
                          FlatSet<char>, 
                          FlatSet<uint32_t, std::greater<uint32_t>>, 
+                         FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 4>>,
+                         FlatSet<char, std::less<char>, std::allocator<char>>,
+                         FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 3>>,
+                         FlatSet<uint32_t, std::greater<uint32_t>, amc::allocator<uint32_t>, std::vector<uint32_t, amc::allocator<uint32_t>>>,
+                         FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>, SmallVector<int64_t, 6, std::allocator<int64_t>>>,
+                         FlatSet<uint16_t, std::less<uint16_t>, amc::allocator<uint16_t>, SmallVector<uint16_t, 2>>,
+                         FlatSet<uint8_t, std::greater<uint8_t>, std::allocator<uint8_t>, SmallVector<uint8_t, 11, std::allocator<uint8_t>>>,
+                         FlatSet<int32_t, std::less<int32_t>, std::allocator<int32_t>>,
                          FlatSet<ComplexTriviallyRelocatableType>,
                          FlatSet<ComplexTriviallyRelocatableType, std::less<ComplexTriviallyRelocatableType>, amc::allocator<ComplexTriviallyRelocatableType>, SmallVector<ComplexTriviallyRelocatableType, 6>>,
                          FlatSet<Foo>, 
@@ -73,7 +89,7 @@ TYPED_TEST(SetListTest, Emplace) {
 }
 
 TYPED_TEST(SetListTest, NoDuplicates) {
-  TypeParam s = {1, 2, 3};
+  TypeParam s{1, 2, 3};
   EXPECT_EQ(s, TypeParam({3, 2, 1}));
   s.insert(4);
   EXPECT_EQ(s, TypeParam({2, 1, 3, 4}));
@@ -83,7 +99,7 @@ TYPED_TEST(SetListTest, NoDuplicates) {
 }
 
 TYPED_TEST(SetListTest, FindAndContains) {
-  TypeParam s = {1, 2, 4};
+  TypeParam s{1, 2, 4};
   EXPECT_EQ(s.find(3), s.end());
   EXPECT_NE(s.find(1), s.end());
   EXPECT_TRUE(s.contains(2));
@@ -96,7 +112,7 @@ TYPED_TEST(SetListTest, FindAndContains) {
 }
 
 TYPED_TEST(SetListTest, Iteration) {
-  TypeParam s = {1, 3, 4, 6, 8, 15, 18};
+  TypeParam s{1, 3, 4, 6, 8, 15, 18};
   EXPECT_NE(s.begin(), s.end());
   TypeParam cpy;
   for (auto it = s.begin(); it != s.end(); ++it) {
@@ -110,7 +126,7 @@ TYPED_TEST(SetListTest, Iteration) {
 }
 
 TYPED_TEST(SetListTest, ReverseIteration) {
-  TypeParam s = {9, 4, 67, 89, 7};
+  TypeParam s{9, 4, 67, 89, 7};
   EXPECT_NE(s.rbegin(), s.rend());
   TypeParam cpy;
   for (auto it = s.rbegin(); it != s.rend(); ++it) {
@@ -121,7 +137,7 @@ TYPED_TEST(SetListTest, ReverseIteration) {
 }
 
 TYPED_TEST(SetListTest, SpecialMembers) {
-  TypeParam s = {1, 2, 126, 7};
+  TypeParam s{1, 2, 126, 7};
   TypeParam cpy(s);
   EXPECT_EQ(cpy, s);
   cpy = TypeParam{1, 2, 3};
@@ -133,70 +149,22 @@ TYPED_TEST(SetListTest, SpecialMembers) {
   EXPECT_EQ(s, cpy);
 }
 
-TYPED_TEST(SetListTest, Erase) {
-  TypeParam s = {4, 8, 12, 86, 3, 90, 0};
+TYPED_TEST(SetListTest, EraseValue) {
+  TypeParam s{4, 8, 12, 86, 3, 90, 0};
   EXPECT_EQ(s.erase(4), 1U);
   EXPECT_EQ(s.erase(5), 0U);
   EXPECT_EQ(s.erase(91), 0U);
   EXPECT_EQ(s, TypeParam({8, 12, 86, 3, 90, 0}));
-  auto it = s.find(86);
+}
+
+TYPED_TEST(SetListTest, EraseIterator) {
+  TypeParam s{8, 12, 86, 3, 90, 0};
+  typename TypeParam::const_iterator it = s.find(86);
   EXPECT_NE(it, s.end());
-  EXPECT_NE(s.erase(it), s.end());
-  EXPECT_EQ(s.size(), 5);
+  typename TypeParam::iterator eraseIt = s.erase(it);
+  EXPECT_NE(eraseIt, s.cend());
+  EXPECT_EQ(s.size(), 5U);
   EXPECT_EQ(s, TypeParam({8, 12, 3, 90, 0}));
-}
-
-TYPED_TEST(SetListTest, InsertHint) {
-  TypeParam s = {1, 3, 4, 6};
-  s.insert(std::next(s.begin()), 2);  // good hint
-  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6}));
-  s.insert(s.end(), 7);    // good hint
-  s.insert(s.begin(), 5);  // bad hint
-  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
-  s.insert(s.begin(), 1);  // good hint, equal
-  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
-}
-
-TYPED_TEST(SetListTest, EmplaceHint) {
-  TypeParam s = {4, 7, 18, 45};
-  EXPECT_EQ(s.emplace_hint(s.end(), 45), s.find(45));  // good hint, equal
-  s.emplace_hint(std::next(s.begin(), 2), 15);         // good hint
-  EXPECT_EQ(s, TypeParam({4, 7, 15, 18, 45}));
-  s.emplace_hint(std::next(s.begin()), 8);  // bad hint
-  EXPECT_EQ(s, TypeParam({4, 7, 8, 15, 18, 45}));
-  s.emplace_hint(s.end(), 17);  // bad hint
-  EXPECT_EQ(s, TypeParam({4, 7, 8, 15, 17, 18, 45}));
-}
-
-TYPED_TEST(SetListTest, Swap) {
-  TypeParam s1 = {1, 2, 3, 4};
-  TypeParam s2 = {3, 4, 5};
-  s1.swap(s2);
-  EXPECT_EQ(s1, TypeParam({3, 4, 5}));
-  EXPECT_EQ(s2, TypeParam({1, 2, 3, 4}));
-}
-
-TYPED_TEST(SetListTest, ReturnedIteratorsInsertErase) {
-  TypeParam s = {1, 2, 4};
-  auto itInsertedPair = s.insert(3);
-  EXPECT_EQ(itInsertedPair.first, s.find(3));
-  EXPECT_TRUE(itInsertedPair.second);
-  EXPECT_FALSE(s.insert(3).second);
-  EXPECT_EQ(s, TypeParam({1, 2, 3, 4}));
-  s.erase(itInsertedPair.first);
-  EXPECT_EQ(s, TypeParam({1, 2, 4}));
-}
-
-TYPED_TEST(SetListTest, InsertRange) {
-  using value_type = typename TypeParam::value_type;
-  const value_type kNewEls[] = {18, 4, 3, 6, 4};
-  TypeParam s{1, 2, 3};
-  s.insert(std::begin(kNewEls), std::end(kNewEls));
-  EXPECT_NE(s.find(18), s.end());
-  EXPECT_FALSE(s.contains(5));
-  EXPECT_TRUE(s.contains(2));
-  EXPECT_TRUE(s.contains(6));
-  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
 }
 
 TYPED_TEST(SetListTest, EraseRange) {
@@ -217,6 +185,59 @@ TYPED_TEST(SetListTest, EraseRange) {
   EXPECT_EQ(s, TypeParam({1, 2, 8}));
   s.erase(s.begin(), s.end());
   EXPECT_TRUE(s.empty());
+}
+
+TYPED_TEST(SetListTest, InsertHint) {
+  TypeParam s{1, 3, 4, 6};
+  s.insert(std::next(s.begin()), 2);  // good hint
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6}));
+  s.insert(s.end(), 7);    // good hint
+  s.insert(s.begin(), 5);  // bad hint
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
+  s.insert(s.begin(), 1);  // good hint, equal
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
+}
+
+TYPED_TEST(SetListTest, EmplaceHint) {
+  TypeParam s{4, 7, 18, 45};
+  EXPECT_EQ(s.emplace_hint(s.end(), 45), s.find(45));  // good hint, equal
+  s.emplace_hint(std::next(s.begin(), 2), 15);         // good hint
+  EXPECT_EQ(s, TypeParam({4, 7, 15, 18, 45}));
+  s.emplace_hint(std::next(s.begin()), 8);  // bad hint
+  EXPECT_EQ(s, TypeParam({4, 7, 8, 15, 18, 45}));
+  s.emplace_hint(s.end(), 17);  // bad hint
+  EXPECT_EQ(s, TypeParam({4, 7, 8, 15, 17, 18, 45}));
+}
+
+TYPED_TEST(SetListTest, Swap) {
+  TypeParam s1{1, 2, 3, 4};
+  TypeParam s2{3, 4, 5};
+  s1.swap(s2);
+  EXPECT_EQ(s1, TypeParam({3, 4, 5}));
+  EXPECT_EQ(s2, TypeParam({1, 2, 3, 4}));
+}
+
+TYPED_TEST(SetListTest, ReturnedIteratorsInsertErase) {
+  TypeParam s{1, 2, 4};
+  auto itInsertedPair = s.insert(3);
+  EXPECT_EQ(itInsertedPair.first, s.find(3));
+  EXPECT_TRUE(itInsertedPair.second);
+  EXPECT_FALSE(s.insert(3).second);
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4}));
+  s.erase(itInsertedPair.first);
+  EXPECT_EQ(s, TypeParam({1, 2, 4}));
+}
+
+TYPED_TEST(SetListTest, InsertRange) {
+  using value_type = typename TypeParam::value_type;
+  const value_type kNewEls[] = {18, 4, 3, 6, 4};
+  TypeParam s{1, 2, 3};
+  s.insert(std::begin(kNewEls), std::end(kNewEls));
+  EXPECT_NE(s.find(18), s.end());
+  EXPECT_FALSE(s.contains(5));
+  EXPECT_TRUE(s.contains(2));
+  EXPECT_TRUE(s.contains(6));
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
 }
 
 TYPED_TEST(SetListTest, RangeConstructor) {
@@ -241,15 +262,15 @@ TYPED_TEST(SetListTest, ComparisonOperators) {
   }
 }
 
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
 TEST(SetTest, SmallSetSizeTest) {
   typedef SmallSet<int, 12> SetType;
   SetType s;
   EXPECT_GT(s.max_size(), 12U);
-  const int tab[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  constexpr int tab[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   s.insert(std::begin(tab), std::end(tab));
   EXPECT_EQ(s.size(), 10U);
-  const int tab2[] = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
+  constexpr int tab2[] = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
   s.insert(std::begin(tab2), std::end(tab2));
   EXPECT_EQ(s.size(), 20U);
   EXPECT_TRUE(s.contains(11));
@@ -266,7 +287,7 @@ TEST(SetTest, Relocatibility) {
                                                       SmallVector<TrivialType, 10>>>::value ==
                     amc::is_trivially_relocatable<SmallVector<TrivialType, 10>>::value,
                 "");
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
   static_assert(!amc::is_trivially_relocatable<SmallSet<TrivialType, 10>>::value);
   static_assert(
       amc::is_trivially_relocatable<
@@ -318,7 +339,7 @@ class SetListMergeTest : public ::testing::Test {
 };
 // clang-format off
 typedef ::testing::Types<FlatSet<int>
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
                         ,SmallSet<int, 2>, 
                          SmallSet<int, 10>, 
                          SmallSet<char, 3>,
@@ -405,7 +426,7 @@ TEST(FlatSetTest, MergeDifferentCompare) {
   EXPECT_EQ(s2, RevSetType({19, 4, 2, -2}));
 }
 
-#ifdef AMC_CXX17
+#ifdef AMC_SMALLSET
 TEST(SmallSetTest, MergeDifferentCompare) {
   using SetType = SmallSet<char, 20, std::less<char>>;
   using RevSetType = SmallSet<char, 10, std::greater<char>>;

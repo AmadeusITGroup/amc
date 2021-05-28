@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <iterator>
 #include <limits>
 #include <utility>
 
@@ -57,6 +58,9 @@ class FlatSet : private Compare {
   using key_compare = Compare;
   using value_compare = Compare;
   using allocator_type = Alloc;
+
+  static_assert(std::is_same<T, typename VecType::value_type>::value, "Vector value type should be T");
+  static_assert(std::is_same<Alloc, typename VecType::allocator_type>::value, "Allocator should match vector's");
 
 #ifdef AMC_CXX17
   class node_type : private Alloc {
@@ -229,8 +233,8 @@ class FlatSet : private Compare {
   size_type count(const_reference v) const { return contains(v) ? 1U : 0U; }
 
   size_type erase(const_reference v) {
-    miterator it = mfind(v);
-    if (it == mend()) {
+    const_iterator it = find(v);
+    if (it == end()) {
       return 0U;
     }
     _sortedVector.erase(it);
@@ -241,9 +245,10 @@ class FlatSet : private Compare {
   iterator erase(const_iterator first, const_iterator last) { return _sortedVector.erase(first, last); }
 
   bool operator==(const FlatSet &o) const { return _sortedVector == o._sortedVector; }
-  bool operator!=(const FlatSet &o) const { return !(_sortedVector == o._sortedVector); }
+  bool operator!=(const FlatSet &o) const { return !(*this == o); }
 
   bool operator<(const FlatSet &o) const { return _sortedVector < o._sortedVector; }
+
   bool operator<=(const FlatSet &o) const { return !(o < *this); }
   bool operator>(const FlatSet &o) const { return o < *this; }
   bool operator>=(const FlatSet &o) const { return !(*this < o); }
@@ -316,7 +321,7 @@ class FlatSet : private Compare {
 
   std::pair<const_iterator, const_iterator> equal_range(const key_type &key) const {
     const_iterator first = find(key);
-    const_iterator second = first != end() ? first + 1 : end();
+    const_iterator second = first != end() ? std::next(first) : end();
     return std::pair<const_iterator, const_iterator>(first, second);
   }
 
@@ -350,31 +355,31 @@ class FlatSet : private Compare {
   template <class V>
   iterator insert_hint(const_iterator hint, V &&v) {
     assert(hint >= begin() && hint <= end());
-    if (hint == end() || !compRef()(*hint, v)) {            // [v, right side) is sorted
-      if (hint == begin() || !compRef()(v, *(hint - 1))) {  // (left side, v] is sorted
+    if (hint == end() || !compRef()(*hint, v)) {                     // [v, right side) is sorted
+      if (hint == begin() || !compRef()(v, *std::next(hint, -1))) {  // (left side, v] is sorted
         // hint is correct, but we need to check if equal
         if (hint != end() && !compRef()(v, *hint)) {
           // *hint == v, do not insert v, return iterator pointing to value that prevented the insert
           return hint;
         }
-        if (hint != begin() && !compRef()(*(hint - 1), v)) {
+        if (hint != begin() && !compRef()(*std::next(hint, -1), v)) {
           // *(hint-1) == v, do not insert v, return iterator pointing to value that prevented the insert
-          return hint - 1;
+          return std::next(hint, -1);
         }
         // hint is correct and element not already present, insert
         return _sortedVector.insert(hint, std::forward<V>(v));
       } else {
-        const_iterator insertIt = std::lower_bound(begin(), hint - 1, v, compRef());
-        if (insertIt == hint - 1 || compRef()(v, *insertIt)) {
+        const_iterator insertIt = std::lower_bound(begin(), std::next(hint, -1), v, compRef());
+        if (insertIt == std::next(hint, -1) || compRef()(v, *insertIt)) {
           return _sortedVector.insert(insertIt, std::forward<V>(v));
         }
         return insertIt;  // no insert as equal elements
       }
-    } else if (hint + 1 == end() || !compRef()(*(hint + 1), v)) {
-      if (hint + 1 != end() && !compRef()(v, *(hint + 1))) {
-        return hint + 1;
+    } else if (std::next(hint) == end() || !compRef()(*(std::next(hint)), v)) {
+      if (std::next(hint) != end() && !compRef()(v, *(std::next(hint)))) {
+        return std::next(hint);
       }
-      return _sortedVector.insert(hint + 1, std::forward<V>(v));
+      return _sortedVector.insert(std::next(hint), std::forward<V>(v));
     }
     // hint does not bring any valuable information, use standard insert
     return insert(std::forward<V>(v)).first;
@@ -387,7 +392,7 @@ class FlatSet : private Compare {
   Compare &compRef() { return static_cast<Compare &>(*this); }
   const Compare &compRef() const { return static_cast<const Compare &>(*this); }
 
-  miterator eraseDuplicates() { return _sortedVector.erase(std::unique(mbegin(), mend(), value_equi), mend()); }
+  void eraseDuplicates() { _sortedVector.erase(std::unique(mbegin(), mend(), value_equi), end()); }
 
   VecType _sortedVector;
 };

@@ -1412,6 +1412,8 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   using const_reference = typename Base::const_reference;
   using size_type = SizeType;
 
+  static constexpr size_type kInlineCapacity = N;
+
   Vector() noexcept : Base(N) {}
 
   explicit Vector(const Alloc &alloc) noexcept : Base(N, alloc) {}
