@@ -14,29 +14,53 @@
 
 - [AMadeus (C++) Containers](#amadeus-c-containers)
   - [Brief](#brief)
+  - [Contents](#contents)
   - [Benefits](#benefits)
     - [Performance optimizations](#performance-optimizations)
       - [Vectors](#vectors)
       - [Sets](#sets)
     - [Other benefits](#other-benefits)
-  - [Contents](#contents)
   - [What is a trivially relocatable type?](#what-is-a-trivially-relocatable-type)
   - [Build](#build)
+    - [As a main project](#as-a-main-project)
+    - [As a sub-project with cmake](#as-a-sub-project-with-cmake)
     - [Tested environments](#tested-environments)
+  - [Usage examples](#usage-examples)
+    - [Vectors](#vectors-1)
+      - [amc::vector](#amcvector)
+      - [SmallVector](#smallvector)
+      - [FixedCapacityVector](#fixedcapacityvector)
+    - [Sets](#sets-1)
+      - [FlatSet](#flatset)
+      - [SmallSet (c++17)](#smallset-c17)
 
 </p>
 </details>
 
 ## Brief
 
-Collection of C++ containers, drop-in replacements for `std::vector` and `std::set` providing additional optimizations.
+Collection of high performance C++ containers, drop-in replacements for `std::vector` and `std::set`.
+
+## Contents
+
+This header based library (to be more precise, `cmake` interface) provides the following containers:
+
+| Container Name      | STL equivalent | Brief                                                               | Why?                                                         |
+| ------------------- | -------------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
+| FixedCapacityVector | std::vector    | Vector-like which cannot grow, max capacity defined at compile time | No dynamic memory allocation                                 |
+| SmallVector         | std::vector    | Vector-like optimized for small sizes                               | No dynamic memory allocation for small sizes                 |
+| vector              | std::vector    | Vector optimized for trivially relocatable types                    | Optimized for trivially relocatable types                    |
+| FlatSet             | std::set       | Set-like implemented as a sorted vector                             | Alternate structure for sets optimized for read-heavy usages |
+| SmallSet (\*)       | std::set       | Set-like optimized for small sizes                                  | No dynamic memory allocation and unsorted for small sizes    |
+
+ \*: C++17 compiler only (uses `std::variant` & `std::optional`)
 
 ## Benefits
 
 ### Performance optimizations
 
- - For types taking an integral N as template parameter, container does not allocate dynamic memory as long as its capacity does not exceed N
- - Vectors (and `FlatSet`, as it uses a `vector`) are all optimized for **trivially relocatable** types (definition below).
+ - For types taking an integral `N` as template parameter, container does not allocate dynamic memory as long as its capacity does not exceed `N`
+ - Vectors (and `FlatSet`, as it uses `amc::vector` by default) are all optimized for **trivially relocatable** types (definition below).
 
 Example of possible performance gains (directly extracted from the provided benchmarks, compiled with GCC 10.1 on Ubuntu 18:)
 
@@ -57,20 +81,6 @@ For sets, time axis is in logarithmic scale.
  - Templated code generation is minimized thanks to the late location of the integral N template parameter
  - Optimized emulations of standard library features for older C++ compilers are provided when C++ version < C++17
 
-## Contents
-
-This library provides the following containers:
-
-| Container Name      | STL equivalent | Brief                                                               | Why?                                                         |
-| ------------------- | -------------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
-| FixedCapacityVector | std::vector    | Vector-like which cannot grow, max capacity defined at compile time | No dynamic memory allocation                                 |
-| SmallVector         | std::vector    | Vector-like optimized for small sizes                               | No dynamic memory allocation for small sizes                 |
-| vector              | std::vector    | Vector optimized for trivially relocatable types                    | Optimized for trivially relocatable types                    |
-| FlatSet             | std::set       | Set-like implemented as a sorted vector                             | Alternate structure for sets optimized for read-heavy usages |
-| SmallSet (\*)       | std::set       | Set-like optimized for small sizes                                  | No dynamic memory allocation and unsorted for small sizes    |
-
- \*: C++17 compiler only (uses `std::variant` & `std::optional`)
-
 ## What is a trivially relocatable type?
 
 It describes the ability of moving around memory a value of type T by using `memcpy` (as opposed to the conservative approach of calling the copy constructor and the destroying the old temporary). 
@@ -87,6 +97,8 @@ The most convenient way to mark a type as trivially relocatable is to declare in
 This is only necessary for non trivially copyable types, because trivially copyable types are trivially relocatable by default.
 
 ## Build
+
+### As a main project
 
 This library is header only library, with one file to be included per container.
 
@@ -109,9 +121,149 @@ To compile and launch the tests in `Debug` mode, simply launch
 
 `mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug .. && make && ctest`
 
+### As a sub-project with cmake
+
+With [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html):
+
+```
+include(FetchContent)
+
+FetchContent_Declare(
+  amadeusamc
+  GIT_REPOSITORY https://github.com/AmadeusITGroup/amc.git
+  GIT_TAG        origin/master
+)
+
+FetchContent_MakeAvailable(amadeusamc)
+```
+
+By default, `amc` unit tests and benchmarks will not be compiled when used as a sub-project, which is probably what you want. 
+
+`cmake` targets using amc containers can then be linked with the interface library `amc::amc`:
+```
+target_link_libraries(my_target PRIVATE amc::amc)
+```
+
+And that's all. You just need to include the corresponding container's header file to be used in your application code, and why not define them in your namespace.
+
+```cpp
+#include <amc_vector.hpp>
+#include <amc_smallvector.hpp>
+#include <amc_fixedcapacityvector.hpp>
+
+#include <amc_flatset.hpp>
+#include <amc_smallset.hpp> // Requires C++17
+
+namespace my_namespace {
+using amc::vector;
+using amc::SmallVector;
+using amc::FixedCapacityVector;
+
+using amc::FlatSet;
+using amc::SmallSet;
+}
+```
+
 ### Tested environments
 
-This library has been tested on Ubuntu 18.04 and Windows 10 (Visual Studio 2019), cmake 3.19.4 and the following compilers:
+This library has been tested on Ubuntu 18.04 and Windows 10 (Visual Studio 2019), from cmake 3.15 and the following compilers:
  - GCC from version 5.5 to 10
  - Clang from version 6.0
  - MSVC 19.28
+
+## Usage examples
+
+### Vectors 
+
+#### amc::vector
+
+`amc::vector` can be used as drop-in replacement for `std::vector`, especially when the underlying type is *trivially relocatable*.
+If your type is *trivially copyable*, optimizations are automatically activated.
+If your type is not trivially copyable but is *trivially relocatable*, make sure to mark it as such to activate optimizations.
+
+```cpp
+#include <amc_vector.hpp>
+
+struct MyTriviallyRelocatableType {
+  MyTriviallyRelocatableType() {}
+
+  // MyTriviallyRelocatableType is not trivially copyable...
+  ~MyTriviallyRelocatableType() { free(ptr); }
+
+  //... but trivially relocatable!
+  using trivially_relocatable = std::true_type;
+
+  void *ptr{};
+};
+
+using MyTriviallyRelocatableTypeVector = amc::vector<MyTriviallyRelocatableType>;
+```
+
+#### SmallVector
+
+Special variation of `amc::vector` which does not allocate memory and store objects inline up to a maximum capacity defined at compile-time.
+If `SmallVector` has to grow beyond this upper bound capacity, it will behave like a `amc::vector` by allocating dynamic memory.
+Once a `SmallVector` has allocated dynamic memory, it will not release its memory and come back to its 'small' state when its size goes back under the maximum inline capacity, unless `shrink_to_fit` is called.
+
+Use it when most of the time (let's say, for instance, in 90 % of the cases) the maximum size of the `SmallVector` does not exceed a compile-time constant to save memory allocations.
+
+```cpp
+#include <amc_smallvector.hpp>
+
+using ResidencesOfUser = amc::SmallVector<Residence, 1>;
+```
+
+#### FixedCapacityVector
+
+Use it when in your application constraints define a compile-time upper bound of the maximum size of your vector.
+Elements are stored inline in the object and no memory allocation occur.
+
+```cpp
+#include <cstdint>
+#include <amc_fixedcapacityvector.hpp>
+
+using SoldUnitsPerDayInMonth = amc::FixedCapacityVector<int, 31>;
+```
+
+In the unlikely event that the vector attempts to grow beyond its maximum capacity, behavior can be controlled thanks to the third template parameter `GrowingPolicy`:
+ - `ExceptionGrowingPolicy`: throw `std::out_of_range` exception (default)
+ - `UncheckedGrowingPolicy`: assert check (nothing is done in `Release`, invoking undefined behavior, abort will be called in `Debug`).
+
+Compared to a `SmallVector` that would never grow, `FixedCapacityVector` will be slightly more efficient (less checks) and make the intent clear, with nice additional iterator validity properties (`begin()` is never invalidated, iterators before any insert / erase are never invalidated).
+In addition, if type is trivially destructible, `FixedCapacityVector` will be itself trivially destructible.
+
+### Sets
+
+#### FlatSet
+
+Also sometimes called `SortedVector`, it uses a sorted `amc::vector` as storage (by default, provided as template type) and is thus cache friendly and memory efficient set-like container.
+It can be used as a drop-in replacement for `std::set` especially when the read operations occur much frequently than the writes.
+Even if there are a lot of writes, it is still very efficient for *trivially relocatable* types as it uses `amc::vector` by default which relocates elements very efficiently.
+
+Besides, the vector container is templated and thus can be combined with above vectors variations to optimize memory allocations (`SmallVector` or `FixedCapacityVector`).
+
+```cpp
+#include <cstdint>
+#include <amc_fixedcapacityvector.hpp>
+#include <amc_flatset.hpp>
+
+using CapitalLettersSetCont = amc::FixedCapacityVector<char, 26>;
+using CapitalLettersSet = amc::FlatSet<char, std::less<char>, CapitalLettersSetCont::allocator_type, CapitalLettersSetCont>;
+```
+
+#### SmallSet (c++17)
+
+Additional variation of `std::set` like container. This one has a hybrid behavior similar to `SmallVector`:
+ - In its 'small' state, there is no dynamic allocation and elements are stored unordered in an inline vector
+ - In its large state, `SmallSet` uses the templated provided Set type. It is a `std::set` by default, but it could be any type which provides a set like interface, like `FlatSet` for instance. In this case, `SmallSet` iterators are optimized into pointers.
+
+Note that insertions have linear complexity in the small state so the inline capacity should not be too large.
+
+```cpp
+#include <amc_fixedcapacityvector.hpp>
+#include <amc_flatset.hpp>
+#include <amc_smallset.hpp>
+
+using VisitedCountries = amc::SmallSet<Country, 5>;
+using VisitedCities = amc::SmallSet<City, 20, std::less<City>, amc::allocator<City>, amc::FlatSet<City>>;
+```
