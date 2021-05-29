@@ -35,8 +35,8 @@ if(MAIN_PROJECT)
     add_compile_options(/W4)
   else()
     add_compile_options(-Wall -Wextra -pedantic)
-  endif(MSVC)
-endif(MAIN_PROJECT)
+  endif()
+endif()
 
 if(AMC_ENABLE_ASAN AND NOT MSVC)
   add_compile_options(-g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all)
@@ -51,8 +51,10 @@ target_include_directories(amc INTERFACE src/include)
 if (AMC_ENABLE_TESTS)
   if (MSVC)
     add_definitions(/bigobj)
-  endif(MSVC)
+  endif()
+
   enable_testing()
+  
   add_subdirectory(src/test)
 endif()
 

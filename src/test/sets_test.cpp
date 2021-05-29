@@ -187,7 +187,7 @@ TYPED_TEST(SetListTest, EraseRange) {
   EXPECT_TRUE(s.empty());
 }
 
-TYPED_TEST(SetListTest, InsertHint) {
+TYPED_TEST(SetListTest, InsertHint1) {
   TypeParam s{1, 3, 4, 6};
   s.insert(std::next(s.begin()), 2);  // good hint
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6}));
@@ -196,6 +196,22 @@ TYPED_TEST(SetListTest, InsertHint) {
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
   s.insert(s.begin(), 1);  // good hint, equal
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
+  s.insert(std::next(s.end(), -2), 4);  // bad hint
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
+}
+
+TYPED_TEST(SetListTest, InsertHint2) {
+  TypeParam s{1, 6, 8, 19};
+  s.insert(std::next(s.end(), -2), 4);  // bad hint
+  EXPECT_EQ(s, TypeParam({1, 4, 6, 8, 19}));
+  s.insert(std::next(s.end(), -1), 19);  // good hint, equal
+  EXPECT_EQ(s, TypeParam({1, 4, 6, 8, 19}));
+  s.insert(std::next(s.end(), -2), 9);  // correct hint
+  EXPECT_EQ(s, TypeParam({1, 4, 6, 8, 9, 19}));
+  s.insert(std::next(s.end(), -2), 9);  // correct hint, equal
+  EXPECT_EQ(s, TypeParam({1, 4, 6, 8, 9, 19}));
+  s.insert(std::next(s.end(), -3), 9);  // correct hint, equal
+  EXPECT_EQ(s, TypeParam({1, 4, 6, 8, 9, 19}));
 }
 
 TYPED_TEST(SetListTest, EmplaceHint) {
@@ -278,8 +294,8 @@ TEST(SetTest, SmallSetSizeTest) {
 #endif
 
 TEST(SetTest, Relocatibility) {
-  typedef int TrivialType;
-  typedef std::list<int> NonRelocType;
+  using TrivialType = int;
+  using NonRelocType = std::list<int>;
 
   static_assert(amc::is_trivially_relocatable<FlatSet<TrivialType>>::value, "");
   static_assert(amc::is_trivially_relocatable<FlatSet<NonRelocType>>::value, "");
@@ -304,10 +320,10 @@ class SetListExtractTest : public ::testing::Test {
   typedef typename std::list<T> List;
 };
 
-typedef ::testing::Types<
-    FlatSet<NonCopyableType>, SmallSet<NonCopyableType, 2>, SmallSet<NonCopyableType, 4>, SmallSet<NonCopyableType, 3>,
-    SmallSet<NonCopyableType, 2, std::less<NonCopyableType>, amc::allocator<NonCopyableType>, FlatSet<NonCopyableType>>>
-    SetsExtractType;
+using SetsExtractType = ::testing::Types<FlatSet<NonCopyableType>, SmallSet<NonCopyableType, 2>,
+                                         SmallSet<NonCopyableType, 4>, SmallSet<NonCopyableType, 3>,
+                                         SmallSet<NonCopyableType, 2, std::less<NonCopyableType>,
+                                                  amc::allocator<NonCopyableType>, FlatSet<NonCopyableType>>>;
 
 TYPED_TEST_SUITE(SetListExtractTest, SetsExtractType, );
 
@@ -335,7 +351,7 @@ TYPED_TEST(SetListExtractTest, Extract) {
 template <typename T>
 class SetListMergeTest : public ::testing::Test {
  public:
-  typedef typename std::list<T> List;
+  using List = typename std::list<T>;
 };
 // clang-format off
 typedef ::testing::Types<FlatSet<int>
