@@ -355,31 +355,35 @@ class FlatSet : private Compare {
   template <class V>
   iterator insert_hint(const_iterator hint, V &&v) {
     assert(hint >= begin() && hint <= end());
-    if (hint == end() || !compRef()(*hint, v)) {                     // [v, right side) is sorted
-      if (hint == begin() || !compRef()(v, *std::next(hint, -1))) {  // (left side, v] is sorted
+    if (hint == end() || !compRef()(*hint, v)) {  // [v, right side) is sorted
+      const_iterator prevIt = std::next(hint, -1);
+      if (hint == begin() || !compRef()(v, *prevIt)) {  // (left side, v] is sorted
         // hint is correct, but we need to check if equal
         if (hint != end() && !compRef()(v, *hint)) {
           // *hint == v, do not insert v, return iterator pointing to value that prevented the insert
           return hint;
         }
-        if (hint != begin() && !compRef()(*std::next(hint, -1), v)) {
-          // *(hint-1) == v, do not insert v, return iterator pointing to value that prevented the insert
-          return std::next(hint, -1);
+        if (hint != begin() && !compRef()(*prevIt, v)) {
+          // *prevIt == v, do not insert v, return iterator pointing to value that prevented the insert
+          return prevIt;
         }
         // hint is correct and element not already present, insert
         return _sortedVector.insert(hint, std::forward<V>(v));
       } else {
-        const_iterator insertIt = std::lower_bound(begin(), std::next(hint, -1), v, compRef());
-        if (insertIt == std::next(hint, -1) || compRef()(v, *insertIt)) {
+        const_iterator insertIt = std::lower_bound(begin(), prevIt, v, compRef());
+        if (insertIt == prevIt || compRef()(v, *insertIt)) {
           return _sortedVector.insert(insertIt, std::forward<V>(v));
         }
         return insertIt;  // no insert as equal elements
       }
-    } else if (std::next(hint) == end() || !compRef()(*(std::next(hint)), v)) {
-      if (std::next(hint) != end() && !compRef()(v, *(std::next(hint)))) {
-        return std::next(hint);
+    } else {
+      const_iterator nextIt = std::next(hint);
+      if (nextIt == end() || !compRef()(*nextIt, v)) {  // [*nextIt, right side) is sorted
+        if (nextIt != end() && !compRef()(v, *nextIt)) {
+          return nextIt;
+        }
+        return _sortedVector.insert(nextIt, std::forward<V>(v));
       }
-      return _sortedVector.insert(std::next(hint), std::forward<V>(v));
     }
     // hint does not bring any valuable information, use standard insert
     return insert(std::forward<V>(v)).first;
