@@ -18,8 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: cmake
-        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=Debug
+        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=Release
       - name: build
-        run: cmake --build build --parallel 10
+        run: cmake --build build --parallel 2
       - name: test
-        run: cd build && ctest -j 10 --output-on-failure
+        run: cd build && ctest -j 2 --output-on-failure
