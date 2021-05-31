@@ -22,9 +22,9 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CROSSCOMPILING=1 -DRUN_HAVE_STD_REGEX=0
       - name: build
-        run: cmake --build build
+        run: cmake --build build --parallel 2
       - name: test
-        run: cd build && ctest --output-on-failure
+        run: cd build && ctest -j 2 --output-on-failure
 
   msvc2017:
     runs-on: windows-2016
@@ -45,9 +45,9 @@ jobs:
       run: cmake -S . -B build -G "Visual Studio 15 2017" -A ${{ matrix.architecture }}
       if: matrix.build_type == 'Debug'
     - name: build
-      run: cmake --build build --config ${{ matrix.build_type }} --parallel 10
+      run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
     - name: test
-      run: cd build && ctest -C ${{ matrix.build_type }} --output-on-failure
+      run: cd build && ctest -j 2 -C ${{ matrix.build_type }} --output-on-failure
 
   msvc2019:
     runs-on: windows-latest
@@ -65,9 +65,9 @@ jobs:
       run: cmake -S . -B build -G "Visual Studio 16 2019" -A ${{ matrix.architecture }}
       if: matrix.build_type == 'Debug'
     - name: build
-      run: cmake --build build --config ${{ matrix.build_type }} --parallel 10
+      run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
     - name: test
-      run: cd build && ctest -C ${{ matrix.build_type }} --output-on-failure
+      run: cd build && ctest -j 2 -C ${{ matrix.build_type }} --output-on-failure
 
   msvc2019_latest:
     runs-on: windows-latest
@@ -77,9 +77,9 @@ jobs:
     - name: cmake
       run: cmake -S . -B build -G "Visual Studio 16 2019" -DCMAKE_CXX_FLAGS="/permissive- /std:c++latest /utf-8 /W4"
     - name: build
-      run: cmake --build build --config Release --parallel 10
+      run: cmake --build build --config Release --parallel 2
     - name: test
-      run: cd build && ctest -C Release --output-on-failure
+      run: cd build && ctest -j 2 -C Release --output-on-failure
 
   clang-cl-11:
     runs-on: windows-latest
@@ -92,6 +92,6 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -G "Visual Studio 16 2019" -A ${{ matrix.architecture }} -T ClangCL
       - name: build
-        run: cmake --build build --config Debug --parallel 10
+        run: cmake --build build --config Debug --parallel 2
       - name: test
-        run: cd build && ctest -C Debug --output-on-failure
+        run: cd build && ctest -j 2 -C Debug --output-on-failure

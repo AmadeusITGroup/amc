@@ -20,11 +20,11 @@ jobs:
           apt-get update
           apt-get install -y ${{ matrix.compiler }} 
       - name: cmake
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Release
       - name: build
-        run: cmake --build build 
+        run: cmake --build build --parallel 2
       - name: test
-        run: cd build && ctest --output-on-failure
+        run: cd build && ctest -j 2 --output-on-failure
 
   ci_test_standards:
     runs-on: ubuntu-latest
@@ -35,8 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: cmake
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Release
       - name: build
-        run: cmake --build build
+        run: cmake --build build --parallel 2
       - name: test
-        run: cd build && ctest --output-on-failure
+        run: cd build && ctest -j 2 --output-on-failure
