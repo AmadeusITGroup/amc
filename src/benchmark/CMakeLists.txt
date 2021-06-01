@@ -4,7 +4,7 @@ include(FetchContent)
 FetchContent_Declare(
   googlebenchmark
   GIT_REPOSITORY https://github.com/google/benchmark.git
-  GIT_TAG        origin/master
+  GIT_TAG        main
 )
 
 # Do not test google benchmark
