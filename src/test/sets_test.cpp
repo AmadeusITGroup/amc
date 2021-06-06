@@ -214,6 +214,20 @@ TYPED_TEST(SetListTest, InsertHint2) {
   EXPECT_EQ(s, TypeParam({1, 4, 6, 8, 9, 19}));
 }
 
+TYPED_TEST(SetListTest, InsertHintBeginWithSTL) {
+  TypeParam s{1, 3, 4, 6};
+  TypeParam s1;
+  std::copy(s.begin(), s.end(), std::inserter(s1, s1.begin()));
+  EXPECT_EQ(s, s1);
+}
+
+TYPED_TEST(SetListTest, InsertHintEndWithSTL) {
+  TypeParam s{1, 3, 4, 6};
+  TypeParam s1;
+  std::copy(s.begin(), s.end(), std::inserter(s1, s1.end()));
+  EXPECT_EQ(s, s1);
+}
+
 TYPED_TEST(SetListTest, EmplaceHint) {
   TypeParam s{4, 7, 18, 45};
   EXPECT_EQ(s.emplace_hint(s.end(), 45), s.find(45));  // good hint, equal
