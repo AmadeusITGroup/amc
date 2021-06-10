@@ -456,6 +456,16 @@ TEST(FlatSetTest, MergeDifferentCompare) {
   EXPECT_EQ(s2, RevSetType({19, 4, 2, -2}));
 }
 
+TEST(FlatSetTest, SpecificPointerMethods) {
+  using SetType = FlatSet<int>;
+  SetType s{-2, 0, 2, 3, 4, 6, 19};
+  const SetType::value_type* pValue = s.data();  // to ensure return type of data() is a pointer
+  EXPECT_EQ(pValue[0], -2);
+  EXPECT_EQ(s[1], 0);
+  EXPECT_EQ(s.at(2), 2);
+  EXPECT_THROW(s.at(7), std::out_of_range);
+}
+
 #ifdef AMC_SMALLSET
 TEST(SmallSetTest, MergeDifferentCompare) {
   using SetType = SmallSet<char, 20, std::less<char>>;
