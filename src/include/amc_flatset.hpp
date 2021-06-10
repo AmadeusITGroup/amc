@@ -164,6 +164,12 @@ class FlatSet : private Compare {
   const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
   const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
 
+  const_pointer data() const noexcept { return _sortedVector.data(); }
+
+  const_reference operator[](size_type idx) const { return _sortedVector[idx]; }
+
+  const_reference at(size_type idx) const { return _sortedVector.at(idx); }
+
   bool empty() const noexcept { return _sortedVector.empty(); }
   size_type size() const noexcept { return _sortedVector.size(); }
   size_type max_size() const noexcept { return _sortedVector.max_size(); }
