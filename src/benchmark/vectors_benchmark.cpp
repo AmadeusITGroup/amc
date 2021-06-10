@@ -18,13 +18,13 @@ TypeStats TypeStats::_stats;
 
 namespace {
 
-typedef amc::vector<ComplexTriviallyRelocatableType> AMCRelocType;
-typedef amc::vector<ComplexNonTriviallyRelocatableType> AMCNonRelocType;
-typedef amc::vector<uint32_t> AMCInt;
+using AMCRelocType = amc::vector<ComplexTriviallyRelocatableType>;
+using AMCNonRelocType = amc::vector<ComplexNonTriviallyRelocatableType>;
+using AMCInt = amc::vector<uint32_t>;
 
-typedef std::vector<ComplexTriviallyRelocatableType> REFRelocType;
-typedef std::vector<ComplexNonTriviallyRelocatableType> REFNonRelocType;
-typedef std::vector<uint32_t> REFInt;
+using REFRelocType = std::vector<ComplexTriviallyRelocatableType>;
+using REFNonRelocType = std::vector<ComplexNonTriviallyRelocatableType>;
+using REFInt = std::vector<uint32_t>;
 
 template <class VecType>
 void InsertNElemsRandom(benchmark::State &state) {
@@ -53,7 +53,7 @@ void InsertNElemsRandom(benchmark::State &state) {
 
 template <class VecType>
 void InsertFromPointerRandom(benchmark::State &state) {
-  typedef typename VecType::value_type ValueType;
+  using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
   VecType v(1, 0);
   std::array<ValueType, kMaxValue - 10> kTab;
@@ -75,7 +75,7 @@ void InsertFromPointerRandom(benchmark::State &state) {
 
 template <class VecType>
 void InsertFromForwardItRandom(benchmark::State &state) {
-  typedef typename VecType::value_type ValueType;
+  using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
   VecType v(1, 0);
   std::array<ValueType, kMaxValue - 10> kTab;
@@ -123,7 +123,7 @@ void EraseRandom(benchmark::State &state) {
 
 template <class VecType>
 void AssignRandom(benchmark::State &state) {
-  typedef typename VecType::value_type ValueType;
+  using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
   VecType v;
   std::iota(v.begin(), v.end(), 0);
@@ -164,7 +164,7 @@ void SwapRandom(benchmark::State &state) {
 
 template <class VecType>
 void Growing(benchmark::State &state) {
-  typedef typename VecType::size_type SizeType;
+  using SizeType = typename VecType::size_type;
   TypeStats::_stats = TypeStats();
 
   const SizeType kMaxSize = 10000U;
@@ -184,7 +184,7 @@ void Growing(benchmark::State &state) {
 
 template <class VecType, unsigned TypicalMaxSize>
 void CommonUsage(benchmark::State &state) {
-  typedef typename VecType::value_type ValueType;
+  using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
 
   uint32_t seed = 0;

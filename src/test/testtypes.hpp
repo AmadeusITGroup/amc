@@ -244,8 +244,8 @@ struct ComplexType {
   uint32_t _i;
 };
 
-typedef ComplexType<false> ComplexNonTriviallyRelocatableType;
-typedef ComplexType<true> ComplexTriviallyRelocatableType;
+using ComplexNonTriviallyRelocatableType = ComplexType<false>;
+using ComplexTriviallyRelocatableType = ComplexType<true>;
 
 struct NonTriviallyRelocatableType {
   NonTriviallyRelocatableType(uint32_t i = 0) : _data(i) {}

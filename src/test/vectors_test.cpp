@@ -19,7 +19,7 @@ TypeStats TypeStats::_stats;
 template <typename T>
 class VectorTest : public ::testing::Test {
  public:
-  typedef typename std::list<T> List;
+  using List = typename std::list<T>;
 };
 
 typedef ::testing::Types<
@@ -170,7 +170,7 @@ TYPED_TEST(VectorTest, Main) {
 template <typename T>
 class VectorRefTest : public ::testing::Test {
  public:
-  typedef typename std::list<T> List;
+  using List = typename std::list<T>;
 };
 
 // clang-format off
@@ -203,9 +203,9 @@ inline bool operator==(const VectorImpl<T, A, S, I, G> &lhs, const typename std:
 }
 
 TYPED_TEST(VectorRefTest, CompareToRefVector) {
-  typedef TypeParam VectorType;
-  typedef typename VectorType::value_type Type;
-  typedef typename std::vector<Type> RefVecType;
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  using RefVecType = typename std::vector<Type>;
 
   VectorType v(100U, 2);
   RefVecType r(100U, 2);

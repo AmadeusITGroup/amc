@@ -20,7 +20,7 @@ TypeStats TypeStats::_stats;
 template <typename T>
 class SetListTest : public ::testing::Test {
  public:
-  typedef typename std::list<T> List;
+  using List = typename std::list<T>;
 };
 
 typedef ::testing::Types<
@@ -294,7 +294,7 @@ TYPED_TEST(SetListTest, ComparisonOperators) {
 
 #ifdef AMC_SMALLSET
 TEST(SetTest, SmallSetSizeTest) {
-  typedef SmallSet<int, 12> SetType;
+  using SetType = SmallSet<int, 12>;
   SetType s;
   EXPECT_GT(s.max_size(), 12U);
   constexpr int tab[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -331,7 +331,7 @@ TEST(SetTest, Relocatibility) {
 template <typename T>
 class SetListExtractTest : public ::testing::Test {
  public:
-  typedef typename std::list<T> List;
+  using List = typename std::list<T>;
 };
 
 using SetsExtractType = ::testing::Types<FlatSet<NonCopyableType>, SmallSet<NonCopyableType, 2>,

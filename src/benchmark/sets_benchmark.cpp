@@ -19,14 +19,14 @@ TypeStats TypeStats::_stats;
 
 namespace {
 
-typedef std::set<ComplexTriviallyRelocatableType> REFRelocType;
-typedef std::set<ComplexNonTriviallyRelocatableType> REFNonRelocType;
-typedef std::set<uint32_t> REFInt;
-typedef std::unordered_set<uint32_t> REFUnoInt;
+using REFRelocType = std::set<ComplexTriviallyRelocatableType>;
+using REFNonRelocType = std::set<ComplexNonTriviallyRelocatableType>;
+using REFInt = std::set<uint32_t>;
+using REFUnoInt = std::unordered_set<uint32_t>;
 
-typedef amc::FlatSet<ComplexTriviallyRelocatableType> AMCRelocType;
-typedef amc::FlatSet<ComplexNonTriviallyRelocatableType> AMCNonRelocType;
-typedef amc::FlatSet<uint32_t> AMCInt;
+using AMCRelocType = amc::FlatSet<ComplexTriviallyRelocatableType>;
+using AMCNonRelocType = amc::FlatSet<ComplexNonTriviallyRelocatableType>;
+using AMCInt = amc::FlatSet<uint32_t>;
 
 template <class SetType>
 void InsertRandom(benchmark::State &state) {
@@ -48,7 +48,7 @@ void EraseRandom(benchmark::State &state) {
   TypeStats::_stats = TypeStats();
   uint32_t s = 0;
   SetType elems;
-  typedef typename SetType::value_type ValueType;
+  using ValueType = typename SetType::value_type;
   std::vector<ValueType> remainingElems;
   for (uint32_t i = 0; i < InitNbInserts; ++i) {
     elems.emplace(i);
@@ -76,7 +76,7 @@ void LookUp(benchmark::State &state) {
   TypeStats::_stats = TypeStats();
   uint32_t s = 0;
   SetType elems;
-  typedef typename SetType::value_type ValueType;
+  using ValueType = typename SetType::value_type;
   for (uint32_t i = 0; i < Size; ++i) {
     elems.emplace(i);
   }
