@@ -34,12 +34,12 @@ struct do_is_nothrow_swappable_impl {
 
 template <typename T>
 struct is_swappable_impl : public typetraits_details::do_is_swappable_impl {
-  typedef decltype(test<T>(0)) type;
+  using type = decltype(test<T>(0));
 };
 
 template <typename T>
 struct is_nothrow_swappable_impl : public typetraits_details::do_is_nothrow_swappable_impl {
-  typedef decltype(test<T>(0)) type;
+  using type = decltype(test<T>(0));
 };
 
 template <typename T>
@@ -53,7 +53,7 @@ namespace typetraits_details {
 
 template <typename... Ts>
 struct make_void {
-  typedef void type;
+  using type = void;
 };
 
 template <typename T, typename = void>
@@ -93,7 +93,7 @@ struct is_trivially_relocatable_impl<T, true> : public std::is_same<typename T::
  * is_trivially_relocatable<SomeStruct> in the same header as SomeStruct.
  *
  * You may also declare a type to be relocatable by defining
- *    `typedef std::true_type trivially_relocatable;`
+ *    `using trivially_relocatable = std::true_type;`
  * in the class declaration.
  * */
 template <typename T>

@@ -67,7 +67,7 @@ template <class T>
 inline void construct_at_impl(T *pos, const T &v, NonTriviallyCopyableArray) {
   int i = 0;
   try {
-    typedef typename std::remove_reference<decltype(**pos)>::type ElemT;
+    using ElemT = typename std::remove_reference<decltype(**pos)>::type;
     typedef
         typename std::conditional<std::is_array<ElemT>::value, NonTriviallyCopyableArray, NonTriviallyCopyable>::type
             TypeTraits;
@@ -89,7 +89,7 @@ template <class T>
 inline void construct_at_impl(T *pos, T &&v, NonTriviallyCopyableArray) {
   int i = 0;
   try {
-    typedef typename std::remove_reference<decltype(**pos)>::type ElemT;
+    using ElemT = typename std::remove_reference<decltype(**pos)>::type;
     typedef
         typename std::conditional<std::is_array<ElemT>::value, NonTriviallyCopyableArray, NonTriviallyCopyable>::type
             TypeTraits;
@@ -149,7 +149,7 @@ template <class ForwardIt>
 void uninitialized_default_construct(ForwardIt first, ForwardIt last,
                                      typename std::enable_if<!std::is_trivially_default_constructible<
                                          typename std::iterator_traits<ForwardIt>::value_type>::value>::type * = 0) {
-  typedef typename std::iterator_traits<ForwardIt>::value_type Value;
+  using Value = typename std::iterator_traits<ForwardIt>::value_type;
   ForwardIt current = first;
   try {
     for (; current != last; ++current) {
@@ -171,7 +171,7 @@ ForwardIt uninitialized_default_construct_n(
     typename std::enable_if<
         !std::is_trivially_default_constructible<typename std::iterator_traits<ForwardIt>::value_type>::value>::type * =
         0) {
-  typedef typename std::iterator_traits<ForwardIt>::value_type Value;
+  using Value = typename std::iterator_traits<ForwardIt>::value_type;
   ForwardIt current = first;
   try {
     for (; n > 0; (void)++current, --n) {
@@ -248,8 +248,8 @@ struct MemMove {};
 // Type factory deducing the optimization mode from the 3 defined above.
 template <class InputIt, class OutputIt, bool IsMemMovePossible>
 struct ImplModeFactory {
-  typedef typename std::iterator_traits<InputIt>::value_type InputType;
-  typedef typename std::iterator_traits<OutputIt>::value_type OutputType;
+  using InputType = typename std::iterator_traits<InputIt>::value_type;
+  using OutputType = typename std::iterator_traits<OutputIt>::value_type;
   typedef typename std::conditional<std::is_pointer<InputIt>::value && std::is_pointer<OutputIt>::value, MemMove,
                                     MemMoveInALoop>::type MemMoveType;
   typedef
@@ -275,7 +275,7 @@ inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt de
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt dest, MemMoveInALoop) {
   for (; first != last; ++dest, void(), ++first) {
-    typedef typename std::iterator_traits<InputIt>::value_type ValueType;
+    using ValueType = typename std::iterator_traits<InputIt>::value_type;
     std::memcpy(std::addressof(*dest), std::addressof(*first), sizeof(ValueType));
   }
   return dest;
@@ -283,7 +283,7 @@ inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt de
 
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt dest, MemMove) {
-  typedef typename std::iterator_traits<InputIt>::value_type ValueType;
+  using ValueType = typename std::iterator_traits<InputIt>::value_type;
   typename std::iterator_traits<InputIt>::difference_type count = last - first;
   if (count > 0) {
     // We can use memcpy here as for uninitialized_copy, we know that ranges do not overlap
@@ -309,7 +309,7 @@ inline OutputIt uninitialized_copy_n_impl(InputIt first, Size count, OutputIt de
 template <class InputIt, class Size, class OutputIt>
 inline OutputIt uninitialized_copy_n_impl(InputIt first, Size count, OutputIt dest, MemMoveInALoop) {
   for (; count > 0; ++dest, void(), ++first, --count) {
-    typedef typename std::iterator_traits<InputIt>::value_type ValueType;
+    using ValueType = typename std::iterator_traits<InputIt>::value_type;
     std::memcpy(std::addressof(*dest), std::addressof(*first), sizeof(ValueType));
   }
   return dest;
@@ -317,7 +317,7 @@ inline OutputIt uninitialized_copy_n_impl(InputIt first, Size count, OutputIt de
 
 template <class InputIt, class Size, class OutputIt>
 inline OutputIt uninitialized_copy_n_impl(InputIt first, Size count, OutputIt dest, MemMove) {
-  typedef typename std::iterator_traits<InputIt>::value_type ValueType;
+  using ValueType = typename std::iterator_traits<InputIt>::value_type;
   // We can use memcpy here as for uninitialized_copy, we know that ranges do not overlap
   if (count > 0) {
     std::memcpy(dest, first, count * sizeof(ValueType));
@@ -358,7 +358,7 @@ template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_move_n_impl(InputIt first, Size count, OutputIt dest,
                                                               MemMoveInALoop) {
   for (; count > 0; ++dest, void(), ++first, --count) {
-    typedef typename std::iterator_traits<InputIt>::value_type ValueType;
+    using ValueType = typename std::iterator_traits<InputIt>::value_type;
     std::memcpy(std::addressof(*dest), std::addressof(*first), sizeof(ValueType));
   }
   return std::pair<InputIt, OutputIt>(first, dest);
@@ -447,7 +447,7 @@ inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputI
 
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputIt dest, MemMove) {
-  typedef typename std::iterator_traits<InputIt>::value_type ValueType;
+  using ValueType = typename std::iterator_traits<InputIt>::value_type;
   typename std::iterator_traits<InputIt>::difference_type count = last - first;
   if (count > 0) {
 #if __GNUC__ >= 8
@@ -481,7 +481,7 @@ inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first,
 
 template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first, Size count, OutputIt dest, MemMove) {
-  typedef typename std::iterator_traits<InputIt>::value_type ValueType;
+  using ValueType = typename std::iterator_traits<InputIt>::value_type;
   if (count > 0) {
 #if __GNUC__ >= 8
     // Do not raise class-memaccess warning for trivially relocatable types
