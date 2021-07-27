@@ -684,9 +684,9 @@ class SmallVectorBase : private Alloc {
 
   static inline void SwapDynamicBuffer(SmallVectorBase &vDynBuf,
                                        SmallVectorBase &vSmall) noexcept(vec::is_swap_noexcept<T>::value) {
-    T *dynStorage = vDynBuf._storage.dyn();
+    T *oDynStorage = vDynBuf._storage.dyn();
     (void)amc::uninitialized_relocate_n(vSmall._storage.ptr(), vSmall._capa, vDynBuf._storage.ptr());
-    vSmall._storage.setDyn(dynStorage);
+    vSmall._storage.setDyn(oDynStorage);
   }
 
   void shrink();
