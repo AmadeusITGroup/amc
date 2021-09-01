@@ -55,20 +55,19 @@ inline T *Reallocate(Alloc &alloc, T *p, SizeType oldCapa, SizeType newCapa, Siz
   alloc.deallocate(p, oldCapa);
   return newPtr;
 }
-}  // namespace vec
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
   SizeType newCapa;
   if (isSmall()) {
     SizeType oldCapa = _size == std::numeric_limits<SizeType>::max() ? _capa : _size;
-    newCapa = vec::SafeNextCapacity(oldCapa, minSize, exact);
+    newCapa = SafeNextCapacity(oldCapa, minSize, exact);
     T *dynStorage = this->allocate(newCapa);
     (void)amc::uninitialized_relocate_n(_storage.ptr(), _capa, dynStorage);
     _storage.setDyn(dynStorage);
     _size = _capa;
   } else {
-    newCapa = vec::SafeNextCapacity(_capa, minSize, exact);
+    newCapa = SafeNextCapacity(_capa, minSize, exact);
     _storage.setDyn(vec::Reallocate(static_cast<Alloc &>(*this), _storage.dyn(), _capa, newCapa, _size));
   }
   _capa = newCapa;
@@ -76,7 +75,7 @@ void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
 
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
-  SizeType newCapa = vec::SafeNextCapacity(_capa, minSize, exact);
+  SizeType newCapa = SafeNextCapacity(_capa, minSize, exact);
   _storage = vec::Reallocate(static_cast<Alloc &>(*this), _storage, _capa, newCapa, _size);
   _capa = newCapa;
 }
@@ -116,6 +115,7 @@ template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::freeStorage() {
   this->deallocate(_storage.dyn(), _capa);
 }
+}  // namespace vec
 
 /**
  * Vector optimized for *trivially relocatable types* and in 'Small' state (when its capacity is <= N).

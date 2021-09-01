@@ -34,7 +34,7 @@ struct is_move_construct_nothrow : std::integral_constant<bool, amc::is_triviall
 /// Requirements: n != 0, with uninitialized memory starting at 'first + n'
 /// Warning: no destroy is called for elements which has been moved from.
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void shift_right(T *first, SizeType n) noexcept(vec::is_shift_nothrow<T>::value) {
+inline void shift_right(T *first, SizeType n) noexcept(is_shift_nothrow<T>::value) {
   T *last = first + n;
   amc::construct_at(last, std::move(*(last - 1)));
   std::move_backward(first, last - 1, last);
@@ -50,7 +50,7 @@ inline void shift_right(T *first, SizeType n) noexcept {
 /// Requirements: uninitialized memory starting at 'first + n'
 /// Warning: no destroy is called for elements which has been moved from.
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void shift_right(T *first, SizeType n, SizeType count) noexcept(vec::is_shift_nothrow<T>::value) {
+void shift_right(T *first, SizeType n, SizeType count) noexcept(is_shift_nothrow<T>::value) {
   if (count < n) {
     T *last = first + n;
     amc::uninitialized_move_n(last - count, count, last);  // move last 'count' elems to uninitialized storage
@@ -87,23 +87,23 @@ inline void fill_after_shift(T *first, SizeType, SizeType count, const T &v) {
 /// copy from a range to available location divided in two parts: one on initialized memory, other one on raw memory
 template <class ForwardIt, class SizeType, class T,
           typename std::enable_if<!std::is_trivially_copyable<T>::value, bool>::type = true>
-inline void copy(ForwardIt first, SizeType n, SizeType count, T *pos) {
-  if (n > 0) {
-    *pos++ = *first;  // rewrite copy_n to avoid double iteration on the input elements
-    for (SizeType i = 1; i < n; ++i) {
-      *pos++ = *++first;
+inline void assign_n(ForwardIt first, SizeType count, T *d_first, SizeType d_n) {
+  if (d_n > 0) {
+    *d_first++ = *first;  // rewrite copy_n to avoid double iteration on the input elements
+    for (SizeType i = 1; i < d_n; ++i) {
+      *d_first++ = *++first;
     }
     (void)++first;
   }
-  if (n < count) {
-    amc::uninitialized_copy_n(first, count - n, pos);
+  if (d_n < count) {
+    amc::uninitialized_copy_n(first, count - d_n, d_first);
   }
 }
 
 template <class ForwardIt, class SizeType, class T,
           typename std::enable_if<std::is_trivially_copyable<T>::value, bool>::type = true>
-inline void copy(ForwardIt first, SizeType, SizeType count, T *pos) {
-  amc::uninitialized_copy_n(first, count, pos);
+inline void assign_n(ForwardIt first, SizeType count, T *d_first, SizeType) {
+  amc::uninitialized_copy_n(first, count, d_first);
 }
 
 /// Copy 'count' elements starting at 'first' to 'pos' location
@@ -143,7 +143,7 @@ inline void destroy_after_shift(T *) {}
 /// Shift 'n' elements starting at 'first' one slot back to the left
 /// Requirements: n != 0 with one slot of initialized memory at first - 1
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void shift_left(T *first, SizeType n) noexcept(vec::is_shift_nothrow<T>::value) {
+void shift_left(T *first, SizeType n) noexcept(is_shift_nothrow<T>::value) {
   *(first - 1) = std::move(*first);  // move first element to initialized memory slot 'first - 1'
   // move next 'n - 1' elements one slot to the left and destroy last moved element
   amc::destroy_at(std::move(first + 1, first + n, first));
@@ -156,11 +156,11 @@ void shift_left(T *first, SizeType n) noexcept {
 
 /// Erase 'n' elements starting at 'first', shifting the next 'count' elements to memory starting at 'first'
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void erase(T *first, SizeType n, SizeType count) {
+inline void erase_n(T *first, SizeType n, SizeType count) {
   amc::destroy_n(std::move(first + n, first + n + count, first), n);
 }
 template <class T, class SizeType, typename std::enable_if<amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void erase(T *first, SizeType n, SizeType count) {
+inline void erase_n(T *first, SizeType n, SizeType count) {
   amc::destroy_n(first, n);
   (void)amc::uninitialized_relocate_n(first + n, count, first);
 }
@@ -192,7 +192,7 @@ inline void fill(T *first, SizeType, SizeType count, const T &v) {
 }
 
 template <class T, class SizeType1, class SizeType2>
-void swap_deep(T *first1, SizeType1 count1, T *first2, SizeType2 count2) noexcept(vec::is_swap_noexcept<T>::value) {
+void swap_deep(T *first1, SizeType1 count1, T *first2, SizeType2 count2) noexcept(is_swap_noexcept<T>::value) {
   // swap element by element in common (initialized) storage
   using SizeType = typename std::conditional<sizeof(SizeType1) < sizeof(SizeType2), SizeType2, SizeType1>::type;
   std::swap_ranges(first1, first1 + std::min(static_cast<SizeType>(count1), static_cast<SizeType>(count2)), first2);
@@ -237,8 +237,9 @@ inline void swap_sizetype(SizeType &lhs, SizeType &rhs) noexcept {
   std::swap(lhs, rhs);
 }
 
+/// Move 'n' objects starting at 'first' to a range starting at 'd_first' containing already 'd_n' instantiated objects
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void move_range(T *first, SizeType n, T *d_first, SizeType d_n) {
+inline void move_n(T *first, SizeType n, T *d_first, SizeType d_n) {
   std::move(first, first + std::min(n, d_n), d_first);
   if (d_n < n) {
     amc::uninitialized_move_n(first + d_n, n - d_n, d_first + d_n);
@@ -249,7 +250,7 @@ inline void move_range(T *first, SizeType n, T *d_first, SizeType d_n) {
 }
 
 template <class T, class SizeType, typename std::enable_if<amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void move_range(T *first, SizeType n, T *d_first, SizeType d_n) {
+inline void move_n(T *first, SizeType n, T *d_first, SizeType d_n) {
   amc::destroy_n(d_first, d_n);
   (void)amc::uninitialized_relocate_n(first, n, d_first);
 }
@@ -257,7 +258,7 @@ inline void move_range(T *first, SizeType n, T *d_first, SizeType d_n) {
 // Shift 'n' elements starting at 'first' one slot back to the left
 // Requirements: 'n' != 0 with one slot of uninitialized memory at first - 1
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void uninitialized_shift_left(T *first, SizeType n) noexcept(vec::is_shift_nothrow<T>::value) {
+void uninitialized_shift_left(T *first, SizeType n) noexcept(is_shift_nothrow<T>::value) {
   amc::construct_at(first - 1, std::move(*first));  // move first element to uninitialized memory slot 'first - 1'
   // move next 'n - 1' elements one slot to the left and destroy last moved element
   amc::destroy_at(std::move(first + 1, first + n, first));
@@ -270,16 +271,16 @@ void uninitialized_shift_left(T *first, SizeType n) noexcept {
 
 /// Construct at 'pos' the T from 'args' parameters, shifting 'n' elements starting at 'pos' to the right
 template <class T, class SizeType, class... Args>
-inline void emplace(T *pos, SizeType n, Args &&...args) {
+inline void emplace_n(T *pos, SizeType n, Args &&...args) {
   if (n == 0) {
     amc::construct_at(pos, std::forward<Args>(args)...);
   } else {
-    vec::shift_right(pos, n);
-    vec::destroy_after_shift(pos);
+    shift_right(pos, n);
+    destroy_after_shift(pos);
     try {
       amc::construct_at(pos, std::forward<Args>(args)...);
     } catch (...) {
-      vec::uninitialized_shift_left(pos + 1, n);
+      uninitialized_shift_left(pos + 1, n);
       throw;
     }
   }
@@ -296,15 +297,15 @@ inline void assign_after_shift(T *pos, V &&v) {
 
 /// Insert 'v' at 'pos', shifting 'n' elements starting at 'pos' to the right
 template <class T, class SizeType, class V>
-inline void insert(T *pos, SizeType n, V &&v) {
+inline void insert_n(T *pos, SizeType n, V &&v) {
   if (n == 0) {
     amc::construct_at(pos, std::forward<V>(v));
   } else {
-    vec::shift_right(pos, n);
+    shift_right(pos, n);
     try {
-      vec::assign_after_shift(pos, std::forward<V>(v));
+      assign_after_shift(pos, std::forward<V>(v));
     } catch (...) {
-      vec::shift_left(pos + 1, n);
+      shift_left(pos + 1, n);
       throw;
     }
   }
@@ -436,14 +437,13 @@ void SwapDynStorage(T *&lhs, T *&rhs) {
 }
 
 struct EmptyAlloc {};
-}  // namespace vec
 
 template <class T, class SizeType>
 class StaticVectorBase {
  public:
   using iterator = T *;
   using const_iterator = const T *;
-  using allocator_type = vec::EmptyAlloc;
+  using allocator_type = EmptyAlloc;
 
   allocator_type get_allocator() const noexcept { return allocator_type(); }
 
@@ -460,20 +460,20 @@ class StaticVectorBase {
  protected:
   explicit StaticVectorBase(SizeType inplaceCapa) noexcept : _capa(inplaceCapa), _size(0) {}
 
-  StaticVectorBase(SizeType inplaceCapa, const vec::EmptyAlloc &) noexcept : _capa(inplaceCapa), _size(0) {}
+  StaticVectorBase(SizeType inplaceCapa, const EmptyAlloc &) noexcept : _capa(inplaceCapa), _size(0) {}
 
-  void swap_impl(StaticVectorBase &o) noexcept(vec::is_swap_noexcept<T>::value) {
-    vec::swap_deep(begin(), _size, o.begin(), o._size);
+  void swap_impl(StaticVectorBase &o) noexcept(is_swap_noexcept<T>::value) {
+    swap_deep(begin(), _size, o.begin(), o._size);
     std::swap(_size, o._size);
   }
 
-  void move_construct(StaticVectorBase &o, SizeType) noexcept(vec::is_move_construct_nothrow<T>::value) {
+  void move_construct(StaticVectorBase &o, SizeType) noexcept(is_move_construct_nothrow<T>::value) {
     amc::uninitialized_relocate_n(o.begin(), o._size, begin());
     _size = amc::exchange(o._size, 0);
   }
 
-  void move_assign(StaticVectorBase &o, SizeType) noexcept(vec::is_shift_nothrow<T>::value) {
-    vec::move_range(o.begin(), o._size, begin(), _size);
+  void move_assign(StaticVectorBase &o, SizeType) noexcept(is_shift_nothrow<T>::value) {
+    move_n(o.begin(), o._size, begin(), _size);
     _size = amc::exchange(o._size, 0);
   }
 
@@ -490,7 +490,7 @@ class StaticVectorBase {
   // time).
   const SizeType _capa;
   SizeType _size;
-  vec::ElemStorage<T> _firstEl;  // Inplace elements will be appended to this first one, do not add fields in between
+  ElemStorage<T> _firstEl;  // Inplace elements will be appended to this first one, do not add fields in between
 };
 
 template <class T, class Alloc, class SizeType>
@@ -539,10 +539,10 @@ class SmallVectorBase : private Alloc {
 
   /// swap_impl is called by public method 'swap' for same SmallVector (same number of inplace elements).
   /// No need to check / adjust capacity for small states then (no throw guaranteed).
-  void swap_impl(SmallVectorBase &o) noexcept(vec::is_swap_noexcept<T>::value) {
+  void swap_impl(SmallVectorBase &o) noexcept(is_swap_noexcept<T>::value) {
     if (isSmall()) {
       if (o.isSmall()) {
-        vec::swap_deep(_storage.ptr(), _capa, o._storage.ptr(), o._capa);
+        swap_deep(_storage.ptr(), _capa, o._storage.ptr(), o._capa);
       } else {
         SwapDynamicBuffer(o, *this);
       }
@@ -550,14 +550,14 @@ class SmallVectorBase : private Alloc {
       if (o.isSmall()) {
         SwapDynamicBuffer(*this, o);
       } else {
-        vec::SwapDynStorage(_storage, o._storage);
+        SwapDynStorage(_storage, o._storage);
       }
     }
     std::swap(_capa, o._capa);
     std::swap(_size, o._size);
   }
 
-  void move_construct(SmallVectorBase &o, SizeType inplaceCapa) noexcept(vec::is_move_construct_nothrow<T>::value) {
+  void move_construct(SmallVectorBase &o, SizeType inplaceCapa) noexcept(is_move_construct_nothrow<T>::value) {
     if (o.isSmall()) {
       amc::uninitialized_relocate_n(o._storage.ptr(), o._capa, _storage.ptr());
     } else {
@@ -567,14 +567,14 @@ class SmallVectorBase : private Alloc {
     _size = amc::exchange(o._size, inplaceCapa);
   }
 
-  void move_assign(SmallVectorBase &o, SizeType inplaceCapa) noexcept(vec::is_shift_nothrow<T>::value) {
+  void move_assign(SmallVectorBase &o, SizeType inplaceCapa) noexcept(is_shift_nothrow<T>::value) {
     if (o.isSmall()) {
       // No need to check 'this' capacity. If 'this' is small, then 'this' capacity is same as 'o'.
       // If 'this' is large, then 'this' capacity is larger by design.
       // Indeed, capacity cannot shrink, except for shrink_to_fit which resets to small state if possible.
       // Besides, if 'this' is large, let's not shrink to small size and keep our dynamic memory for now.
       // To sum-up, in this context, we do not touch our capacity, only move and relocates o's elements
-      vec::move_range(o._storage.ptr(), o._capa, begin(), size());
+      move_n(o._storage.ptr(), o._capa, begin(), size());
       if (o._size == kMaxSize) {
         if (isSmall()) {
           _size = kMaxSize;
@@ -629,7 +629,7 @@ class SmallVectorBase : private Alloc {
 
   template <class VectorType>
   void swapDynStorage(VectorType &o) noexcept {
-    vec::SwapDynStorage(_storage, o._storage);
+    SwapDynStorage(_storage, o._storage);
   }
   template <class OSizeType>
   void swapDynStorage(StaticVectorBase<T, OSizeType> &) noexcept {}
@@ -680,10 +680,10 @@ class SmallVectorBase : private Alloc {
 
  private:
   SizeType _capa, _size;
-  vec::ElemWithPtrStorage<T> _storage;
+  ElemWithPtrStorage<T> _storage;
 
   static inline void SwapDynamicBuffer(SmallVectorBase &vDynBuf,
-                                       SmallVectorBase &vSmall) noexcept(vec::is_swap_noexcept<T>::value) {
+                                       SmallVectorBase &vSmall) noexcept(is_swap_noexcept<T>::value) {
     T *oDynStorage = vDynBuf._storage.dyn();
     (void)amc::uninitialized_relocate_n(vSmall._storage.ptr(), vSmall._capa, vDynBuf._storage.ptr());
     vSmall._storage.setDyn(oDynStorage);
@@ -776,7 +776,7 @@ class StdVectorBase : private Alloc {
 
   template <class VectorType>
   void swapDynStorage(VectorType &o) noexcept {
-    vec::SwapDynStorage(_storage, o._storage);
+    SwapDynStorage(_storage, o._storage);
   }
   template <class OSizeType>
   void swapDynStorage(StaticVectorBase<T, OSizeType> &) noexcept {}
@@ -814,7 +814,7 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
     GrowingPolicy::Check(this->size() + 1U, this->capacity());
     iterator pos = const_cast<iterator>(position);
-    vec::emplace(pos, this->size() - (pos - this->begin()), std::forward<Args>(args)...);
+    emplace_n(pos, this->size() - (pos - this->begin()), std::forward<Args>(args)...);
     this->incrSize();
     return pos;
   }
@@ -839,9 +839,9 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
   friend class DynamicVector;
 
   template <class VectorType>
-  void swap2_impl(VectorType &o) noexcept(vec::is_swap_noexcept<T>::value) {
-    vec::swap_deep(this->begin(), this->size(), o.begin(), o.size());
-    vec::swap_sizetype(this->msize(), o.msize());
+  void swap2_impl(VectorType &o) noexcept(is_swap_noexcept<T>::value) {
+    swap_deep(this->begin(), this->size(), o.begin(), o.size());
+    swap_sizetype(this->msize(), o.msize());
   }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
@@ -899,7 +899,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     iterator pos;
     if (AMC_UNLIKELY(this->size() == this->capacity())) {
       // construct before possible iterator invalidation from grow in constructor arguments
-      vec::ElemStorage<T> e;
+      ElemStorage<T> e;
       amc::construct_at(e.ptr(), std::forward<Args &&>(args)...);
       SizeType idx = static_cast<SizeType>(position - this->begin());
       this->grow(this->size() + 1U);
@@ -907,17 +907,17 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
       if (nElemsToShift == 0) {
         amc::relocate_at(e.ptr(), pos);
       } else {
-        vec::shift_right(pos, nElemsToShift);
+        shift_right(pos, nElemsToShift);
         try {
-          vec::relocate_after_shift(e.ptr(), pos);
+          relocate_after_shift(e.ptr(), pos);
         } catch (...) {
-          vec::shift_left(pos + 1, nElemsToShift);
+          shift_left(pos + 1, nElemsToShift);
           throw;
         }
       }
     } else {
       pos = const_cast<iterator>(position);
-      vec::emplace(pos, nElemsToShift, std::forward<Args>(args)...);
+      emplace_n(pos, nElemsToShift, std::forward<Args>(args)...);
     }
     this->incrSize();
     return pos;
@@ -928,7 +928,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     iterator endIt;
     if (AMC_UNLIKELY(this->size() == this->capacity())) {
       // construct before possible iterator invalidation from grow in constructor arguments
-      vec::ElemStorage<T> e;
+      ElemStorage<T> e;
       amc::construct_at(e.ptr(), std::forward<Args &&>(args)...);
       this->grow(this->size() + 1U);
       endIt = this->dynStorage() + this->size();
@@ -953,21 +953,21 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   friend class DynamicVector;
 
   template <class OSizeType, class OGrowingPolicy>
-  void swap2_impl(StaticVector<T, OSizeType, OGrowingPolicy> &o) noexcept(vec::is_swap_noexcept<T>::value) {
+  void swap2_impl(StaticVector<T, OSizeType, OGrowingPolicy> &o) noexcept(is_swap_noexcept<T>::value) {
     // Here 'o' cannot grow so we cannot swap any dynamic storage. Deeply swap all elements
-    vec::swap_deep(this->begin(), this->size(), o.begin(), o.size());
-    vec::swap_sizetype(this->msize(), o.msize());
+    swap_deep(this->begin(), this->size(), o.begin(), o.size());
+    swap_sizetype(this->msize(), o.msize());
   }
 
   template <class OAlloc, class OSizeType, bool OWithInlineElems>
-  void swap2_impl(DynamicVector<T, OAlloc, OSizeType, OWithInlineElems> &o) noexcept(vec::is_swap_noexcept<T>::value) {
+  void swap2_impl(DynamicVector<T, OAlloc, OSizeType, OWithInlineElems> &o) noexcept(is_swap_noexcept<T>::value) {
     if (this->canSwapDynStorage(o)) {
       this->swapDynStorage(o);
-      vec::swap_sizetype(this->mcapacity(), o.mcapacity());
+      swap_sizetype(this->mcapacity(), o.mcapacity());
     } else {
-      vec::swap_deep(this->begin(), this->size(), o.begin(), o.size());
+      swap_deep(this->begin(), this->size(), o.begin(), o.size());
     }
-    vec::swap_sizetype(this->msize(), o.msize());
+    swap_sizetype(this->msize(), o.msize());
   }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
@@ -1025,14 +1025,12 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   }
 };
 
-namespace vec {
 /// Standard growing policy which allows SmallVector to use dynamic memory
 struct DynamicGrowingPolicy {};
-}  // namespace vec
 
 template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy>
 struct VectorBaseTypeDispatcher {
-  using type = typename std::conditional<std::is_same<GrowingPolicy, vec::DynamicGrowingPolicy>::value,
+  using type = typename std::conditional<std::is_same<GrowingPolicy, DynamicGrowingPolicy>::value,
                                          DynamicVector<T, Alloc, SizeType, WithInlineElements>,
                                          StaticVector<T, SizeType, GrowingPolicy> >::type;
 };
@@ -1180,7 +1178,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   void assign(size_type count, const_reference v) {
     if (this->size() < count) {
       const_reference newV = this->adjustCapacity(count, v);
-      vec::fill(this->begin(), this->size(), count, newV);
+      fill(this->begin(), this->size(), count, newV);
     } else {
       // copy to already existing elements and destroy remaining ones
       std::fill_n(this->begin(), count, v);
@@ -1196,7 +1194,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     uintmax_t count = std::distance(first, last);
     if (static_cast<uintmax_t>(this->size()) < count) {
       this->adjustCapacity(count);
-      vec::copy(first, this->size(), static_cast<SizeType>(count), this->begin());
+      assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
     } else {
       // copy to already existing elements and destroy remaining ones
       amc::destroy(std::copy(first, last, this->begin()), end());
@@ -1210,7 +1208,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     assert(position >= this->cbegin() && position <= cend());
     const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, v, &position);
     iterator pos = const_cast<iterator>(position);
-    vec::insert(pos, this->size() - (pos - this->begin()), newV);
+    insert_n(pos, this->size() - (pos - this->begin()), newV);
     this->incrSize();
     return pos;
   }
@@ -1218,7 +1216,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   iterator insert(const_iterator position, T &&v) {
     assert(position >= this->cbegin() && position <= cend());
     iterator pos = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, position);
-    vec::insert(pos, this->size() - (pos - this->begin()), std::move(v));
+    insert_n(pos, this->size() - (pos - this->begin()), std::move(v));
     this->incrSize();
     return pos;
   }
@@ -1233,8 +1231,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       if (nElemsToShift == 0) {
         std::uninitialized_fill_n(pos, count, newV);
       } else {
-        vec::shift_right(pos, nElemsToShift, count);
-        vec::fill_after_shift(pos, nElemsToShift, count, newV);
+        shift_right(pos, nElemsToShift, count);
+        fill_after_shift(pos, nElemsToShift, count, newV);
       }
       this->setSize(this->size() + count);
     } else {
@@ -1256,8 +1254,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       if (nElemsToShift == 0) {
         amc::uninitialized_copy_n(first, count, pos);
       } else {
-        vec::shift_right(pos, nElemsToShift, static_cast<SizeType>(count));
-        vec::copy_after_shift(first, nElemsToShift, static_cast<SizeType>(count), pos);
+        shift_right(pos, nElemsToShift, static_cast<SizeType>(count));
+        copy_after_shift(first, nElemsToShift, static_cast<SizeType>(count), pos);
       }
       this->setSize(static_cast<SizeType>(this->size() + count));
     } else {
@@ -1271,7 +1269,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   iterator erase(const_iterator position) {
     assert(position >= this->cbegin() && position < cend());
     iterator it = const_cast<iterator>(position);
-    vec::erase_at(it, this->size() - (position - this->begin()) - 1);
+    erase_at(it, this->size() - (position - this->begin()) - 1);
     this->decrSize();
     return it;
   }
@@ -1280,7 +1278,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     assert(first <= last && first >= this->cbegin() && last <= cend());
     iterator mfirst = const_cast<iterator>(first);
     SizeType n = static_cast<SizeType>(last - first);
-    vec::erase(mfirst, n, static_cast<SizeType>(this->size() - (last - this->begin())));
+    erase_n(mfirst, n, static_cast<SizeType>(this->size() - (last - this->begin())));
     this->setSize(this->size() - n);
     return mfirst;
   }
@@ -1361,8 +1359,6 @@ void swap(VectorImpl<T, A, S, I, G> &lhs, VectorImpl<T, A, S, I, G> &rhs) {
   lhs.swap2(rhs);
 }
 
-namespace vec {
-
 /// Add inplace storage when needed
 template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N, class Enable = void>
 class VectorWithInplaceStorage : public VectorImpl<T, Alloc, SizeType, true, GrowingPolicy> {
@@ -1373,12 +1369,12 @@ class VectorWithInplaceStorage : public VectorImpl<T, Alloc, SizeType, true, Gro
 
  private:
   ElemStorage<T>
-      _elems[N - (std::is_same<GrowingPolicy, vec::DynamicGrowingPolicy>::value ? ElemWithPtrStorage<T>::kNbSlots : 1)];
+      _elems[N - (std::is_same<GrowingPolicy, DynamicGrowingPolicy>::value ? ElemWithPtrStorage<T>::kNbSlots : 1)];
 };
 
 template <class T, class GrowingPolicy, uintmax_t N>
-struct NoInlineStorage : std::integral_constant<bool, std::is_same<GrowingPolicy, vec::DynamicGrowingPolicy>::value &&
-                                                          (N <= vec::ElemWithPtrStorage<T>::kNbSlots)> {};
+struct NoInlineStorage : std::integral_constant<bool, std::is_same<GrowingPolicy, DynamicGrowingPolicy>::value &&
+                                                          (N <= ElemWithPtrStorage<T>::kNbSlots)> {};
 
 template <class T, class GrowingPolicy>
 struct NoInlineStorage<T, GrowingPolicy, 0> : std::integral_constant<bool, true> {};
