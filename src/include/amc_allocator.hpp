@@ -17,8 +17,8 @@ namespace amc {
  * a static instance() method to access singleton.
  *
  * A basic allocator is a class that provides methods:
- * void * allocate(size_t n)
- * void * reallocate(void *p, size_t oldSz, size_t newSz)
+ * void *allocate(size_t n)
+ * void *reallocate(void *p, size_t oldSz, size_t newSz)
  * void deallocate(void *p, size_t n)
  */
 template <typename Alloc>
