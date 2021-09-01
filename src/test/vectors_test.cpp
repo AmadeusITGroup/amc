@@ -197,8 +197,8 @@ typedef ::testing::Types<
 // clang-format on
 TYPED_TEST_SUITE(VectorRefTest, MyTypesForRef, );
 
-template <class T, class A, class S, bool I, class G>
-inline bool operator==(const VectorImpl<T, A, S, I, G> &lhs, const typename std::vector<T> &rhs) {
+template <class T, class A, class S, class G, S N>
+inline bool operator==(const Vector<T, A, S, G, N> &lhs, const typename std::vector<T> &rhs) {
   return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
 
@@ -508,5 +508,21 @@ TEST(VectorTest, SmallVectorOptimizedSizeInt) {
   ints.push_back(7567);
   EXPECT_EQ(ints, SmallInt16SmallVector({42, -56, -56, 42, 42, 37, 7567}));
 }
+
+#if defined(AMC_CXX20) || (!defined(_MSC_VER) && defined(AMC_CXX17))
+// Some earlier compilers may not be able to compile this
+// Indeed, it is only specified from C++17 that std::vector may compile with incomplete types
+// More information here: https://en.cppreference.com/w/cpp/container/vector
+// For some reason, MSVC 2017 is not able to compile this, even with CXX17 enabled. Activate only in CXX20 for MSVC
+TEST(VectorTest, IncompleteType) {
+  struct Foo {
+    amc::vector<Foo> v;
+  };
+
+  Foo f;
+  EXPECT_TRUE(f.v.empty());
+}
+
+#endif
 
 }  // namespace amc

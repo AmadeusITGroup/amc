@@ -1040,8 +1040,7 @@ struct VectorBaseTypeDispatcher {
 /// VectorDestr simply defines a destructor for non trivially destructible T's, and stays trivially destructible for
 /// trivially destructible T's.
 /// There is no way to SFINAE the destructor so we use a derived class here.
-template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy,
-          bool TriviallyDestructible>
+template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy, bool DefineDestructor>
 class VectorDestr : public VectorBaseTypeDispatcher<T, Alloc, SizeType, WithInlineElements, GrowingPolicy>::type {
  public:
   ~VectorDestr() { amc::destroy_n(this->begin(), this->size()); }
@@ -1054,7 +1053,7 @@ class VectorDestr : public VectorBaseTypeDispatcher<T, Alloc, SizeType, WithInli
 };
 
 template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy>
-class VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy, true>
+class VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy, false>
     : public VectorBaseTypeDispatcher<T, Alloc, SizeType, WithInlineElements, GrowingPolicy>::type {
  protected:
   template <class... Args>
@@ -1063,10 +1062,18 @@ class VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy, true>
             std::forward<Args &&>(args)...) {}
 };
 
+/// This macro allows usage of incomplete type for amc::vector, while keeping possibility for a FixedCapacityVector of a
+/// trivially destructible type to stay trivially destructible
+template <class T, bool WithInlineElements>
+struct DefineDestructor : std::integral_constant<bool, !std::is_trivially_destructible<T>::value> {};
+
+template <class T>
+struct DefineDestructor<T, false> : std::integral_constant<bool, true> {};
+
 /// Implementation class with definitions independent from the traits of type T and number of elements
 template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy>
 class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy,
-                                      std::is_trivially_destructible<T>::value> {
+                                      DefineDestructor<T, WithInlineElements>::value> {
  public:
   using value_type = T;
   using iterator = T *;
@@ -1345,8 +1352,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
  protected:
   template <class... Args>
   explicit VectorImpl(Args &&...args) noexcept
-      : VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy, std::is_trivially_destructible<T>::value>(
-            std::forward<Args &&>(args)...) {}
+      : VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy,
+                    DefineDestructor<T, WithInlineElements>::value>(std::forward<Args &&>(args)...) {}
 };
 
 template <class T, class A, class S, bool I, class G>
@@ -1369,11 +1376,19 @@ class VectorWithInplaceStorage : public VectorImpl<T, Alloc, SizeType, true, Gro
       _elems[N - (std::is_same<GrowingPolicy, vec::DynamicGrowingPolicy>::value ? ElemWithPtrStorage<T>::kNbSlots : 1)];
 };
 
+template <class T, class GrowingPolicy, uintmax_t N>
+struct NoInlineStorage : std::integral_constant<bool, std::is_same<GrowingPolicy, vec::DynamicGrowingPolicy>::value &&
+                                                          (N <= vec::ElemWithPtrStorage<T>::kNbSlots)> {};
+
+template <class T, class GrowingPolicy>
+struct NoInlineStorage<T, GrowingPolicy, 0> : std::integral_constant<bool, true> {};
+
+template <class T, class GrowingPolicy>
+struct NoInlineStorage<T, GrowingPolicy, 1> : std::integral_constant<bool, true> {};
+
 template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N>
-class VectorWithInplaceStorage<
-    T, Alloc, SizeType, GrowingPolicy, N,
-    typename std::enable_if<(N <= 1) || (std::is_same<GrowingPolicy, vec::DynamicGrowingPolicy>::value &&
-                                         (N <= vec::ElemWithPtrStorage<T>::kNbSlots))>::type>
+class VectorWithInplaceStorage<T, Alloc, SizeType, GrowingPolicy, N,
+                               typename std::enable_if<NoInlineStorage<T, GrowingPolicy, N>::value>::type>
     : public VectorImpl<T, Alloc, SizeType, (N != 0), GrowingPolicy> {
  protected:
   template <class... Args>
@@ -1383,11 +1398,7 @@ class VectorWithInplaceStorage<
 
 template <uintmax_t N, class SizeType>
 constexpr SizeType SanitizeInlineSize() {
-#ifdef AMC_CXX14
-  static_assert(std::less_equal<uintmax_t>()(N, static_cast<uintmax_t>(std::numeric_limits<SizeType>::max())),
-#else
   static_assert(N <= static_cast<uintmax_t>(std::numeric_limits<SizeType>::max()),
-#endif
                 "Inline storage too large for SizeType");
   return static_cast<SizeType>(N);
 }
