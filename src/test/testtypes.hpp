@@ -273,28 +273,35 @@ struct MoveForbidden {
       typename std::conditional<IsTriviallyRelocatable, std::true_type, std::false_type>::type;
 };
 
-struct UnalignedToPtr1 {
-  UnalignedToPtr1(uint32_t i) { std::memcpy(c, std::addressof(i), sizeof(uint32_t)); }
+template <unsigned int Size>
+struct UnalignedToPtr {
+  static constexpr size_t kIntSize = Size < sizeof(uint32_t) ? Size : sizeof(uint32_t);
+
+  UnalignedToPtr(uint32_t i) { std::memcpy(c, &i, kIntSize); }
 
   operator uint32_t() const {
-    uint32_t ret;
-    std::memcpy(std::addressof(ret), c, sizeof(uint32_t));
+    uint32_t ret{};
+    std::memcpy(&ret, c, kIntSize);
     return ret;
   }
 
-  char c[5];
+  char c[Size];
 };
 
+template <unsigned int Size, class T>
 struct UnalignedToPtr2 {
-  UnalignedToPtr2(uint32_t i) { std::memcpy(c, std::addressof(i), 3); }
+  static constexpr size_t kIntSize = Size < sizeof(uint32_t) ? Size : sizeof(uint32_t);
+
+  UnalignedToPtr2(uint32_t i) { std::memcpy(c, &i, kIntSize); }
 
   operator uint32_t() const {
-    uint32_t ret = 0;
-    std::memcpy(std::addressof(ret), c, 3);
+    uint32_t ret{};
+    std::memcpy(&ret, c, kIntSize);
     return ret;
   }
 
-  char c[3];
+  T e;
+  char c[Size];
 };
 
 class TestAllocator {

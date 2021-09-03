@@ -331,22 +331,22 @@ class ElemStorage {
 };
 
 /// This class represents a merge of a pointer and some inline storage elements.
-/// When it is possible, the space is shared between them.
 /// Thanks to this optimization, SmallVector behaves like a string type with SSO
 /// Example : for a system with pointer size of 8 bytes,
 ///           sizeof(SmallVector<char, 8>) == sizeof(vector<char>)
 ///           because 8 chars can be stored in a pointer.
-template <class T, bool MergeTAndPtrStorage>
-class ElemWithPtrStorageImpl {
+template <class T>
+class ElemWithPtrStorage {
  public:
   using pointer = T *;
   using const_pointer = const T *;
+
   static constexpr bool kExtraSlots =
-      sizeof(pointer) > sizeof(T) && std::alignment_of<T *>::value % std::alignment_of<T>::value == 0 &&
-      sizeof(pointer) % sizeof(T) == 0;
+      sizeof(T *) > sizeof(T) && std::alignment_of<T *>::value % std::alignment_of<T>::value == 0 &&
+      sizeof(T *) % sizeof(T) == 0;
 
 #ifdef AMC_CXX14
-  // this is to avoid potential harmless warning occurring for instance in GCC:
+  // Use std::divides instead of '/' to avoid potential harmless warning occurring for instance in GCC:
   // warning: division 'sizeof (...) / sizeof (...)' does not compute the number of array elements
   // [-Wsizeof-pointer-div]
   // Activated only in C++14 as we need it to be constexpr
@@ -360,9 +360,9 @@ class ElemWithPtrStorageImpl {
   pointer ptr() noexcept { return reinterpret_cast<pointer>(this); }
   const_pointer ptr() const noexcept { return reinterpret_cast<const_pointer>(this); }
 
-  // Return the pointer stored in the first bytes of this object to the dynamic storage.
   void setDyn(pointer p) noexcept { std::memcpy(std::addressof(_el), std::addressof(p), sizeof(pointer)); }
 
+  // Return the pointer stored in the first bytes of this object to the dynamic storage.
   pointer dyn() const noexcept {
     // use memcpy to avoid breaking strict aliasing rule, will be optimized away by the compiler.
     // (confirmed with clang and gcc from O2)
@@ -374,42 +374,17 @@ class ElemWithPtrStorageImpl {
  private:
   // Use aligned storage able to store at least one pointer or a T, with alignment of T as next inline elements will be
   // appended to this one.
+  static constexpr auto kTAlign = std::alignment_of<T>::value;
+  static constexpr auto kPtrAlign = std::alignment_of<T *>::value;
+
 #ifdef AMC_CXX14
   // std::max is constexpr from C++14
-  typename std::aligned_storage<std::max(sizeof(T), sizeof(T *)), std::alignment_of<T>::value>::type _el;
+  typename std::aligned_storage<std::max(sizeof(T), sizeof(T *)), std::max(kTAlign, kPtrAlign)>::type _el;
 #else
-  typename std::aligned_storage<sizeof(T *) < sizeof(T) ? sizeof(T) : sizeof(T *), std::alignment_of<T>::value>::type
-      _el;
+  typename std::aligned_storage < sizeof(T *) < sizeof(T) ? sizeof(T) : sizeof(T *),
+      kPtrAlign<kTAlign ? kTAlign : kPtrAlign>::type _el;
 #endif
 };
-
-template <class T>
-class ElemWithPtrStorageImpl<T, false> {
- public:
-  using pointer = T *;
-  using const_pointer = const T *;
-
-  static constexpr uint8_t kNbSlots = 1;
-
-  // Get a pointer to its underlying storage
-  pointer ptr() noexcept { return reinterpret_cast<pointer>(std::addressof(_el)); }
-  const_pointer ptr() const noexcept { return reinterpret_cast<const_pointer>(std::addressof(_el)); }
-
-  // Return the pointer stored in the first bytes of this object to the dynamic storage.
-  void setDyn(pointer p) noexcept { std::memcpy(std::addressof(_dyn), std::addressof(p), sizeof(pointer)); }
-  pointer dyn() const noexcept { return *reinterpret_cast<T *const *const>(std::addressof(_dyn)); }
-
- private:
-  // Ensure pointer is aligned with T such that alignment of ElemWithPtrStorageImpl is the same as T
-  typename std::aligned_storage<sizeof(pointer), std::alignment_of<T>::value>::type _dyn;
-  typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type _el;
-};
-
-template <class T>
-struct ElemWithPtrStorage
-    : public ElemWithPtrStorageImpl<T, sizeof(T) >= sizeof(T *) ||
-                                           (std::alignment_of<T *>::value % std::alignment_of<T>::value == 0 &&
-                                            sizeof(T *) % sizeof(T) == 0)> {};
 
 template <class T>
 void SwapDynStorage(ElemWithPtrStorage<T> &lhs, ElemWithPtrStorage<T> &rhs) {
