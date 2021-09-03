@@ -32,7 +32,7 @@ typedef ::testing::Types<
     SmallVector<NonTriviallyRelocatableType, 1, std::allocator<NonTriviallyRelocatableType>, int16_t>,
     SmallVector<uint32_t, 0, std::allocator<uint32_t>, signed char>,
     SmallVector<NonTriviallyRelocatableType, 3, std::allocator<NonTriviallyRelocatableType>>,
-    SmallVector<UnalignedToPtr1, 4>, SmallVector<UnalignedToPtr2, 3>,
+    SmallVector<UnalignedToPtr<3>, 4>, SmallVector<UnalignedToPtr<7>, 3>, SmallVector<UnalignedToPtr<5>, 2>,
     vector<int32_t, std::allocator<int32_t>, uint64_t>, vector<TriviallyCopyableType>,
     vector<ComplexNonTriviallyRelocatableType>, vector<ComplexTriviallyRelocatableType>,
     vector<ComplexNonTriviallyRelocatableType, std::allocator<ComplexNonTriviallyRelocatableType>>,
@@ -507,6 +507,36 @@ TEST(VectorTest, SmallVectorOptimizedSizeInt) {
   EXPECT_EQ(ints, SmallInt16SmallVector({42, -56, -56, 42, 42, 37}));
   ints.push_back(7567);
   EXPECT_EQ(ints, SmallInt16SmallVector({42, -56, -56, 42, 42, 37, 7567}));
+}
+
+template <typename T>
+class VectorTestUnalignedStorage : public ::testing::Test {
+ public:
+  using List = typename std::list<T>;
+};
+
+typedef ::testing::Types<SmallVector<UnalignedToPtr<3>, 5>, SmallVector<UnalignedToPtr<7>, 4>,
+                         SmallVector<UnalignedToPtr<5>, 3>, SmallVector<UnalignedToPtr2<3, uint16_t>, 4>,
+                         SmallVector<UnalignedToPtr2<7, uint16_t>, 3>, SmallVector<UnalignedToPtr2<5, uint16_t>, 2>,
+                         SmallVector<UnalignedToPtr2<3, uint32_t>, 3>, SmallVector<UnalignedToPtr2<7, uint32_t>, 2>,
+                         SmallVector<UnalignedToPtr2<5, uint32_t>, 1>>
+    UnalignedStorageTypes;
+TYPED_TEST_SUITE(VectorTestUnalignedStorage, UnalignedStorageTypes, );
+
+TYPED_TEST(VectorTestUnalignedStorage, SmallVectorUnalignedInlineStorage) {
+  using SmallVectorUnalignedType = TypeParam;
+  using VecOfVec = vector<SmallVectorUnalignedType>;
+  SmallVectorUnalignedType v;
+  VecOfVec vecOfVec;
+  std::vector<unsigned int> expectedValues;
+  for (unsigned int i = 0; i < 10U; ++i) {
+    v.push_back(i);
+    expectedValues.push_back(i);
+    vecOfVec.push_back(v);
+    EXPECT_EQ(v.size(), i + 1U);
+    EXPECT_GE(v.capacity(), v.size());
+    EXPECT_EQ(v, SmallVectorUnalignedType(expectedValues.begin(), expectedValues.end()));
+  }
 }
 
 #if defined(AMC_CXX20) || (!defined(_MSC_VER) && defined(AMC_CXX17))
