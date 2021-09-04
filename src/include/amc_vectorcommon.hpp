@@ -341,19 +341,16 @@ class ElemWithPtrStorage {
   using pointer = T *;
   using const_pointer = const T *;
 
-  static constexpr bool kExtraSlots =
-      sizeof(T *) > sizeof(T) && std::alignment_of<T *>::value % std::alignment_of<T>::value == 0 &&
-      sizeof(T *) % sizeof(T) == 0;
-
 #ifdef AMC_CXX14
   // Use std::divides instead of '/' to avoid potential harmless warning occurring for instance in GCC:
   // warning: division 'sizeof (...) / sizeof (...)' does not compute the number of array elements
   // [-Wsizeof-pointer-div]
   // Activated only in C++14 as we need it to be constexpr
-  static constexpr uint8_t kNbSlots =
-      kExtraSlots ? static_cast<uint8_t>(std::divides<std::size_t>()(sizeof(pointer), sizeof(T))) : 1U;
+  static constexpr auto kNbSlots =
+      std::max(std::divides<std::size_t>()(sizeof(pointer), sizeof(T)), static_cast<std::size_t>(1));
 #else
-  static constexpr uint8_t kNbSlots = kExtraSlots ? static_cast<uint8_t>(sizeof(pointer) / sizeof(T)) : 1U;
+  static constexpr auto kNbSlots =
+      sizeof(pointer) < sizeof(T) ? static_cast<std::size_t>(1) : (sizeof(pointer) / sizeof(T));
 #endif
 
   // Get a pointer to its underlying storage
