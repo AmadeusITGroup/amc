@@ -486,6 +486,19 @@ TEST(VectorTest, RelocatabilityAgainstRefVector) {
   }
 }
 
+TEST(VectorTest, SmallVectorSizeOptimization) {
+  constexpr auto kPtrNbBytes = sizeof(char *);
+  static_assert(sizeof(SmallVector<char, kPtrNbBytes>) == sizeof(SmallVector<char, 1>),
+                "SmallVector size should be optimized");
+  static_assert(kPtrNbBytes != 4 || sizeof(SmallVector<int16_t, 2>) == sizeof(SmallVector<int16_t, 1>),
+                "SmallVector size should be optimized");
+  static_assert(kPtrNbBytes != 8 || sizeof(SmallVector<int16_t, 4>) == sizeof(SmallVector<int16_t, 1>),
+                "SmallVector size should be optimized");
+  static_assert(
+      kPtrNbBytes != 8 || sizeof(SmallVector<std::array<char, 3>, 2>) == sizeof(SmallVector<std::array<char, 3>, 1>),
+      "SmallVector size should be optimized");
+}
+
 TEST(VectorTest, SmallVectorOptimizedSizeBool) {
   using SmallBoolSmallVector = SmallVector<bool, 8>;
   SmallBoolSmallVector bools(5, false);
