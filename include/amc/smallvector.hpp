@@ -98,7 +98,7 @@ void StdVectorBase<T, Alloc, SizeType>::shrink() {
 }
 
 template <class T, class Alloc, class SizeType>
-void StdVectorBase<T, Alloc, SizeType>::freeStorage() {
+void StdVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
   this->deallocate(_storage, _capa);
 }
 
@@ -112,7 +112,7 @@ void SmallVectorBase<T, Alloc, SizeType>::resetToSmall(SizeType inplaceCapa) {
 }
 
 template <class T, class Alloc, class SizeType>
-void SmallVectorBase<T, Alloc, SizeType>::freeStorage() {
+void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
   this->deallocate(_storage.dyn(), _capa);
 }
 }  // namespace vec
