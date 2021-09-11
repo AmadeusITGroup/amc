@@ -465,8 +465,123 @@ class StaticVectorBase {
   ElemStorage<T> _firstEl;  // Inplace elements will be appended to this first one, do not add fields in between
 };
 
+template <class, class, class>
+class SmallVectorBase;
+
+/// Specialization for SmallVectors without some inline elements (like std::vector)
+template <class T, class Alloc, class SizeType>
+class StdVectorBase : private Alloc {
+ public:
+  using iterator = T *;
+  using const_iterator = const T *;
+  using allocator_type = Alloc;
+
+  allocator_type get_allocator() const noexcept { return *this; }
+
+  /// vector is always trivially relocatable
+  using trivially_relocatable = std::true_type;
+
+  iterator begin() noexcept { return _storage; }
+  const_iterator begin() const noexcept { return _storage; }
+  const_iterator cbegin() const noexcept { return _storage; }
+
+  SizeType size() const noexcept { return _size; }
+  SizeType capacity() const noexcept { return _capa; }
+
+  ~StdVectorBase() {
+    if (_storage) {
+      freeStorage();
+    }
+  }
+
+ protected:
+  explicit StdVectorBase(SizeType) noexcept {}
+
+  StdVectorBase(SizeType, const Alloc &alloc) noexcept : Alloc(alloc) {}
+
+  void swap_impl(StdVectorBase &o) noexcept {
+    std::swap(_storage, o._storage);
+    std::swap(_capa, o._capa);
+    std::swap(_size, o._size);
+  }
+
+  void move_construct(StdVectorBase &o, SizeType) noexcept {
+    _storage = amc::exchange(o._storage, nullptr);
+    _capa = amc::exchange(o._capa, 0);
+    _size = amc::exchange(o._size, 0);
+  }
+
+  void move_assign(StdVectorBase &o, SizeType) noexcept {
+    if (_storage) {
+      amc::destroy_n(_storage, _size);
+      freeStorage();  // Compared to swap, we can free memory directly for move assigment
+    }
+    _storage = amc::exchange(o._storage, nullptr);
+    _capa = amc::exchange(o._capa, 0);
+    _size = amc::exchange(o._size, 0);
+  }
+
+  void grow(uintmax_t minSize, bool exact = false);
+
+  void shrink_impl(SizeType) noexcept {
+    if (_size != _capa) {
+      shrink();
+    }
+  }
+
+  template <class, class, class>
+  friend class SmallVectorBase;
+
+  template <class, class, class>
+  friend class StdVectorBase;
+
+  template <class OSizeType>
+  bool canSwapDynStorage(StaticVectorBase<T, OSizeType> &) const noexcept {
+    return false;
+  }
+  template <class OSizeType, class OAlloc>
+  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType> &o) const noexcept;
+
+  template <class OSizeType, class OAlloc>
+  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType> &) const noexcept {
+    return std::is_same<OAlloc, Alloc>::value;
+  }
+
+  template <class VectorType>
+  void swapDynStorage(VectorType &o) noexcept {
+    SwapDynStorage(_storage, o._storage);
+  }
+  template <class OSizeType>
+  void swapDynStorage(StaticVectorBase<T, OSizeType> &) noexcept {}
+
+  void incrSize() noexcept { ++_size; }
+  void decrSize() noexcept { --_size; }
+  SizeType &msize() noexcept { return _size; }
+  SizeType &mcapacity() noexcept { return _capa; }
+  void setSize(SizeType s) noexcept { _size = s; }
+
+  iterator dynStorage() const noexcept { return _storage; }
+
+ private:
+  SizeType _capa = 0, _size = 0;
+  T *_storage = nullptr;
+
+  void shrink();
+  void freeStorage() noexcept;
+};
+
 template <class T, class Alloc, class SizeType>
 class SmallVectorBase : private Alloc {
+ private:
+  void destroyFreeStorage() noexcept {
+    if (isSmall()) {
+      amc::destroy_n(_storage.ptr(), _capa);
+    } else if (_size != 0) {
+      amc::destroy_n(_storage.dyn(), _size);
+      freeStorage();
+    }
+  }
+
  public:
   using iterator = T *;
   using const_iterator = const T *;
@@ -502,7 +617,7 @@ class SmallVectorBase : private Alloc {
   /// Maximum size and capacity would make no sense in a SmallVector for a small state, because it could not grow
   /// (it could be transformed into a FixedCapacityVector, or, if larger size is needed, SizeType could be upgraded
   /// to a larger type). This invalid configuration is catched in a static_assert in SmallVector class.
-  explicit SmallVectorBase(SizeType inplaceCapa) noexcept : Alloc(), _capa(0), _size(inplaceCapa) {}
+  explicit SmallVectorBase(SizeType inplaceCapa) noexcept : _capa(0), _size(inplaceCapa) {}
 
   SmallVectorBase(SizeType inplaceCapa, const Alloc &alloc) noexcept : Alloc(alloc), _capa(0), _size(inplaceCapa) {}
 
@@ -539,6 +654,16 @@ class SmallVectorBase : private Alloc {
     _size = amc::exchange(o._size, inplaceCapa);
   }
 
+  void move_construct(StdVectorBase<T, Alloc, SizeType> &o) noexcept {
+    if (o._capa != 0) {
+      // Always steal dynamic buffer in this case, to make move construct faster
+      _storage.setDyn(o._storage);
+      o._storage = nullptr;
+      _capa = amc::exchange(o._capa, 0);
+      _size = amc::exchange(o._size, 0);
+    }
+  }
+
   void move_assign(SmallVectorBase &o, SizeType inplaceCapa) noexcept(is_shift_nothrow<T>::value) {
     if (o.isSmall()) {
       // No need to check 'this' capacity. If 'this' is small, then 'this' capacity is same as 'o'.
@@ -556,12 +681,7 @@ class SmallVectorBase : private Alloc {
       msize() = amc::exchange(o._capa, 0);
     } else {
       // Clear our stuff before stealing o's guts
-      if (isSmall()) {
-        amc::destroy_n(_storage.ptr(), _capa);
-      } else if (_size != 0) {
-        amc::destroy_n(_storage.dyn(), _size);
-        freeStorage();
-      }
+      destroyFreeStorage();
       _storage.setDyn(o._storage.dyn());
       _capa = amc::exchange(o._capa, 0);
       _size = amc::exchange(o._size, inplaceCapa);
@@ -586,9 +706,9 @@ class SmallVectorBase : private Alloc {
   template <class, class, class>
   friend class StdVectorBase;
 
-  template <class VectorType>
-  bool canSwapDynStorage(VectorType &) const noexcept {
-    return std::is_same<typename VectorType::allocator_type, Alloc>::value && !isSmall();
+  template <class OAlloc, class OSizeType>
+  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType> &) const noexcept {
+    return std::is_same<OAlloc, Alloc>::value && !isSmall();
   }
   template <class OSizeType>
   bool canSwapDynStorage(StaticVectorBase<T, OSizeType> &) const noexcept {
@@ -663,111 +783,14 @@ class SmallVectorBase : private Alloc {
 
   void shrink();
   void resetToSmall(SizeType);
-  void freeStorage();
+  void freeStorage() noexcept;
 };
 
-/// Specialization for SmallVectors without some inline elements (like std::vector)
 template <class T, class Alloc, class SizeType>
-class StdVectorBase : private Alloc {
- public:
-  using iterator = T *;
-  using const_iterator = const T *;
-  using allocator_type = Alloc;
-
-  allocator_type get_allocator() const noexcept { return *this; }
-
-  /// vector is always trivially relocatable
-  using trivially_relocatable = std::true_type;
-
-  iterator begin() noexcept { return _storage; }
-  const_iterator begin() const noexcept { return _storage; }
-  const_iterator cbegin() const noexcept { return _storage; }
-
-  SizeType size() const noexcept { return _size; }
-  SizeType capacity() const noexcept { return _capa; }
-
-  ~StdVectorBase() {
-    if (_storage) {
-      freeStorage();
-    }
-  }
-
- protected:
-  explicit StdVectorBase(SizeType) noexcept : Alloc(), _storage(nullptr), _capa(0), _size(0) {}
-
-  StdVectorBase(SizeType, const Alloc &alloc) noexcept : Alloc(alloc), _storage(nullptr), _capa(0), _size(0) {}
-
-  void swap_impl(StdVectorBase &o) noexcept {
-    std::swap(_storage, o._storage);
-    std::swap(_capa, o._capa);
-    std::swap(_size, o._size);
-  }
-
-  void move_construct(StdVectorBase &o, SizeType) noexcept {
-    _storage = amc::exchange(o._storage, nullptr);
-    _capa = amc::exchange(o._capa, 0);
-    _size = amc::exchange(o._size, 0);
-  }
-
-  void move_assign(StdVectorBase &o, SizeType) noexcept {
-    if (_storage) {
-      amc::destroy_n(_storage, _size);
-      freeStorage();  // Compared to swap, we can free memory directly for move assigment
-    }
-    _storage = amc::exchange(o._storage, nullptr);
-    _capa = amc::exchange(o._capa, 0);
-    _size = amc::exchange(o._size, 0);
-  }
-
-  void grow(uintmax_t minSize, bool exact = false);
-
-  void shrink_impl(SizeType) noexcept {
-    if (_size != _capa) {
-      shrink();
-    }
-  }
-
-  template <class, class, class>
-  friend class SmallVectorBase;
-
-  template <class, class, class>
-  friend class StdVectorBase;
-
-  template <class OSizeType>
-  bool canSwapDynStorage(StaticVectorBase<T, OSizeType> &) const noexcept {
-    return false;
-  }
-  template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType> &o) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value && !o.isSmall();
-  }
-  template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType> &) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value;
-  }
-
-  template <class VectorType>
-  void swapDynStorage(VectorType &o) noexcept {
-    SwapDynStorage(_storage, o._storage);
-  }
-  template <class OSizeType>
-  void swapDynStorage(StaticVectorBase<T, OSizeType> &) noexcept {}
-
-  void incrSize() noexcept { ++_size; }
-  void decrSize() noexcept { --_size; }
-  SizeType &msize() noexcept { return _size; }
-  SizeType &mcapacity() noexcept { return _capa; }
-  void setSize(SizeType s) noexcept { _size = s; }
-
-  iterator dynStorage() const noexcept { return _storage; }
-
- private:
-  T *_storage;
-  SizeType _capa, _size;
-
-  void shrink();
-  void freeStorage();
-};
+template <class OSizeType, class OAlloc>
+bool StdVectorBase<T, Alloc, SizeType>::canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType> &o) const noexcept {
+  return std::is_same<OAlloc, Alloc>::value && !o.isSmall();
+}
 
 template <class T, class SizeType, class GrowingPolicy>
 class StaticVector : public StaticVectorBase<T, SizeType> {
@@ -1412,6 +1435,15 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   Vector(Vector &&o) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) : Base(N) {
     this->move_construct(o, N);
+  }
+
+  /// Build a SmallVector from a vector, stealing its dynamic storage.
+  template <SizeType ON = N, class OGrowingPolicy = GrowingPolicy>
+  Vector(
+      Vector<T, Alloc, SizeType, OGrowingPolicy, 0> &&o,
+      typename std::enable_if<std::is_same<OGrowingPolicy, vec::DynamicGrowingPolicy>::value && (ON > 0)>::type * = 0)
+      : Base(N) {
+    this->move_construct(o);
   }
 
   Vector(Vector &&o, const Alloc &alloc) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) : Base(N, alloc) {

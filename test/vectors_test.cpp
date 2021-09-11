@@ -522,6 +522,45 @@ TEST(VectorTest, SmallVectorOptimizedSizeInt) {
   EXPECT_EQ(ints, SmallInt16SmallVector({42, -56, -56, 42, 42, 37, 7567}));
 }
 
+TEST(VectorTest, SmallVectorMoveConstructFromVector) {
+  using SV = SmallVector<ComplexNonTriviallyRelocatableType, 5>;
+  using V = vector<ComplexNonTriviallyRelocatableType>;
+  V v;
+  EXPECT_EQ(SV(std::move(v)).capacity(), 5U);
+  EXPECT_EQ(v.capacity(), 0U);
+  v = {1, 2, 3, 4};
+  EXPECT_EQ(SV(std::move(v)).capacity(), 4U);
+  EXPECT_EQ(v.capacity(), 0U);
+  v = {1, 2, 3, 4, 5, 6};
+  EXPECT_EQ(SV(std::move(v)).capacity(), 6U);
+  EXPECT_EQ(v.capacity(), 0U);
+  v = {1, 2, 3, 4, 5, 6, 7, 8};
+  EXPECT_EQ(SV(std::move(v)).capacity(), 8U);
+  EXPECT_EQ(v.capacity(), 0U);
+}
+
+TEST(VectorTest, SmallVectorMoveAssignFromVector) {
+  using SV = SmallVector<ComplexNonTriviallyRelocatableType, 5>;
+  using V = vector<ComplexNonTriviallyRelocatableType>;
+  V v;
+  SV sv;
+  sv = std::move(v);
+  EXPECT_EQ(sv.capacity(), 5U);
+  EXPECT_EQ(v.capacity(), 0U);
+  v = {1, 2, 3, 4};
+  sv = std::move(v);
+  EXPECT_EQ(sv.capacity(), 4U);
+  EXPECT_EQ(v.capacity(), 0U);
+  v = {1, 2, 3, 4, 5, 6};
+  sv = std::move(v);
+  EXPECT_EQ(sv.capacity(), 6U);
+  EXPECT_EQ(v.capacity(), 0U);
+  v = {1, 2, 3, 4, 5, 6, 7, 8};
+  sv = std::move(v);
+  EXPECT_EQ(sv.capacity(), 8U);
+  EXPECT_EQ(v.capacity(), 0U);
+}
+
 template <typename T>
 class VectorTestUnalignedStorage : public ::testing::Test {
  public:
