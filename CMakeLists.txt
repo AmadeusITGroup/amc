@@ -1,5 +1,8 @@
 cmake_minimum_required (VERSION 3.14)
-project(amc VERSION 1.2
+
+set(AMC_VERSION 1.2)
+
+project(amc VERSION ${AMC_VERSION}
             DESCRIPTION "Header base library of C++ containers"
             LANGUAGES CXX)
 
@@ -46,7 +49,10 @@ endif()
 add_library(amc INTERFACE)
 add_library(amc::amc ALIAS amc)
 
-target_include_directories(amc INTERFACE src/include)
+target_include_directories(amc INTERFACE 
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/include>
+  $<INSTALL_INTERFACE:src/include>
+)
 
 if (AMC_ENABLE_TESTS)
   if (MSVC)
@@ -61,3 +67,31 @@ endif()
 if (AMC_ENABLE_BENCHMARKS)
   add_subdirectory(src/benchmark)
 endif()
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${PROJECT_BINARY_DIR}/amcConfigVersion.cmake"
+    VERSION ${AMC_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+install(TARGETS amc
+    EXPORT amcTargets
+    LIBRARY DESTINATION lib COMPONENT Runtime
+    ARCHIVE DESTINATION lib COMPONENT Development
+    RUNTIME DESTINATION bin COMPONENT Runtime
+    PUBLIC_HEADER DESTINATION include COMPONENT Development
+    BUNDLE DESTINATION bin COMPONENT Runtime
+)
+
+configure_package_config_file(
+    "${PROJECT_SOURCE_DIR}/cmake/amcConfig.cmake.in"
+    "${PROJECT_BINARY_DIR}/amcConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/amc
+)
+
+install(EXPORT amcTargets DESTINATION lib/cmake/amc)
+install(FILES "${PROJECT_BINARY_DIR}/amcConfigVersion.cmake"
+              "${PROJECT_BINARY_DIR}/amcConfig.cmake"
+        DESTINATION lib/cmake/amc)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/src/include DESTINATION include)
