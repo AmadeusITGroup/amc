@@ -9,11 +9,11 @@
 #include <utility>
 #include <variant>
 
-#include "amc_allocator.hpp"
-#include "amc_config.hpp"
-#include "amc_fixedcapacityvector.hpp"
-#include "amc_memory.hpp"
-#include "amc_type_traits.hpp"
+#include "allocator.hpp"
+#include "config.hpp"
+#include "fixedcapacityvector.hpp"
+#include "memory.hpp"
+#include "type_traits.hpp"
 
 namespace amc {
 

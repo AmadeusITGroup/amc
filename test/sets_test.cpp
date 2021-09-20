@@ -1,17 +1,16 @@
 #include <gtest/gtest.h>
 #include <stdint.h>
 
+#include <amc/config.hpp>
+#include <amc/fixedcapacityvector.hpp>
+#include <amc/flatset.hpp>
 #include <initializer_list>
 #include <list>
-
-#include "amc_config.hpp"
-#include "amc_fixedcapacityvector.hpp"
-#include "amc_flatset.hpp"
-#include "testtypes.hpp"
-
 #ifdef AMC_SMALLSET
-#include "amc_smallset.hpp"
+#include <amc/smallset.hpp>
 #endif
+
+#include "testtypes.hpp"
 
 namespace amc {
 

@@ -3,7 +3,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "amc_config.hpp"
+#include "config.hpp"
 
 namespace amc {
 

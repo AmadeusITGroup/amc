@@ -8,10 +8,10 @@
 #include <limits>
 #include <stdexcept>
 
-#include "amc_config.hpp"
-#include "amc_memory.hpp"
-#include "amc_type_traits.hpp"
-#include "amc_utility.hpp"
+#include "config.hpp"
+#include "memory.hpp"
+#include "type_traits.hpp"
+#include "utility.hpp"
 
 #ifdef AMC_CXX14
 #include <functional>
