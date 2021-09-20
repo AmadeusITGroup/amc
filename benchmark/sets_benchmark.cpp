@@ -1,18 +1,17 @@
 #include <benchmark/benchmark.h>
 
+#include <amc/fixedcapacityvector.hpp>
+#include <amc/flatset.hpp>
+#include <amc/smallvector.hpp>
 #include <set>
 #include <unordered_set>
+#ifdef AMC_SMALLSET
+#include <amc/smallset.hpp>
+#endif
 
-#include "amc_fixedcapacityvector.hpp"
-#include "amc_flatset.hpp"
-#include "amc_smallvector.hpp"
 #include "benchhelpers.hpp"
 #include "testhelpers.hpp"
 #include "testtypes.hpp"
-
-#ifdef AMC_SMALLSET
-#include "amc_smallset.hpp"
-#endif
 
 namespace amc {
 TypeStats TypeStats::_stats;
@@ -113,6 +112,7 @@ void CommonUsage(benchmark::State &state) {
       out += uint32_t(el);
     }
   }
+  benchmark::DoNotOptimize(out);
   TypeStats::_stats.end();
   PrintStats(state);
 }

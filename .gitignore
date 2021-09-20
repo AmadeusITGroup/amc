@@ -14,5 +14,6 @@
 *.code-workspace
 *.orig
 *.tmp
+*.vscode
 
 **/build*/

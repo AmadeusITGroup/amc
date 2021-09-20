@@ -2,7 +2,7 @@
 
 #include <type_traits>
 
-#include "amc_config.hpp"
+#include "config.hpp"
 
 /// Emulation of std::experimental::is_detected feature.
 /// Sources:

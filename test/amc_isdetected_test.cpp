@@ -1,7 +1,6 @@
-#include "amc_isdetected.hpp"
-
-#include "amc_allocator.hpp"
-#include "amc_smallvector.hpp"
+#include "amc/allocator.hpp"
+#include "amc/isdetected.hpp"
+#include "amc/smallvector.hpp"
 
 namespace amc {
 static_assert(vec::has_reallocate<amc::allocator<int>>::value, "amc::allocator should provide reallocate method");

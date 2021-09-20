@@ -4,13 +4,13 @@
 #include <memory>
 #include <utility>
 
-#include "amc_config.hpp"
-#include "amc_type_traits.hpp"
+#include "config.hpp"
+#include "type_traits.hpp"
 
 #ifndef AMC_CXX17
 #include <iterator>
 
-#include "amc_utility.hpp"
+#include "utility.hpp"
 #endif
 
 namespace amc {

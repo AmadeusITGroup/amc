@@ -1,7 +1,7 @@
 #pragma once
 
-#include "amc_allocator.hpp"
-#include "amc_smallvector.hpp"
+#include "allocator.hpp"
+#include "smallvector.hpp"
 
 namespace amc {
 

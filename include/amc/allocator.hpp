@@ -5,9 +5,9 @@
 #include <limits>
 #include <new>
 
-#include "amc_config.hpp"
-#include "amc_memory.hpp"
-#include "amc_type_traits.hpp"
+#include "config.hpp"
+#include "memory.hpp"
+#include "type_traits.hpp"
 
 namespace amc {
 

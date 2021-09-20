@@ -9,10 +9,10 @@
 #include <limits>
 #include <utility>
 
-#include "amc_allocator.hpp"
-#include "amc_config.hpp"
-#include "amc_type_traits.hpp"
-#include "amc_vector.hpp"
+#include "allocator.hpp"
+#include "config.hpp"
+#include "type_traits.hpp"
+#include "vector.hpp"
 
 #ifdef AMC_CXX17
 #include <optional>

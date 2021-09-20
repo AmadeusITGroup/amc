@@ -1,12 +1,11 @@
 #pragma once
 
+#include <amc/type_traits.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
-
-#include "amc_type_traits.hpp"
 
 namespace amc {
 

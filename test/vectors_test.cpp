@@ -1,14 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <amc/fixedcapacityvector.hpp>
+#include <amc/smallvector.hpp>
+#include <amc/vector.hpp>
 #include <array>
 #include <initializer_list>
 #include <list>
 #include <numeric>
 #include <vector>
 
-#include "amc_fixedcapacityvector.hpp"
-#include "amc_smallvector.hpp"
-#include "amc_vector.hpp"
 #include "testhelpers.hpp"
 #include "testtypes.hpp"
 

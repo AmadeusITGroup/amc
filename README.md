@@ -131,7 +131,7 @@ include(FetchContent)
 FetchContent_Declare(
   amadeusamc
   GIT_REPOSITORY https://github.com/AmadeusITGroup/amc.git
-  GIT_TAG        origin/master
+  GIT_TAG        origin/main
 )
 
 FetchContent_MakeAvailable(amadeusamc)
@@ -147,12 +147,12 @@ target_link_libraries(my_target PRIVATE amc::amc)
 And that's all. You just need to include the corresponding container's header file to be used in your application code, and why not define them in your namespace.
 
 ```cpp
-#include <amc_vector.hpp>
-#include <amc_smallvector.hpp>
-#include <amc_fixedcapacityvector.hpp>
+#include <amc/vector.hpp>
+#include <amc/smallvector.hpp>
+#include <amc/fixedcapacityvector.hpp>
 
-#include <amc_flatset.hpp>
-#include <amc_smallset.hpp> // Requires C++17
+#include <amc/flatset.hpp>
+#include <amc/smallset.hpp> // Requires C++17
 
 namespace my_namespace {
 using amc::vector;
@@ -182,7 +182,7 @@ If your type is *trivially copyable*, optimizations are automatically activated.
 If your type is not trivially copyable but is *trivially relocatable*, make sure to mark it as such to activate optimizations.
 
 ```cpp
-#include <amc_vector.hpp>
+#include <amc/vector.hpp>
 
 struct MyTriviallyRelocatableType {
   MyTriviallyRelocatableType() {}
@@ -208,7 +208,7 @@ Once a `SmallVector` has allocated dynamic memory, it will not release its memor
 Use it when most of the time (let's say, for instance, in 90 % of the cases) the maximum size of the `SmallVector` does not exceed a compile-time constant to save memory allocations.
 
 ```cpp
-#include <amc_smallvector.hpp>
+#include <amc/smallvector.hpp>
 
 using ResidencesOfUser = amc::SmallVector<Residence, 1>;
 ```
@@ -220,7 +220,7 @@ Elements are stored inline in the object and no memory allocation occur.
 
 ```cpp
 #include <cstdint>
-#include <amc_fixedcapacityvector.hpp>
+#include <amc/fixedcapacityvector.hpp>
 
 using SoldUnitsPerDayInMonth = amc::FixedCapacityVector<int, 31>;
 ```
@@ -244,8 +244,8 @@ Besides, the vector container is templated and thus can be combined with above v
 
 ```cpp
 #include <cstdint>
-#include <amc_fixedcapacityvector.hpp>
-#include <amc_flatset.hpp>
+#include <amc/fixedcapacityvector.hpp>
+#include <amc/flatset.hpp>
 
 using CapitalLettersSetCont = amc::FixedCapacityVector<char, 26>;
 using CapitalLettersSet = amc::FlatSet<char, std::less<char>, CapitalLettersSetCont::allocator_type, CapitalLettersSetCont>;
@@ -260,9 +260,9 @@ Additional variation of `std::set` like container. This one has a hybrid behavio
 Note that insertions have linear complexity in the small state so the inline capacity should not be too large.
 
 ```cpp
-#include <amc_fixedcapacityvector.hpp>
-#include <amc_flatset.hpp>
-#include <amc_smallset.hpp>
+#include <amc/fixedcapacityvector.hpp>
+#include <amc/flatset.hpp>
+#include <amc/smallset.hpp>
 
 using VisitedCountries = amc::SmallSet<Country, 5>;
 using VisitedCities = amc::SmallSet<City, 20, std::less<City>, amc::allocator<City>, amc::FlatSet<City>>;
