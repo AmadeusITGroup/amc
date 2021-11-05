@@ -11,21 +11,27 @@ namespace amc {
 
 struct Foo {
   Foo(int32_t i = 0) : _ptr(malloc(i)), _c(0U), _i(static_cast<int16_t>(i)) {}
+
   Foo(const Foo &foo) : _ptr(malloc(foo._i)), _c(foo._c), _i(foo._i) {}
+
   Foo &operator=(const Foo &foo) {
     _ptr = realloc(_ptr, foo._i);
     _c = foo._c;
     _i = foo._i;
     return *this;
   }
-  Foo(Foo &&foo) : _ptr(foo._ptr), _c(foo._c), _i(foo._i) { foo._ptr = nullptr; }
-  Foo &operator=(Foo &&foo) {
+
+  Foo(Foo &&foo) noexcept : _ptr(foo._ptr), _c(foo._c), _i(foo._i) { foo._ptr = nullptr; }
+
+  Foo &operator=(Foo &&foo) noexcept {
     std::swap(_ptr, foo._ptr);
     std::swap(_c, foo._c);
     std::swap(_i, foo._i);
     return *this;
   }
+
   ~Foo() { free(_ptr); }
+
   operator int32_t() const { return _i; }
 
   void *_ptr;
@@ -48,9 +54,9 @@ struct NonCopyableType {
   NonCopyableType(const NonCopyableType &) = delete;
   NonCopyableType &operator=(const NonCopyableType &) = delete;
 
-  NonCopyableType(NonCopyableType &&o) : _i(o._i) {}
+  NonCopyableType(NonCopyableType &&o) noexcept : _i(o._i) {}
 
-  NonCopyableType &operator=(NonCopyableType &&o) {
+  NonCopyableType &operator=(NonCopyableType &&o) noexcept {
     if (this != &o) {
       _i = o._i;
     }
@@ -67,7 +73,7 @@ struct NonCopyableType {
 struct SimpleNonTriviallyCopyableType {
   SimpleNonTriviallyCopyableType(int i = 7) : _i(i) {}
 
-  ~SimpleNonTriviallyCopyableType() {}  // To make it non trivially copyable
+  ~SimpleNonTriviallyCopyableType() {}
 
   bool operator==(const SimpleNonTriviallyCopyableType &o) const { return _i == o._i; }
 
@@ -167,6 +173,7 @@ struct ComplexType {
       TypeStats::_stats.malloc();
     }
   }
+
   explicit ComplexType(const ComplexType *p) : _ptr(malloc(p->_i % kMaxMallocSize)), _c(0U), _i(p->_i) {
     if (p->_i % kMaxMallocSize != 0 && !_ptr) {
       throw std::bad_alloc();
@@ -183,6 +190,7 @@ struct ComplexType {
       TypeStats::_stats.malloc();
     }
   }
+
   ComplexType &operator=(const ComplexType &o) {
     if (this != &o) {
       if (o._i > _i) {
@@ -203,11 +211,13 @@ struct ComplexType {
     }
     return *this;
   }
+
   ComplexType(ComplexType &&o) noexcept : _ptr(o._ptr), _c(o._c), _i(o._i) {
     o._ptr = nullptr;
     o._i = 0;
     TypeStats::_stats.moveConstruct();
   }
+
   ComplexType &operator=(ComplexType &&o) noexcept {
     if (this != &o) {
       if (_ptr) {
@@ -222,6 +232,7 @@ struct ComplexType {
     }
     return *this;
   }
+
   ~ComplexType() {
     if (_ptr) {
       TypeStats::_stats.free();
