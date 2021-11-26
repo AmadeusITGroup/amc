@@ -1,5 +1,5 @@
 
-find_package(benchmark)
+find_package(benchmark CONFIG)
 
 if (NOT benchmark_FOUND)
   include(FetchContent)
