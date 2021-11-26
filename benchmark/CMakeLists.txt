@@ -1,17 +1,23 @@
-# External dependencies (linked with FetchContent)
-include(FetchContent)
 
-FetchContent_Declare(
-  googlebenchmark
-  GIT_REPOSITORY https://github.com/google/benchmark.git
-  GIT_TAG        v1.6.0
-)
+find_package(benchmark)
 
-# Do not test google benchmark
-set (BENCHMARK_ENABLE_INSTALL OFF)
-set (BENCHMARK_ENABLE_TESTING OFF)
+if (NOT benchmark_FOUND)
+  include(FetchContent)
 
-FetchContent_MakeAvailable(googlebenchmark)
+  message(STATUS "Could not find local installation of google/benchmark, fetching sources")
+
+  # Do not test google benchmark
+  set (BENCHMARK_ENABLE_INSTALL OFF)
+  set (BENCHMARK_ENABLE_TESTING OFF)
+
+  FetchContent_Declare(
+    googlebenchmark
+    GIT_REPOSITORY https://github.com/google/benchmark.git
+    GIT_TAG        v1.6.0
+  )
+
+  FetchContent_MakeAvailable(googlebenchmark)
+endif()
 
 function(add_bench name)
   set(options)
