@@ -1,6 +1,6 @@
 
 
-find_package(GTest)
+find_package(GTest CONFIG)
 if (NOT GTest_FOUND)
 
   message(STATUS "Could not find local installation of Gtest, fetching sources")
