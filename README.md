@@ -27,6 +27,8 @@
     - [Options](#options)
     - [As a main project](#as-a-main-project)
     - [As a sub-project with cmake](#as-a-sub-project-with-cmake)
+      - [With FetchContent](#with-fetchcontent)
+      - [By installing amc](#by-installing-amc)
     - [Tested environments](#tested-environments)
   - [Usage examples](#usage-examples)
     - [Vectors](#vectors-1)
@@ -160,7 +162,7 @@ To compile and launch the tests in `Debug` mode, simply launch
 
 ### As a sub-project with cmake
 
-With [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html):
+#### With FetchContent
 
 ```
 include(FetchContent)
@@ -174,6 +176,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(amadeusamc)
 ```
 
+Official documentation [here](https://cmake.org/cmake/help/latest/module/FetchContent.html).
+
 By default, `amc` unit tests and benchmarks will not be compiled when used as a sub-project, which is probably what you want. 
 
 `cmake` targets using amc containers can then be linked with the interface library `amc::amc`:
@@ -181,15 +185,28 @@ By default, `amc` unit tests and benchmarks will not be compiled when used as a 
 target_link_libraries(my_target PRIVATE amc::amc)
 ```
 
+#### By installing amc
+
+Just use `sudo make install` or `sudo ninja install` depending on your generator to install headers on your machine.
+
+If you plan to use non standard extra features, make sure you add:
+```
+#define AMC_NONSTD_FEATURES
+```
+
+before any include of `amc` headers (it is defined if `AMC_PEDANTIC` CMake flag is `OFF` when building as a main project).
+
 And that's all. You just need to include the corresponding container's header file to be used in your application code, and why not define them in your namespace.
 
 ```cpp
+#define AMC_NONSTD_FEATURES // If you need non standard features
 #include <amc/vector.hpp>
 #include <amc/smallvector.hpp>
 #include <amc/fixedcapacityvector.hpp>
 
 #include <amc/flatset.hpp>
 #include <amc/smallset.hpp> // Requires C++17
+#undef AMC_NONSTD_FEATURES
 
 namespace my_namespace {
 using amc::vector;
