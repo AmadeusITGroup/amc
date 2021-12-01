@@ -1159,11 +1159,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     this->decrSize();
   }
 
+#ifdef AMC_NONSTD_FEATURES
   T pop_back_val() {
     T lastEl = std::move(back());
     pop_back();
     return lastEl;
   }
+#endif
 
   void clear() noexcept {
     amc::destroy_n(this->begin(), this->size());
@@ -1310,7 +1312,11 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     this->setSize(count);
   }
 
-  // Additional convenient methods not present in std::vector
+#ifndef AMC_NONSTD_FEATURES
+ protected:
+#endif
+
+  // Additional convenient methods activated when non standard features are enabled
 
   /// Like swap, but can take other vectors of same type with different inline number of elements
   /// It has one drawback though: it can throw (as it can make SmallVectors grow)

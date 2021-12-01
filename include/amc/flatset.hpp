@@ -75,8 +75,6 @@ class FlatSet : private Compare {
     node_type &operator=(const node_type &) = delete;
     node_type &operator=(node_type &&o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
 
-    ~node_type() = default;
-
     bool empty() const noexcept { return !_optV.has_value(); }
     explicit operator bool() const noexcept { return _optV.has_value(); }
     allocator_type get_allocator() const { return static_cast<allocator_type>(*this); }
@@ -142,6 +140,22 @@ class FlatSet : private Compare {
 
   FlatSet(std::initializer_list<value_type> list, const Alloc &alloc) : FlatSet(list, Compare(), alloc) {}
 
+#ifdef AMC_NONSTD_FEATURES
+  /// Non standard constructor of a FlatSet from a Vector, stealing its dynamic memory.
+  explicit FlatSet(VecType &&v, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
+      : Compare(comp), _sortedVector(std::move(v), alloc) {
+    std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
+    eraseDuplicates();
+  }
+
+  FlatSet &operator=(VecType &&v) {
+    _sortedVector = std::move(v);
+    std::sort(_sortedVector.begin(), _sortedVector.end(), compRef());
+    eraseDuplicates();
+    return *this;
+  }
+#endif
+
   FlatSet &operator=(std::initializer_list<value_type> list) {
     _sortedVector.clear();
     insert(list.begin(), list.end());
@@ -164,20 +178,22 @@ class FlatSet : private Compare {
   const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
   const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
 
+#ifdef AMC_NONSTD_FEATURES
   const_pointer data() const noexcept { return _sortedVector.data(); }
 
   const_reference operator[](size_type idx) const { return _sortedVector[idx]; }
 
   const_reference at(size_type idx) const { return _sortedVector.at(idx); }
 
-  bool empty() const noexcept { return _sortedVector.empty(); }
-  size_type size() const noexcept { return _sortedVector.size(); }
-  size_type max_size() const noexcept { return _sortedVector.max_size(); }
-
   size_type capacity() const noexcept { return _sortedVector.capacity(); }
   void reserve(size_type size) { _sortedVector.reserve(size); }
 
   void shrink_to_fit() { _sortedVector.shrink_to_fit(); }
+#endif
+
+  bool empty() const noexcept { return _sortedVector.empty(); }
+  size_type size() const noexcept { return _sortedVector.size(); }
+  size_type max_size() const noexcept { return _sortedVector.max_size(); }
 
   void clear() noexcept { _sortedVector.clear(); }
 

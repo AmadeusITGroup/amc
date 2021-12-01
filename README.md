@@ -20,8 +20,11 @@
       - [Vectors](#vectors)
       - [Sets](#sets)
     - [Other benefits](#other-benefits)
+      - [For vector types](#for-vector-types)
+      - [For FlatSet](#for-flatset)
   - [What is a trivially relocatable type?](#what-is-a-trivially-relocatable-type)
-  - [Build](#build)
+  - [Build with CMake](#build-with-cmake)
+    - [Options](#options)
     - [As a main project](#as-a-main-project)
     - [As a sub-project with cmake](#as-a-sub-project-with-cmake)
     - [Tested environments](#tested-environments)
@@ -81,6 +84,31 @@ For sets, time axis is in logarithmic scale.
  - Templated code generation is minimized thanks to the late location of the integral N template parameter
  - Optimized emulations of standard library features for older C++ compilers are provided when C++ version < C++17
 
+A set of non standard methods and constructors are defined for convenience, provided that `amc` is compiled with `AMC_PEDANTIC` disabled (default, see [Options](#options)).
+Here is a brief summary of these extras (compared to their STL equivalents):
+
+#### For vector types
+For all vectors (`FixedCapacityVector`, `SmallVector`, `vector`)
+| Method         | Description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| `pop_back_val` | Same as `pop_back`, returning popped value.                  |
+| `append`       | Same as `insert(vec.end(), ...)`                             |
+| `swap2`        | Swap with all other flavors of vectors, not just `this` type |
+
+For `SmallVector` only, there is a constructor from a rvalue of a `amc::vector` that allows stealing of its dynamic storage.
+
+#### For FlatSet
+| Method          | Description                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| `data`          | Returns `data` const pointer from underlying vector                                        |
+| `operator[n]`   | Access to the underlying value at position 'n' for the `FlatSet`                           |
+| `at(n)`         | Access to the underlying value at position 'n' for the `FlatSet`, throwing if our of range |
+| `capacity`      | Calls underlying vector `capacity` method                                                  |
+| `reserve`       | Calls underlying vector `reserve` method                                                   |
+| `shrink_to_fit` | Calls `shrink_to_fit` of underlying vector                                                 |
+
+There is an additional constructor and assignment operator from a rvalue of the underlying vector type, stealing its dynamic storage.
+
 ## What is a trivially relocatable type?
 
 It describes the ability of moving around memory a value of type T by using `memcpy` (as opposed to the conservative approach of calling the copy constructor and the destroying the old temporary). 
@@ -96,7 +124,16 @@ The most convenient way to mark a type as trivially relocatable is to declare in
 
 This is only necessary for non trivially copyable types, because trivially copyable types are trivially relocatable by default.
 
-## Build
+## Build with CMake
+
+### Options
+
+| CMake flag            | Description                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| AMC_ENABLE_TESTS      | Build **amc** with unit tests (default if main project)                                                            |
+| AMC_ENABLE_BENCHMARKS | Build **amc** with benchmarks against STL (default if main project and Release mode)                               |
+| AMC_ENABLE_ASAN       | Build with Address Sanitizer mode (only GCC and Clang)                                                             |
+| AMC_PEDANTIC          | If **OFF**, non standard methods and constructors are added for containers (see [Other benefits](#other-benefits)) |
 
 ### As a main project
 
@@ -107,7 +144,7 @@ Vectors and `FlatSet` containers require a C++11 compiler.
 
 Unit tests and benchmarks are provided. They can be compiled with **cmake**. 
 
-By default, both will be compiled only if 'amc' is instantiated as the main project. You can manually force the build of the tests and benchmarks thanks to following flags:
+By default, both will be compiled only if 'amc' is instantiated as the main project. You can manually force the build of the tests and benchmarks thanks to following `cmake` flags:
 ```
 AMC_ENABLE_TESTS
 AMC_ENABLE_BENCHMARKS
@@ -115,7 +152,7 @@ AMC_ENABLE_BENCHMARKS
 
 Bundled tests depend on [Google Test](https://github.com/google/googletest), benchmarks on [Google benchmarks](https://github.com/google/benchmark).
 
-`cmake` will retrieve them automatically thanks to [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html) feature.
+If not installed on your machine, `cmake` will retrieve them automatically thanks to [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html) feature.
 
 To compile and launch the tests in `Debug` mode, simply launch
 
@@ -170,6 +207,8 @@ This library has been tested on Ubuntu 18.04 and Windows 10 (Visual Studio 2019)
  - GCC from version 5.5 to 10
  - Clang from version 6.0
  - MSVC 19.28
+
+You can refer to the CI configurations (lots of compilers are tested) to see the full list of tested compilers.
 
 ## Usage examples
 
