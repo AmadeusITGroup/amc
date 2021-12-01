@@ -163,8 +163,6 @@ class SmallSet {
     node_type &operator=(const node_type &) = delete;
     node_type &operator=(node_type &&o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
 
-    ~node_type() = default;
-
     bool empty() const noexcept { return !_optV.has_value(); }
     explicit operator bool() const noexcept { return _optV.has_value(); }
     allocator_type get_allocator() const { return static_cast<allocator_type>(*this); }

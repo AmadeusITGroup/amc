@@ -97,7 +97,12 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
     refTab.assign(v + 1, 42);
     EXPECT_EQ(cpy, VecType(refTab.begin(), refTab.end()));
 
+#ifdef AMC_NONSTD_FEATURES
     ValueType lastEl = cpy.pop_back_val();
+#else
+    ValueType lastEl = std::move(cpy.back());
+    cpy.pop_back();
+#endif
     EXPECT_EQ(lastEl, ValueType(42));
     EXPECT_EQ(static_cast<int>(cpy.size()), v);
     EXPECT_TRUE(cpy.empty() || cpy.back() == ValueType(42));
@@ -308,6 +313,7 @@ TEST(VectorTest, NonCopyableType) {
   EXPECT_EQ(v[6], NonCopyableType());
 }
 
+#ifdef AMC_NONSTD_FEATURES
 TEST(VectorTest, CustomSwap) {
   using ObjType = NonTriviallyRelocatableType;
   using Bar7Vector = FixedCapacityVector<ObjType, 7>;
@@ -372,6 +378,7 @@ TEST(VectorTest, CustomSwap) {
   bar6.swap2(barvec2);
   barvec2.swap2(bar6);
 }
+#endif
 
 TEST(VectorTest, TrickyEmplace) {
   using VectorType = vector<ComplexTriviallyRelocatableType>;
@@ -417,7 +424,9 @@ TEST(VectorTest, SizeTypeNoIntegerOverflowFixedCapacityVector) {
   EXPECT_THROW(v.insert(v.begin() + 1, kTab, kTab + 6), ExceptionType);
   v.resize(255);
   int i = 4;
+#ifdef AMC_NONSTD_FEATURES
   EXPECT_THROW(v.append(1U, 0), ExceptionType);
+#endif
   EXPECT_THROW(v.push_back(0), ExceptionType);
   EXPECT_THROW(v.push_back(i), ExceptionType);
   EXPECT_THROW(v.emplace_back(0), ExceptionType);
@@ -431,7 +440,9 @@ TEST(VectorTest, SizeTypeNoIntegerOverflowSmallVector) {
   const int kTab[] = {1, 2, 3, 4, 5, 6};
   EXPECT_THROW(v.insert(v.begin() + 1, kTab, kTab + 6), ExceptionType);
   v.resize(255);
+#ifdef AMC_NONSTD_FEATURES
   EXPECT_THROW(v.append(1, 0), ExceptionType);
+#endif
   EXPECT_THROW(v.push_back(0), ExceptionType);
   EXPECT_THROW(v.push_back(4), ExceptionType);
   EXPECT_THROW(v.emplace_back(0), ExceptionType);

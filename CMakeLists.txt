@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.14)
 
 project(amc 
-  VERSION 2.1
+  VERSION 2.3
   DESCRIPTION "Header base library of C++ containers"
   LANGUAGES CXX
 )
@@ -31,6 +31,7 @@ endif()
 option(AMC_ENABLE_TESTS "Build the unit tests" ${MAIN_PROJECT})
 option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${BENCH_BUILD})
 option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" ${ASAN_BUILD})
+option(AMC_PEDANTIC "If set, only standard API (in respect to STL) will be defined. Additional features are enabled when OFF" OFF)
 
 # Activate all warnings, in all build modes
 if(MAIN_PROJECT)
@@ -43,6 +44,11 @@ endif()
 
 if(AMC_ENABLE_ASAN AND NOT MSVC)
   add_compile_options(-g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all)
+endif()
+
+if (NOT AMC_PEDANTIC)
+  message(STATUS "Compile with non standard features")
+  add_compile_definitions(AMC_NONSTD_FEATURES)
 endif()
 
 # Create interface library for header files

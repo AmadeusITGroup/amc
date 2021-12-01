@@ -384,20 +384,20 @@ TYPED_TEST(SetListMergeTest, MergeWithEmpty) {
   using SetType = TypeParam;
 
   SetType s1{0, 1};
-  SetType s2{};
+  SetType s2;
   s1.merge(s2);
   EXPECT_EQ(s1, SetType({0, 1}));
-  EXPECT_EQ(s2, SetType({}));
+  EXPECT_EQ(s2, SetType());
 }
 
 TYPED_TEST(SetListMergeTest, MergeFromEmpty) {
   using SetType = TypeParam;
 
-  SetType s1{};
+  SetType s1;
   SetType s2{0, 1};
   s1.merge(s2);
   EXPECT_EQ(s1, SetType({0, 1}));
-  EXPECT_EQ(s2, SetType({}));
+  EXPECT_EQ(s2, SetType());
 }
 
 TYPED_TEST(SetListMergeTest, MergeNewElems) {
@@ -455,6 +455,19 @@ TEST(FlatSetTest, MergeDifferentCompare) {
   EXPECT_EQ(s2, RevSetType({19, 4, 2, -2}));
 }
 
+#ifdef AMC_SMALLSET
+TEST(SmallSetTest, MergeDifferentCompare) {
+  using SetType = SmallSet<char, 20, std::less<char>>;
+  using RevSetType = SmallSet<char, 10, std::greater<char>>;
+  SetType s1{'B', 'D', 'E', 'G'};
+  RevSetType s2{'H', 'E', 'C', 'A'};
+  s1.merge(s2);
+  EXPECT_EQ(s1, SetType({'A', 'B', 'C', 'D', 'E', 'G', 'H'}));
+  EXPECT_EQ(s2, RevSetType({'E'}));
+}
+#endif
+
+#ifdef AMC_NONSTD_FEATURES
 TEST(FlatSetTest, SpecificPointerMethods) {
   using SetType = FlatSet<int>;
   SetType s{-2, 0, 2, 3, 4, 6, 19};
@@ -465,15 +478,13 @@ TEST(FlatSetTest, SpecificPointerMethods) {
   EXPECT_THROW(s.at(7), std::out_of_range);
 }
 
-#ifdef AMC_SMALLSET
-TEST(SmallSetTest, MergeDifferentCompare) {
-  using SetType = SmallSet<char, 20, std::less<char>>;
-  using RevSetType = SmallSet<char, 10, std::greater<char>>;
-  SetType s1{'B', 'D', 'E', 'G'};
-  RevSetType s2{'H', 'E', 'C', 'A'};
-  s1.merge(s2);
-  EXPECT_EQ(s1, SetType({'A', 'B', 'C', 'D', 'E', 'G', 'H'}));
-  EXPECT_EQ(s2, RevSetType({'E'}));
+TEST(FlatSetTest, CreateFromVector) {
+  using VecType = amc::vector<int>;
+  using SetType = FlatSet<int, std::less<int>, amc::allocator<int>, VecType>;
+  VecType myVec = {5, -1, 6, 8, 0};
+  SetType s(std::move(myVec));
+  EXPECT_TRUE(myVec.empty());
+  EXPECT_EQ(s, SetType({-1, 0, 5, 6, 8}));
 }
 #endif
 }  // namespace amc
