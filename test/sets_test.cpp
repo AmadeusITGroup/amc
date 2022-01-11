@@ -455,6 +455,41 @@ TEST(FlatSetTest, MergeDifferentCompare) {
   EXPECT_EQ(s2, RevSetType({19, 4, 2, -2}));
 }
 
+#ifdef AMC_CXX14
+template <typename T>
+class SetListEquivalentType : public ::testing::Test {
+ public:
+  using List = typename std::list<T>;
+};
+// clang-format off
+typedef ::testing::Types<FlatSet<int, std::less<>>
+#ifdef AMC_SMALLSET
+                       ,SmallSet<int, 2, std::less<>>
+                       ,SmallSet<int, 5, std::less<>>
+#endif
+                        >
+    SetsEquivalentTypes;
+// clang-format on
+
+TYPED_TEST_SUITE(SetListEquivalentType, SetsEquivalentTypes, );
+
+TYPED_TEST(SetListEquivalentType, FindEquivalentType) {
+  TypeParam s{1, 2, 4};
+  EXPECT_EQ(s.find(3), s.end());
+  EXPECT_NE(s.find(1), s.end());
+  EXPECT_EQ(s.find(4.5), s.end());
+  EXPECT_NE(s.find(1.0), s.end());
+}
+
+TYPED_TEST(SetListEquivalentType, ContainsEquivalentType) {
+  TypeParam s{-3, 0, 6, 7};
+  EXPECT_TRUE(s.contains(false));
+  EXPECT_FALSE(s.contains(true));
+  EXPECT_TRUE(s.contains(7ULL));
+  EXPECT_FALSE(s.contains(static_cast<char>(4)));
+}
+#endif
+
 #ifdef AMC_SMALLSET
 TEST(SmallSetTest, MergeDifferentCompare) {
   using SetType = SmallSet<char, 20, std::less<char>>;

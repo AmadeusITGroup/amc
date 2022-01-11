@@ -14,10 +14,12 @@
 #include "type_traits.hpp"
 #include "vector.hpp"
 
+#ifdef AMC_CXX14
+#include "istransparent.hpp"
 #ifdef AMC_CXX17
 #include <optional>
 #endif
-
+#endif
 namespace amc {
 
 /**
@@ -248,13 +250,35 @@ class FlatSet : private Compare {
     return insert(hint, T(std::forward<Args &&>(args)...));
   }
 
-  const_iterator find(const_reference v) const {
-    const_iterator lbIt = std::lower_bound(cbegin(), cend(), v, compRef());
-    return lbIt == cend() || compRef()(v, *lbIt) ? cend() : lbIt;
+  const_iterator find(const_reference k) const {
+    const_iterator lbIt = lower_bound(k);
+    return lbIt == cend() || compRef()(k, *lbIt) ? cend() : lbIt;
   }
 
-  bool contains(const_reference v) const { return find(v) != end(); }
-  size_type count(const_reference v) const { return contains(v) ? 1U : 0U; }
+  bool contains(const_reference k) const { return find(k) != end(); }
+
+  size_type count(const_reference k) const { return contains(k); }
+
+#ifdef AMC_CXX14
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  const_iterator find(const K &k) const {
+    const_iterator lbIt = lower_bound(k);
+    return lbIt == cend() || compRef()(k, *lbIt) ? cend() : lbIt;
+  }
+
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  bool contains(const K &k) const {
+    return find(k) != end();
+  }
+
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  size_type count(const K &k) const {
+    return contains(k);
+  }
+#endif
 
   size_type erase(const_reference v) {
     const_iterator it = find(v);
@@ -351,6 +375,20 @@ class FlatSet : private Compare {
 
   const_iterator lower_bound(const_reference v) const { return std::lower_bound(begin(), end(), v, compRef()); }
   const_iterator upper_bound(const_reference v) const { return std::upper_bound(begin(), end(), v, compRef()); }
+
+#ifdef AMC_CXX14
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  const_iterator lower_bound(const K &k) const {
+    return std::lower_bound(begin(), end(), k, compRef());
+  }
+
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  const_iterator upper_bound(const K &k) const {
+    return std::upper_bound(begin(), end(), k, compRef());
+  }
+#endif
 
 #ifdef AMC_NONSTD_FEATURES
   /// Get the underlying vector of elements of this FlatSet, by returning a newly move constructed vector.
