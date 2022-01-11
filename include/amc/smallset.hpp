@@ -12,6 +12,7 @@
 #include "allocator.hpp"
 #include "config.hpp"
 #include "fixedcapacityvector.hpp"
+#include "istransparent.hpp"
 #include "memory.hpp"
 #include "type_traits.hpp"
 
@@ -124,6 +125,7 @@ class SmallSet {
   static_assert(N <= 64, "N should be small as search has linear complexity for small sets");
 
   static_assert(std::is_same<T, typename SetType::value_type>::value, "Set value type should be T");
+  static_assert(std::is_same<Compare, typename SetType::key_compare>::value, "Set compare type should be Compare");
   static_assert(std::is_same<Alloc, typename SetType::allocator_type>::value, "Allocator should match set's");
 
  public:
@@ -231,23 +233,27 @@ class SmallSet {
     return *this;
   }
 
-  const_iterator begin() const noexcept { return isSmall() ? iterator(_vec.begin()) : iterator(_set.begin()); }
+  const_iterator begin() const noexcept {
+    return isSmall() ? const_iterator(_vec.begin()) : const_iterator(_set.begin());
+  }
   const_iterator cbegin() const noexcept { return begin(); }
-  const_iterator end() const noexcept { return isSmall() ? iterator(_vec.end()) : iterator(_set.end()); }
+  const_iterator end() const noexcept { return isSmall() ? const_iterator(_vec.end()) : const_iterator(_set.end()); }
   const_iterator cend() const noexcept { return end(); }
 
   const_reverse_iterator rbegin() const noexcept {
-    return isSmall() ? reverse_iterator(_vec.end()) : reverse_iterator(_set.end());
+    return isSmall() ? const_reverse_iterator(_vec.end()) : const_reverse_iterator(_set.end());
   }
   const_reverse_iterator crbegin() const noexcept { return rbegin(); }
 
   const_reverse_iterator rend() const noexcept {
-    return isSmall() ? reverse_iterator(_vec.begin()) : reverse_iterator(_set.begin());
+    return isSmall() ? const_reverse_iterator(_vec.begin()) : const_reverse_iterator(_set.begin());
   }
   const_reverse_iterator crend() const noexcept { return rend(); }
 
-  bool empty() const noexcept { return isSmall() ? _vec.empty() : _set.empty(); }
+  bool empty() const noexcept { return _vec.empty() && _set.empty(); }
+
   size_type size() const noexcept { return isSmall() ? _vec.size() : _set.size(); }
+
   size_type max_size() const noexcept {
     return std::max(static_cast<size_type>(_vec.max_size()), static_cast<size_type>(_set.max_size()));
   }
@@ -316,7 +322,7 @@ class SmallSet {
       return insert(T(std::forward<Args &&>(args)...));
     }
     miterator elIt = std::addressof(_vec.emplace_back(std::forward<Args &&>(args)...));
-    miterator it = std::find_if(_vec.begin(), elIt, FindFunctor(key_comp(), *elIt));
+    miterator it = std::find_if(_vec.begin(), elIt, FindFunctor<T>(key_comp(), *elIt));
     bool isNew = it == elIt;
     if (!isNew) {
       _vec.pop_back();
@@ -334,13 +340,31 @@ class SmallSet {
     return emplace(std::forward<Args &&>(args)...).first;
   }
 
-  const_iterator find(const_reference v) const {
-    return isSmall() ? const_iterator(std::find_if(_vec.begin(), _vec.end(), FindFunctor(key_comp(), v)))
-                     : const_iterator(_set.find(v));
+  const_iterator find(const_reference k) const {
+    return isSmall() ? const_iterator(find_small(k)) : const_iterator(_set.find(k));
   }
 
-  bool contains(const_reference v) const { return find(v) != end(); }
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  const_iterator find(const K &k) const {
+    return isSmall() ? const_iterator(find_small(k)) : const_iterator(_set.find(k));
+  }
+
+  bool contains(const_reference k) const { return isSmall() ? find_small(k) != _vec.end() : _set.count(k); }
+
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  bool contains(const K &k) const {
+    return isSmall() ? find_small(k) != _vec.end() : _set.count(k);
+  }
+
   size_type count(const_reference v) const { return contains(v); }
+
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  size_type count(const K &k) const {
+    return contains(k);
+  }
 
   size_type erase(const_reference v) {
     if (!isSmall()) {
@@ -425,7 +449,7 @@ class SmallSet {
     } else {
       bool small = isSmall();
       for (auto oit = o._vec.begin(); oit != o._vec.end();) {
-        FindFunctor fFunc(key_comp(), *oit);
+        FindFunctor<T> fFunc(key_comp(), *oit);
         if (small) {
           if (std::none_of(_vec.begin(), _vec.end(), fFunc)) {
             if (isSmallContFull()) {
@@ -529,17 +553,24 @@ class SmallSet {
     return _set.insert(std::forward<V>(v));
   }
 
+  template <class K>
   struct FindFunctor {
-    FindFunctor(Compare comp, const_reference v) : _comp(comp), _v(v) {}
+    FindFunctor(Compare &&comp, const K &k) : _comp(std::move(comp)), _k(k) {}
 
-    bool operator()(const_reference o) const { return !_comp(_v, o) && !_comp(o, _v); }
+    bool operator()(const_reference o) const { return !_comp(_k, o) && !_comp(o, _k); }
 
     Compare _comp;
-    const_reference _v;
+    const K &_k;
   };
 
-  miterator mfind_small(const_reference v) {
-    return std::find_if(_vec.begin(), _vec.end(), FindFunctor(key_comp(), v));
+  template <class K>
+  miterator mfind_small(const K &k) {
+    return std::find_if(_vec.begin(), _vec.end(), FindFunctor<K>(key_comp(), k));
+  }
+
+  template <class K>
+  typename VecType::const_iterator find_small(const K &k) const {
+    return std::find_if(_vec.begin(), _vec.end(), FindFunctor<K>(key_comp(), k));
   }
 
   void grow() {
