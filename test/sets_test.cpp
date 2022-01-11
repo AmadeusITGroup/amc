@@ -479,12 +479,21 @@ TEST(FlatSetTest, SpecificPointerMethods) {
 }
 
 TEST(FlatSetTest, CreateFromVector) {
-  using VecType = amc::vector<int>;
-  using SetType = FlatSet<int, std::less<int>, amc::allocator<int>, VecType>;
-  VecType myVec = {5, -1, 6, 8, 0};
+  using SetType = FlatSet<int>;
+  using VecType = SetType::vector_type;
+  VecType myVec{5, -1, 6, 8, 0};
   SetType s(std::move(myVec));
   EXPECT_TRUE(myVec.empty());
   EXPECT_EQ(s, SetType({-1, 0, 5, 6, 8}));
+}
+
+TEST(FlatSetTest, StealVector) {
+  using SetType = FlatSet<int>;
+  using VecType = SetType::vector_type;
+  SetType s{5, -1, 6, 8, 0};
+  auto stolenVec = s.steal_vector();
+  EXPECT_TRUE(s.empty());
+  EXPECT_EQ(stolenVec, VecType({-1, 0, 5, 6, 8}));
 }
 #endif
 }  // namespace amc
