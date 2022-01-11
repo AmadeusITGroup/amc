@@ -141,14 +141,16 @@ class FlatSet : private Compare {
   FlatSet(std::initializer_list<value_type> list, const Alloc &alloc) : FlatSet(list, Compare(), alloc) {}
 
 #ifdef AMC_NONSTD_FEATURES
+  using vector_type = VecType;
+
   /// Non standard constructor of a FlatSet from a Vector, stealing its dynamic memory.
-  explicit FlatSet(VecType &&v, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
+  explicit FlatSet(vector_type &&v, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
       : Compare(comp), _sortedVector(std::move(v), alloc) {
     std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
     eraseDuplicates();
   }
 
-  FlatSet &operator=(VecType &&v) {
+  FlatSet &operator=(vector_type &&v) {
     _sortedVector = std::move(v);
     std::sort(_sortedVector.begin(), _sortedVector.end(), compRef());
     eraseDuplicates();
@@ -349,6 +351,16 @@ class FlatSet : private Compare {
 
   const_iterator lower_bound(const_reference v) const { return std::lower_bound(begin(), end(), v, compRef()); }
   const_iterator upper_bound(const_reference v) const { return std::upper_bound(begin(), end(), v, compRef()); }
+
+#ifdef AMC_NONSTD_FEATURES
+  /// Get the underlying vector of elements of this FlatSet, by returning a newly move constructed vector.
+  vector_type steal_vector() {
+    vector_type ret(std::move(_sortedVector));
+    // Make sure our sorted vector is cleared to avoid unspecified state (not necessarily in order)
+    _sortedVector.clear();
+    return ret;
+  }
+#endif
 
  private:
   template <class, class, class, class>
