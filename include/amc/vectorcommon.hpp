@@ -882,8 +882,8 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   size_type max_size() const noexcept { return std::numeric_limits<size_type>::max(); }
 
   void reserve(size_type capacity) {
-    if (this->capacity() < capacity) {  // No condition hint, for reserve capacity is more likely to be adjusted
-      this->grow(capacity, true);       // Reserve with exact capacity
+    if (this->capacity() < capacity) {
+      this->grow(capacity, true);  // Reserve with exact capacity
     }
   }
 
@@ -892,7 +892,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
     SizeType nElemsToShift = static_cast<SizeType>(this->size() - (position - this->begin()));
     iterator pos;
-    if (AMC_UNLIKELY(this->size() == this->capacity())) {
+    if (this->size() == this->capacity()) {
       // construct before possible iterator invalidation from grow in constructor arguments
       ElemStorage<T> e;
       amc::construct_at(e.ptr(), std::forward<Args &&>(args)...);
@@ -921,7 +921,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   template <class... Args>
   reference emplace_back(Args &&...args) {
     iterator endIt;
-    if (AMC_UNLIKELY(this->size() == this->capacity())) {
+    if (this->size() == this->capacity()) {
       // construct before possible iterator invalidation from grow in constructor arguments
       ElemStorage<T> e;
       amc::construct_at(e.ptr(), std::forward<Args &&>(args)...);
@@ -967,13 +967,13 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
   inline void adjustCapacity(uintmax_t neededCapacity) {
-    if (AMC_UNLIKELY(static_cast<uintmax_t>(this->capacity()) < neededCapacity)) {
+    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
       this->grow(neededCapacity);
     }
   }
 
   inline T *adjustCapacity(uintmax_t neededCapacity, const T *position) {
-    if (AMC_UNLIKELY(static_cast<uintmax_t>(this->capacity()) < neededCapacity)) {
+    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
       SizeType idx = static_cast<SizeType>(position - this->begin());  // pos will be invalidated
       this->grow(neededCapacity);
       return this->begin() + idx;
@@ -982,7 +982,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   }
 
   inline const T &adjustCapacity(uintmax_t neededCapacity, const T &v) {
-    if (AMC_UNLIKELY(static_cast<uintmax_t>(this->capacity()) < neededCapacity)) {
+    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
       const T *ptr = std::addressof(v);
       ptrdiff_t idx = ptr >= this->begin() && ptr < this->begin() + this->size() ? ptr - this->begin() : -1;
       this->grow(neededCapacity);
@@ -994,7 +994,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   }
 
   inline const T &adjustCapacity(uintmax_t neededCapacity, const T &v, const T **position) {
-    if (AMC_UNLIKELY(static_cast<uintmax_t>(this->capacity()) < neededCapacity)) {
+    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
       const T *ptr = std::addressof(v);
       ptrdiff_t idx = ptr >= this->begin() && ptr < this->begin() + this->size() ? ptr - this->begin() : -1;
       SizeType itIdx = static_cast<SizeType>(*position - this->begin());  // pos will be invalidated
