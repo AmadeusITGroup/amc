@@ -420,7 +420,7 @@ TEST(VectorTest, SizeTypeNoIntegerOverflowFixedCapacityVector) {
   using ExceptionType = std::out_of_range;
   static_assert(sizeof(IntVector::size_type) == 1U, "");
   IntVector v(250);
-  const int kTab[] = {1, 2, 3, 4, 5, 6};
+  constexpr int kTab[] = {1, 2, 3, 4, 5, 6};
   EXPECT_THROW(v.insert(v.begin() + 1, kTab, kTab + 6), ExceptionType);
   v.resize(255);
   int i = 4;
