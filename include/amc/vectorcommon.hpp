@@ -328,7 +328,7 @@ class ElemStorage {
   const T *ptr() const noexcept { return reinterpret_cast<const T *>(this); }
 
  private:
-  typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type _el;
+  alignas(T) std::uint8_t _el[sizeof(T)];
 };
 
 /// This class represents a merge of a pointer and some inline storage elements.
@@ -377,10 +377,10 @@ class ElemWithPtrStorage {
 
 #ifdef AMC_CXX14
   // std::max is constexpr from C++14
-  typename std::aligned_storage<std::max(sizeof(T), sizeof(T *)), std::max(kTAlign, kPtrAlign)>::type _el;
+  alignas(std::max(kTAlign, kPtrAlign)) std::uint8_t _el[std::max(sizeof(T), sizeof(T *))];
 #else
-  typename std::aligned_storage < sizeof(T *) < sizeof(T) ? sizeof(T) : sizeof(T *),
-      kPtrAlign<kTAlign ? kTAlign : kPtrAlign>::type _el;
+  alignas(kPtrAlign < kTAlign ? kTAlign
+                              : kPtrAlign) std::uint8_t _el[sizeof(T *) < sizeof(T) ? sizeof(T) : sizeof(T *)];
 #endif
 };
 
