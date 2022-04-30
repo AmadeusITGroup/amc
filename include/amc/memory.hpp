@@ -22,12 +22,12 @@ using std::destroy_at;
 using std::destroy_n;
 #else
 template <class T>
-void destroy_at(T *p, typename std::enable_if<!std::is_array<T>::value>::type * = 0) {
+void destroy_at(T *p, typename std::enable_if<!std::is_array<T>::value>::type * = nullptr) {
   p->~T();
 }
 
 template <class T>
-void destroy_at(T *p, typename std::enable_if<std::is_array<T>::value>::type * = 0) {
+void destroy_at(T *p, typename std::enable_if<std::is_array<T>::value>::type * = nullptr) {
   for (auto &elem : *p) {
     destroy_at(std::addressof(elem));
   }
