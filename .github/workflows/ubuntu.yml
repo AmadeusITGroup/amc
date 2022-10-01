@@ -93,13 +93,17 @@ jobs:
         run: cd build && ctest -j 2 --output-on-failure
 
   ci_test_standards:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         standard: [11, 14, 17, 20]
-        compiler: [g++, clang++]
+        compiler: [g++-11, clang++-14]
     steps:
       - uses: actions/checkout@v2
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Debug
       - name: build

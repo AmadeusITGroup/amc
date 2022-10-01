@@ -31,24 +31,28 @@ class SmallSetIteratorCommon {
 
   IteratorVariant _iter;
 
-  explicit SmallSetIteratorCommon(SetItType it) : _iter(it) {}
-  explicit SmallSetIteratorCommon(VecItType it) : _iter(it) {}
+  // From C++20, an iterator must be default constructible to comply with ranges concepts.
+  // See https://stackoverflow.com/questions/72590345/using-stdranges-algorithms-with-custom-containers-and-iterators
+  SmallSetIteratorCommon() noexcept = default;
 
-  void incr() {
+  explicit SmallSetIteratorCommon(SetItType it) noexcept : _iter(it) {}
+  explicit SmallSetIteratorCommon(VecItType it) noexcept : _iter(it) {}
+
+  void incr() noexcept {
     std::visit([](auto &&it) { ++it; }, _iter);
   }
-  void decr() {
+  void decr() noexcept {
     std::visit([](auto &&it) { --it; }, _iter);
   }
-  const T &get() const {
+  const T &get() const noexcept {
     return std::visit([](auto &&it) -> const T & { return *it; }, _iter);
   }
-  const T &getPrev() const {
+  const T &getPrev() const noexcept {
     return std::visit([](auto &&it) -> const T & { return *std::prev(it, 1); }, _iter);
   }
 
-  SetItType toSetIt() const { return std::get<SetItType>(_iter); }
-  VecItType toVecIt() const { return std::get<VecItType>(_iter); }
+  SetItType toSetIt() const noexcept { return std::get<SetItType>(_iter); }
+  VecItType toVecIt() const noexcept { return std::get<VecItType>(_iter); }
 
   template <class, class, bool>
   friend class SmallSetIterator;
@@ -63,8 +67,8 @@ class SmallSetIteratorCommon {
   using pointer = const T *;
   using reference = const T &;
 
-  bool operator==(const SmallSetIteratorCommon &o) const { return o._iter == _iter; }
-  bool operator!=(const SmallSetIteratorCommon &o) const { return !(*this == o); }
+  bool operator==(const SmallSetIteratorCommon &o) const noexcept { return o._iter == _iter; }
+  bool operator!=(const SmallSetIteratorCommon &o) const noexcept { return !(*this == o); }
 };
 
 /**
@@ -73,31 +77,39 @@ class SmallSetIteratorCommon {
 template <class T, class SetItType, bool Reversed>
 class SmallSetIterator : public SmallSetIteratorCommon<T, SetItType> {
  public:
-  SmallSetIterator(SetItType it) : SmallSetIteratorCommon<T, SetItType>(it) {}
-  SmallSetIterator(typename SmallSetIteratorCommon<T, SetItType>::VecItType it)
+  // From C++20, an iterator must be default constructible to comply with ranges concepts.
+  // See https://stackoverflow.com/questions/72590345/using-stdranges-algorithms-with-custom-containers-and-iterators
+  SmallSetIterator() noexcept = default;
+
+  SmallSetIterator(SetItType it) noexcept : SmallSetIteratorCommon<T, SetItType>(it) {}
+
+  SmallSetIterator(typename SmallSetIteratorCommon<T, SetItType>::VecItType it) noexcept
       : SmallSetIteratorCommon<T, SetItType>(it) {}
 
-  SmallSetIterator &operator++() {  // Prefix increment
+  SmallSetIterator &operator++() noexcept {  // Prefix increment
     Reversed ? this->decr() : this->incr();
     return *this;
   }
-  SmallSetIterator &operator--() {  // Prefix decrement
+
+  SmallSetIterator &operator--() noexcept {  // Prefix decrement
     Reversed ? this->incr() : this->decr();
     return *this;
   }
-  SmallSetIterator operator++(int) {  // Postfix increment
+
+  SmallSetIterator operator++(int) noexcept {  // Postfix increment
     SmallSetIterator oldSelf = *this;
     Reversed ? this->decr() : this->incr();
     return oldSelf;
   }
-  SmallSetIterator operator--(int) {  // Postfix decrement
+
+  SmallSetIterator operator--(int) noexcept {  // Postfix decrement
     SmallSetIterator oldSelf = *this;
     Reversed ? this->incr() : this->decr();
     return oldSelf;
   }
 
-  const T &operator*() const { return Reversed ? this->getPrev() : this->get(); }
-  const T *operator->() const { return &static_cast<const SmallSetIterator *>(this)->operator*(); }
+  const T &operator*() const noexcept { return Reversed ? this->getPrev() : this->get(); }
+  const T *operator->() const noexcept { return &static_cast<const SmallSetIterator *>(this)->operator*(); }
 };
 
 /**
@@ -586,7 +598,7 @@ class SmallSet {
   static PtrVec ComputeSortedPtrVec(const VecType &c) {
     PtrVec sortedPtrs;
     std::transform(c.begin(), c.end(), std::back_inserter(sortedPtrs),
-                   static_cast<const_pointer (*)(const_reference)>(std::addressof));
+                   [](const_reference r) { return std::addressof(r); });
     std::sort(sortedPtrs.begin(), sortedPtrs.end(),
               [](const_pointer p1, const_pointer p2) { return Compare()(*p1, *p2); });
     return sortedPtrs;
