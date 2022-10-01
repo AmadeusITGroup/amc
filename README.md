@@ -44,7 +44,7 @@
 
 ## Brief
 
-Collection of high performance C++ containers, drop-in replacements for `std::vector` and `std::set`.
+Collection of high performance C++ containers, drop-in replacements for `std::vector` and `std::set`, used in Amadeus pricing and shopping engines instead of standard ones.
 
 ## Contents
 

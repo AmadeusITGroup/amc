@@ -18,6 +18,9 @@
 #include "istransparent.hpp"
 #ifdef AMC_CXX17
 #include <optional>
+#ifdef AMC_CXX20
+#include <compare>
+#endif
 #endif
 #endif
 namespace amc {
@@ -295,11 +298,15 @@ class FlatSet : private Compare {
   bool operator==(const FlatSet &o) const { return _sortedVector == o._sortedVector; }
   bool operator!=(const FlatSet &o) const { return !(*this == o); }
 
+#ifdef AMC_CXX20
+  auto operator<=>(const FlatSet &o) const { return _sortedVector <=> o._sortedVector; }
+#else
   bool operator<(const FlatSet &o) const { return _sortedVector < o._sortedVector; }
 
   bool operator<=(const FlatSet &o) const { return !(o < *this); }
   bool operator>(const FlatSet &o) const { return o < *this; }
   bool operator>=(const FlatSet &o) const { return !(*this < o); }
+#endif
 
   void swap(FlatSet &o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType &>())) &&
                                  amc::is_nothrow_swappable<Compare>::value) {
