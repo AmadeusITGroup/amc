@@ -34,7 +34,9 @@ static_assert(!vec::has_reallocate<Meow>::value, "Meow should not provide reallo
 static_assert(vec::has_reallocate<Purr>::value, "Purr should provide reallocate method");
 
 static_assert(has_is_transparent<Meow>::value, "Meow should have is_transparent type");
+#ifdef AMC_CXX14
 static_assert(has_is_transparent<std::less<>>::value, "std::less<> should have is_transparent type");
+#endif
 static_assert(!has_is_transparent<std::less<int>>::value, "std::less<T> should not have is_transparent type");
 static_assert(!has_is_transparent<Purr>::value, "Purr should not have is_transparent type");
 }  // namespace amc
