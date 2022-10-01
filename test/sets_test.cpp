@@ -43,7 +43,7 @@ typedef ::testing::Types<
                          SmallSet<Foo, 14, std::less<Foo>, amc::allocator<Foo>, FlatSet<Foo, std::less<Foo>, amc::allocator<Foo>, SmallVector<Foo, 50>>>,
 #endif
                          FlatSet<uint32_t, std::less<uint32_t>, FixedCapacityVector<uint32_t, 20>::allocator_type, FixedCapacityVector<uint32_t, 20> >,
-                         FlatSet<char>, 
+                         FlatSet<char>,
                          FlatSet<uint32_t, std::greater<uint32_t>>, 
                          FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 4>>,
                          FlatSet<char, std::less<char>, std::allocator<char>>,
@@ -133,6 +133,14 @@ TYPED_TEST(SetListTest, ReverseIteration) {
     cpy.insert(*it);
   }
   EXPECT_EQ(s, cpy);
+}
+
+TYPED_TEST(SetListTest, IteratorOperators) {
+  TypeParam s{47, 125, 90, 12, 111};
+  auto begIt = s.begin();
+
+  EXPECT_EQ(begIt, s.begin());
+  EXPECT_NE(begIt, s.end());
 }
 
 TYPED_TEST(SetListTest, SpecialMembers) {
@@ -281,8 +289,13 @@ TYPED_TEST(SetListTest, ComparisonOperators) {
   if (std::is_same<typename TypeParam::key_compare, std::less<typename TypeParam::value_type>>::value) {
     EXPECT_GT(s, TypeParam({1, 2, 3, 4}));
     EXPECT_LT(s, TypeParam({1, 4}));
-    EXPECT_GE(s, TypeParam({1, 3, 4}));
-    EXPECT_LE(s, TypeParam({1, 3, 5}));
+    EXPECT_GE(s, TypeParam({4, 1, 3}));
+    EXPECT_LE(s, TypeParam({3, 5, 1}));
+#ifdef AMC_CXX20
+    EXPECT_EQ(s <=> TypeParam({1, 4}), std::strong_ordering::less);
+    EXPECT_EQ(s <=> TypeParam({4, 2, 3, 1}), std::strong_ordering::greater);
+    EXPECT_EQ(s <=> TypeParam({3, 1, 4}), std::strong_ordering::equal);
+#endif
   } else if (std::is_same<typename TypeParam::key_compare, std::greater<typename TypeParam::value_type>>::value) {
     EXPECT_LT(s, TypeParam({1, 2, 3, 4}));
     EXPECT_GT(s, TypeParam({1, 4}));

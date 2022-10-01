@@ -15,6 +15,9 @@
 
 #ifdef AMC_CXX14
 #include <functional>
+#ifdef AMC_CXX20
+#include <compare>
+#endif
 #endif
 
 namespace amc {
@@ -1146,12 +1149,18 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
   bool operator!=(const VectorImpl &o) const { return !(*this == o); }
 
+#ifdef AMC_CXX20
+  auto operator<=>(const VectorImpl &o) const {
+    return std::lexicographical_compare_three_way(this->begin(), end(), o.begin(), o.end());
+  }
+#else
   bool operator<(const VectorImpl &o) const {
     return std::lexicographical_compare(this->begin(), end(), o.begin(), o.end());
   }
   bool operator<=(const VectorImpl &o) const { return !(o < *this); }
   bool operator>(const VectorImpl &o) const { return o < *this; }
   bool operator>=(const VectorImpl &o) const { return !(*this < o); }
+#endif
 
   void pop_back() {
     assert(!empty());

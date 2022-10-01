@@ -172,6 +172,33 @@ TYPED_TEST(VectorTest, Main) {
   }
 }
 
+TEST(VectorTest, Operators) {
+  using VectorType = vector<int>;
+
+  VectorType v1{1, 2, 3};
+  VectorType v2{1, 4, 3};
+  VectorType v3{1, 4, 3, -4};
+
+  VectorType v4{1, 2, 3};
+
+  EXPECT_EQ(v1, v4);
+  EXPECT_NE(v1, v2);
+
+  EXPECT_LT(v1, v2);
+  EXPECT_LE(v1, v2);
+  EXPECT_LE(v1, v1);
+  EXPECT_GT(v3, v1);
+  EXPECT_GE(v3, v1);
+  EXPECT_GE(v3, v3);
+
+#ifdef AMC_CXX20
+  EXPECT_EQ(v1 <=> v1, std::strong_ordering::equal);
+  EXPECT_EQ(v1 <=> v2, std::strong_ordering::less);
+  EXPECT_EQ(v1 <=> v3, std::strong_ordering::less);
+  EXPECT_EQ(v3 <=> v1, std::strong_ordering::greater);
+#endif
+}
+
 template <typename T>
 class VectorRefTest : public ::testing::Test {
  public:

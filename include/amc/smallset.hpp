@@ -16,6 +16,10 @@
 #include "memory.hpp"
 #include "type_traits.hpp"
 
+#ifdef AMC_CXX20
+#include <compare>
+#endif
+
 namespace amc {
 
 /**
@@ -67,8 +71,13 @@ class SmallSetIteratorCommon {
   using pointer = const T *;
   using reference = const T &;
 
-  bool operator==(const SmallSetIteratorCommon &o) const noexcept { return o._iter == _iter; }
+  // For a set, only equality and unequality operators are defined
+#ifdef AMC_CXX20
+  bool operator==(const SmallSetIteratorCommon &) const noexcept = default;
+#else
+  bool operator==(const SmallSetIteratorCommon &o) const noexcept { return _iter == o._iter; }
   bool operator!=(const SmallSetIteratorCommon &o) const noexcept { return !(*this == o); }
+#endif
 };
 
 /**
@@ -500,10 +509,40 @@ class SmallSet {
 
   bool operator!=(const SmallSet &o) const { return !(*this == o); }
 
+#ifdef AMC_CXX20
+  auto operator<=>(const SmallSet &o) const {
+    struct Comp {
+      auto operator()(const_pointer pLhs, const_pointer pRhs) const { return *pLhs <=> *pRhs; }
+      auto operator()(const_pointer pLhs, const_reference rhs) const { return *pLhs <=> rhs; }
+      auto operator()(const_reference lhs, const_pointer pRhs) const { return lhs <=> *pRhs; }
+    };
+
+    if (isSmall()) {
+      auto sortedPtrs = ComputeSortedPtrVec(_vec);
+      if (o.isSmall()) {
+        // We are both small, we need to sort both containers
+        auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
+        return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
+                                                      oSortedPtrs.end(), Comp());
+      }
+      // we are small: as we do not order elements in the small container, we need to sort them.
+      return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
+                                                    Comp());
+    }
+    if (o.isSmall()) {
+      // other is small: as we do not order elements in the small container, we need to sort them.
+      auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
+      return std::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
+                                                    Comp());
+    }
+    return _set <=> o._set;
+  }
+#else
+
   // Comparison operators are provided for compliance with std::set but could be painful for performances
   // as we keep elements unsorted in the 'small' container.
   bool operator<(const SmallSet &o) const {
-    struct LessPtrFunc {
+    struct Comp {
       bool operator()(const_pointer pLhs, const_pointer pRhs) const { return *pLhs < *pRhs; }
       bool operator()(const_pointer pLhs, const_reference rhs) const { return *pLhs < rhs; }
       bool operator()(const_reference lhs, const_pointer pRhs) const { return lhs < *pRhs; }
@@ -515,17 +554,15 @@ class SmallSet {
         // We are both small, we need to sort both containers
         auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
         return std::lexicographical_compare(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
-                                            oSortedPtrs.end(), LessPtrFunc());
+                                            oSortedPtrs.end(), Comp());
       }
       // we are small: as we do not order elements in the small container, we need to sort them.
-      return std::lexicographical_compare(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
-                                          LessPtrFunc());
+      return std::lexicographical_compare(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(), Comp());
     }
     if (o.isSmall()) {
       // other is small: as we do not order elements in the small container, we need to sort them.
       auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
-      return std::lexicographical_compare(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
-                                          LessPtrFunc());
+      return std::lexicographical_compare(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(), Comp());
     }
     return _set < o._set;
   }
@@ -533,6 +570,7 @@ class SmallSet {
   bool operator<=(const SmallSet &o) const { return !(o < *this); }
   bool operator>(const SmallSet &o) const { return o < *this; }
   bool operator>=(const SmallSet &o) const { return !(*this < o); }
+#endif
 
  private:
   using miterator = typename VecType::iterator;  // Custom iterator to allow modification of content (when small)

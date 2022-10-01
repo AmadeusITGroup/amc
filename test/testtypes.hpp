@@ -7,6 +7,10 @@
 #include <memory>
 #include <stdexcept>
 
+#ifdef AMC_CXX20
+#include <compare>
+#endif
+
 namespace amc {
 
 struct Foo {
@@ -34,6 +38,10 @@ struct Foo {
 
   operator int32_t() const { return _i; }
 
+#ifdef AMC_CXX20
+  auto operator<=>(const Foo &o) const { return _i <=> o._i; }
+#endif
+
   void *_ptr;
   int8_t _c;
   int16_t _i;
@@ -43,6 +51,10 @@ struct TriviallyCopyableType {
   TriviallyCopyableType(int32_t i = 0) : _c(0U), _i(static_cast<int16_t>(i)) {}
 
   operator int32_t() const { return _i; }
+
+#ifdef AMC_CXX20
+  auto operator<=>(const TriviallyCopyableType &o) const { return _i <=> o._i; }
+#endif
 
   int8_t _c;
   int16_t _i;
@@ -65,6 +77,10 @@ struct NonCopyableType {
 
   bool operator==(const NonCopyableType &o) const { return _i == o._i; }
 
+#ifdef AMC_CXX20
+  auto operator<=>(const NonCopyableType &o) const { return _i <=> o._i; }
+#endif
+
   operator int32_t() const { return _i; }
 
   int _i;
@@ -79,6 +95,10 @@ struct SimpleNonTriviallyCopyableType {
 
   operator int32_t() const { return _i; }
 
+#ifdef AMC_CXX20
+  auto operator<=>(const SimpleNonTriviallyCopyableType &o) const { return _i <=> o._i; }
+#endif
+
   int _i;
 };
 
@@ -86,6 +106,10 @@ struct NonTrivialType {
   NonTrivialType(uint32_t i = 0U) : _i(i) {}
 
   operator uint32_t() const { return _i; }
+
+#ifdef AMC_CXX20
+  auto operator<=>(const NonTrivialType &o) const { return _i <=> o._i; }
+#endif
 
   uint32_t _i;
 };
@@ -242,9 +266,14 @@ struct ComplexType {
   }
 
   operator uint32_t() const { return _i; }
+
+#ifdef AMC_CXX20
+  auto operator<=>(const ComplexType &o) const { return _i <=> o._i; }
+#else
   bool operator==(const ComplexType &o) const { return _i == o._i; }
   bool operator<(const ComplexType &o) const { return _i < o._i; }
   bool operator>(const ComplexType &o) const { return _i > o._i; }
+#endif
 
   using trivially_relocatable =
       typename std::conditional<IsTriviallyRelocatable, std::true_type, std::false_type>::type;

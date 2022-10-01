@@ -34,16 +34,21 @@
 #endif
 
 #if defined(_MSC_VER)
-#if _MSVC_LANG > 201703L
-#define AMC_CXX20 1
-#endif
+
+#define AMC_CXX14 1
 
 #if _MSVC_LANG >= 201703L
 #define AMC_CXX17 1
 #define AMC_SMALLSET 1
 #endif
 
-#define AMC_CXX14 1
+#if _MSVC_LANG >= 202002L
+#define AMC_CXX20 1
+#endif
+
+#if _MSVC_LANG > 202002L
+#define AMC_CXX23 1
+#endif
 
 #else
 #if __cplusplus >= 201402L
@@ -55,7 +60,12 @@
 #define AMC_SMALLSET 1
 #endif
 
-#if __cplusplus > 201703L
+#if __cplusplus >= 202002L
 #define AMC_CXX20 1
 #endif
+
+#if __cplusplus > 202002L
+#define AMC_CXX23 1
+#endif
+
 #endif

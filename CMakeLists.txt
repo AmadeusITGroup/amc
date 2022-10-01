@@ -47,9 +47,9 @@ if(AMC_ENABLE_ASAN AND NOT MSVC)
 endif()
 
 if (AMC_PEDANTIC)
-  message(STATUS "Compile without non standard features")
+  message(STATUS "AMC - Compile without non standard features")
 else()
-  message(STATUS "Compile with non standard features")
+  message(STATUS "AMC - Compile with non standard features")
   add_compile_definitions(AMC_NONSTD_FEATURES)
 endif()
 
