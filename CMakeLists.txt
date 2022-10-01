@@ -1,15 +1,15 @@
 cmake_minimum_required (VERSION 3.14)
 
 project(amc 
-  VERSION 2.4.0
+  VERSION 2.5.0
   DESCRIPTION "Header base library of C++ containers"
   LANGUAGES CXX
 )
 
 # This library needs C++11, except for SmallSet which requires std::variant from C++17.
 # Emulations of newer C++ functions is provided for non C++14 / C++17 compilers.
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard")
+set(CMAKE_CXX_EXTENSIONS OFF CACHE STRING "Deactivate C++ extensions for maximum portability")
 
 ##
 ## MAIN_PROJECT CHECK
