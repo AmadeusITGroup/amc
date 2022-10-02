@@ -23,43 +23,39 @@ class SetListTest : public ::testing::Test {
 };
 
 typedef ::testing::Types<
-// clang-format off
 #ifdef AMC_SMALLSET
-                         SmallSet<char, 2>,
-                         SmallSet<char, 3>,
-                         SmallSet<char, 10>,
-                         SmallSet<uint32_t, 4, std::greater<uint32_t>>,
-                         SmallSet<char, 5, std::less<char>, amc::allocator<char>>,
-                         SmallSet<char, 6, std::less<char>, std::allocator<char>>,
-                         SmallSet<char, 10, std::less<char>, amc::allocator<char>, FlatSet<char>>,
-                         SmallSet<uint32_t, 1, std::greater<uint32_t>, amc::allocator<uint32_t>>,
-                         SmallSet<int64_t, 2, std::less<int64_t>, std::allocator<int64_t>, FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>>>,
-                         SmallSet<uint16_t, 3, std::less<uint16_t>, amc::allocator<uint16_t>>,
-                         SmallSet<uint8_t, 10, std::less<uint8_t>, std::allocator<uint8_t>>,
-                         SmallSet<int32_t, 4, std::greater<int32_t>, std::allocator<int32_t>>,
-                         SmallSet<ComplexTriviallyRelocatableType, 8>, 
-                         SmallSet<ComplexTriviallyRelocatableType, 5, std::less<ComplexTriviallyRelocatableType>, amc::allocator<ComplexTriviallyRelocatableType>, FlatSet<ComplexTriviallyRelocatableType>>, 
-                         SmallSet<Foo, 7>,
-                         SmallSet<Foo, 14, std::less<Foo>, amc::allocator<Foo>, FlatSet<Foo, std::less<Foo>, amc::allocator<Foo>, SmallVector<Foo, 50>>>,
+    SmallSet<char, 2>, SmallSet<char, 3>, SmallSet<char, 10>, SmallSet<uint32_t, 4, std::greater<uint32_t>>,
+    SmallSet<char, 5, std::less<char>, amc::allocator<char>>, SmallSet<char, 6, std::less<char>, std::allocator<char>>,
+    SmallSet<char, 10, std::less<char>, amc::allocator<char>, FlatSet<char>>,
+    SmallSet<uint32_t, 1, std::greater<uint32_t>, amc::allocator<uint32_t>>,
+    SmallSet<int64_t, 2, std::less<int64_t>, std::allocator<int64_t>,
+             FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>>>,
+    SmallSet<uint16_t, 3, std::less<uint16_t>, amc::allocator<uint16_t>>,
+    SmallSet<uint8_t, 10, std::less<uint8_t>, std::allocator<uint8_t>>,
+    SmallSet<int32_t, 4, std::greater<int32_t>, std::allocator<int32_t>>, SmallSet<ComplexTriviallyRelocatableType, 8>,
+    SmallSet<ComplexTriviallyRelocatableType, 5, std::less<ComplexTriviallyRelocatableType>,
+             amc::allocator<ComplexTriviallyRelocatableType>, FlatSet<ComplexTriviallyRelocatableType>>,
+    SmallSet<Foo, 7>,
+    SmallSet<Foo, 14, std::less<Foo>, amc::allocator<Foo>,
+             FlatSet<Foo, std::less<Foo>, amc::allocator<Foo>, SmallVector<Foo, 50>>>,
 #endif
-                         FlatSet<uint32_t, std::less<uint32_t>, FixedCapacityVector<uint32_t, 20>::allocator_type, FixedCapacityVector<uint32_t, 20> >,
-                         FlatSet<char>,
-                         FlatSet<uint32_t, std::greater<uint32_t>>, 
-                         FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 4>>,
-                         FlatSet<char, std::less<char>, std::allocator<char>>,
-                         FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 3>>,
-                         FlatSet<uint32_t, std::greater<uint32_t>, amc::allocator<uint32_t>, std::vector<uint32_t, amc::allocator<uint32_t>>>,
-                         FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>, SmallVector<int64_t, 6, std::allocator<int64_t>>>,
-                         FlatSet<uint16_t, std::less<uint16_t>, amc::allocator<uint16_t>, SmallVector<uint16_t, 2>>,
-                         FlatSet<uint8_t, std::greater<uint8_t>, std::allocator<uint8_t>, SmallVector<uint8_t, 11, std::allocator<uint8_t>>>,
-                         FlatSet<int32_t, std::less<int32_t>, std::allocator<int32_t>>,
-                         FlatSet<ComplexTriviallyRelocatableType>,
-                         FlatSet<ComplexTriviallyRelocatableType, std::less<ComplexTriviallyRelocatableType>, amc::allocator<ComplexTriviallyRelocatableType>, SmallVector<ComplexTriviallyRelocatableType, 6>>,
-                         FlatSet<Foo>, 
-                         FlatSet<Foo, std::less<Foo>, std::allocator<Foo>, SmallVector<Foo, 5, std::allocator<Foo>, int16_t>> 
-    >
+    FlatSet<char>,
+    FlatSet<uint32_t, std::less<uint32_t>, FixedCapacityVector<uint32_t, 20>::allocator_type,
+            FixedCapacityVector<uint32_t, 20>>,
+    FlatSet<uint32_t, std::greater<uint32_t>>,
+    FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 4>>,
+    FlatSet<char, std::less<char>, std::allocator<char>>,
+    FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 3>>,
+    FlatSet<uint32_t, std::greater<uint32_t>, amc::allocator<uint32_t>,
+            std::vector<uint32_t, amc::allocator<uint32_t>>>,
+    FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>, SmallVector<int64_t, 6, std::allocator<int64_t>>>,
+    FlatSet<uint16_t, std::less<uint16_t>, amc::allocator<uint16_t>, SmallVector<uint16_t, 2>>,
+    FlatSet<uint8_t, std::greater<uint8_t>, std::allocator<uint8_t>, SmallVector<uint8_t, 11, std::allocator<uint8_t>>>,
+    FlatSet<int32_t, std::less<int32_t>, std::allocator<int32_t>>, FlatSet<ComplexTriviallyRelocatableType>,
+    FlatSet<ComplexTriviallyRelocatableType, std::less<ComplexTriviallyRelocatableType>,
+            amc::allocator<ComplexTriviallyRelocatableType>, SmallVector<ComplexTriviallyRelocatableType, 6>>,
+    FlatSet<Foo>, FlatSet<Foo, std::less<Foo>, std::allocator<Foo>, SmallVector<Foo, 5, std::allocator<Foo>, int16_t>>>
     SetsType;
-// clang-format on
 TYPED_TEST_SUITE(SetListTest, SetsType, );
 
 TYPED_TEST(SetListTest, DefaultConstructor) {
@@ -119,7 +115,7 @@ TYPED_TEST(SetListTest, Iteration) {
     cpy.insert(*it);
   }
   EXPECT_EQ(s, cpy);
-  for (const auto& v : s) {
+  for (const auto &v : s) {
     EXPECT_NE(s.find(v), s.end());
   }
 }
@@ -303,6 +299,28 @@ TYPED_TEST(SetListTest, ComparisonOperators) {
     EXPECT_LT(s, TypeParam({1, 3, 5}));
   }
 }
+
+#ifdef AMC_CXX20
+TYPED_TEST(SetListTest, EraseIf) {
+  using ValueType = typename TypeParam::value_type;
+  using SizeType = typename TypeParam::size_type;
+  TypeParam s1{1, 2, 3};
+  EXPECT_EQ(erase_if(s1, [](const ValueType &v) { return v > ValueType{2}; }), SizeType{1});
+  EXPECT_EQ(s1, TypeParam({1, 2}));
+
+  TypeParam s2{1, 4, 3};
+  EXPECT_EQ(erase_if(s2, [](const ValueType &v) { return (v % 2) == 0; }), SizeType{1});
+  EXPECT_EQ(s2, TypeParam({1, 3}));
+
+  TypeParam s3{1, 4, 3, 7};
+  EXPECT_EQ(erase_if(s3, [](const ValueType &v) { return v < ValueType{4}; }), SizeType{2});
+  EXPECT_EQ(s3, TypeParam({4, 7}));
+
+  TypeParam s4{1, 2, 3, 1, 2, 3, 4};
+  EXPECT_EQ(erase_if(s4, [](const ValueType &v) { return v > ValueType{2}; }), SizeType{2});
+  EXPECT_EQ(s4, TypeParam({1, 2, 1, 2}));
+}
+#endif
 
 #ifdef AMC_SMALLSET
 TEST(SetTest, SmallSetSizeTest) {
@@ -519,7 +537,7 @@ TEST(SmallSetTest, MergeDifferentCompare) {
 TEST(FlatSetTest, SpecificPointerMethods) {
   using SetType = FlatSet<int>;
   SetType s{-2, 0, 2, 3, 4, 6, 19};
-  const SetType::value_type* pValue = s.data();  // to ensure return type of data() is a pointer
+  const SetType::value_type *pValue = s.data();  // to ensure return type of data() is a pointer
   EXPECT_EQ(pValue[0], -2);
   EXPECT_EQ(s[1], 0);
   EXPECT_EQ(s.at(2), 2);

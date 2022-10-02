@@ -403,16 +403,18 @@ class SmallSet {
   iterator erase(const_iterator pos, typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
     return isSmall() ? _vec.erase(pos) : _set.erase(pos);
   }
+
+  template <class I = const_iterator>
+  iterator erase(const_iterator pos, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
+    return isSmall() ? iterator(_vec.erase(pos.toVecIt())) : iterator(_set.erase(pos.toSetIt()));
+  }
+
   template <class I = const_iterator>
   iterator erase(const_iterator first, const_iterator last,
                  typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
     return isSmall() ? _vec.erase(first, last) : _set.erase(first, last);
   }
 
-  template <class I = const_iterator>
-  iterator erase(const_iterator pos, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
-    return isSmall() ? iterator(_vec.erase(pos.toVecIt())) : iterator(_set.erase(pos.toSetIt()));
-  }
   template <class I = const_iterator>
   iterator erase(const_iterator first, const_iterator last,
                  typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
@@ -537,6 +539,20 @@ class SmallSet {
     }
     return _set <=> o._set;
   }
+
+  template <class Pred>
+  friend size_type erase_if(SmallSet &c, Pred pred) {
+    auto oldSize = c.size();
+    for (auto i = c.begin(); i != c.end();) {
+      if (pred(*i)) {
+        i = c.erase(i);
+      } else {
+        ++i;
+      }
+    }
+    return oldSize - c.size();
+  }
+
 #else
 
   // Comparison operators are provided for compliance with std::set but could be painful for performances
@@ -653,4 +669,5 @@ template <class T, uintmax_t N, class Compare, class Alloc, class SetType>
 inline void swap(SmallSet<T, N, Compare, Alloc, SetType> &lhs, SmallSet<T, N, Compare, Alloc, SetType> &rhs) {
   lhs.swap(rhs);
 }
+
 }  // namespace amc
