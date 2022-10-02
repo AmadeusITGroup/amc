@@ -407,6 +407,13 @@ class FlatSet : private Compare {
   }
 #endif
 
+#ifdef AMC_CXX20
+  template <class Pred>
+  friend size_type erase_if(FlatSet &c, Pred pred) {
+    return erase_if(c._sortedVector, pred);
+  }
+#endif
+
  private:
   template <class, class, class, class>
   friend class FlatSet;
@@ -486,4 +493,5 @@ template <class T, class Compare, class Alloc, class VecType>
 inline void swap(FlatSet<T, Compare, Alloc, VecType> &lhs, FlatSet<T, Compare, Alloc, VecType> &rhs) {
   lhs.swap(rhs);
 }
+
 }  // namespace amc

@@ -1272,6 +1272,10 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   iterator insert(const_iterator pos, std::initializer_list<T> list) { return insert(pos, list.begin(), list.end()); }
 
+  /// @brief Erases element at position in the vector. A 'large' SmallVector will not become small even if the size can
+  /// fit in its inline storage.
+  /// @param position iterator in a valid range of the vector, that is >= begin and < end
+  /// @return iterator to the element immediately after the removed one
   iterator erase(const_iterator position) {
     assert(position >= this->cbegin() && position < cend());
     iterator it = const_cast<iterator>(position);
@@ -1488,10 +1492,30 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   void swap(Vector &o) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) { this->swap_impl(o); }
 
   void shrink_to_fit() { this->shrink_impl(N); }
+
+#ifdef AMC_CXX20
+  template <class V>
+  friend size_type erase(Vector &c, const V &value) {
+    auto it = std::remove(c.begin(), c.end(), value);
+    auto r = std::distance(it, c.end());
+    c.erase(it, c.end());
+    return r;
+  }
+
+  template <class Pred>
+  friend size_type erase_if(Vector &c, Pred pred) {
+    auto it = std::remove_if(c.begin(), c.end(), pred);
+    auto r = std::distance(it, c.end());
+    c.erase(it, c.end());
+    return r;
+  }
+#endif
 };
 
 template <class T, class A, class S, class G, S N>
-void swap(Vector<T, A, S, G, N> &lhs, Vector<T, A, S, G, N> &rhs) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) {
+inline void swap(Vector<T, A, S, G, N> &lhs,
+                 Vector<T, A, S, G, N> &rhs) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) {
   lhs.swap(rhs);
 }
+
 }  // namespace amc

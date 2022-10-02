@@ -199,34 +199,68 @@ TEST(VectorTest, Operators) {
 #endif
 }
 
+#ifdef AMC_CXX20
+TEST(VectorTest, Erase) {
+  using VectorType = vector<int>;
+
+  VectorType v1{1, 2, 3};
+  EXPECT_EQ(erase(v1, 2), 1U);
+  EXPECT_EQ(v1, VectorType({1, 3}));
+
+  VectorType v2{1, 4, 3};
+  EXPECT_EQ(erase(v2, 2), 0U);
+  EXPECT_EQ(v2, VectorType({1, 4, 3}));
+
+  VectorType v3{1, 4, 3, -4};
+  EXPECT_EQ(erase(v3, 1), 1U);
+  EXPECT_EQ(v3, VectorType({4, 3, -4}));
+
+  VectorType v4{1, 2, 3, 1, 2, 3, 4};
+  EXPECT_EQ(erase(v4, 3), 2U);
+  EXPECT_EQ(v4, VectorType({1, 2, 1, 2, 4}));
+}
+
+TEST(VectorTest, EraseIf) {
+  using VectorType = vector<int>;
+
+  VectorType v1{1, 2, 3};
+  EXPECT_EQ(erase_if(v1, [](int v) { return v > 2; }), 1U);
+  EXPECT_EQ(v1, VectorType({1, 2}));
+
+  VectorType v2{1, 4, 3};
+  EXPECT_EQ(erase_if(v2, [](int v) { return (v % 2) == 0; }), 1U);
+  EXPECT_EQ(v2, VectorType({1, 3}));
+
+  VectorType v3{1, 4, 3, -4};
+  EXPECT_EQ(erase_if(v3, [](int v) { return v < 2; }), 2U);
+  EXPECT_EQ(v3, VectorType({4, 3}));
+
+  VectorType v4{1, 2, 3, 1, 2, 3, 4};
+  EXPECT_EQ(erase_if(v4, [](int v) { return v > 2; }), 3U);
+  EXPECT_EQ(v4, VectorType({1, 2, 1, 2}));
+}
+#endif
+
 template <typename T>
 class VectorRefTest : public ::testing::Test {
  public:
   using List = typename std::list<T>;
 };
 
-// clang-format off
 typedef ::testing::Types<
-    FixedCapacityVector<int32_t, 1000>, 
-    FixedCapacityVector<TriviallyCopyableType, 1000>, 
+    FixedCapacityVector<int32_t, 1000>, FixedCapacityVector<TriviallyCopyableType, 1000>,
     FixedCapacityVector<ComplexNonTriviallyRelocatableType, 1000>,
-    FixedCapacityVector<ComplexTriviallyRelocatableType, 1000>, 
-    FixedCapacityVector<NonTriviallyRelocatableType, 1000>,
+    FixedCapacityVector<ComplexTriviallyRelocatableType, 1000>, FixedCapacityVector<NonTriviallyRelocatableType, 1000>,
 
-    SmallVector<int32_t, 80>, 
-    SmallVector<TriviallyCopyableType, 90>,
-    SmallVector<int32_t, 100, std::allocator<int32_t> >,
-    SmallVector<TriviallyCopyableType, 110, std::allocator<TriviallyCopyableType> >,
-    SmallVector<ComplexNonTriviallyRelocatableType, 120>, 
-    SmallVector<ComplexTriviallyRelocatableType, 130>,
-    SmallVector<NonTriviallyRelocatableType, 140>, 
-    vector<int32_t>, 
-    vector<TriviallyCopyableType>,
+    SmallVector<int32_t, 80>, SmallVector<TriviallyCopyableType, 90>,
+    SmallVector<int32_t, 100, std::allocator<int32_t>>,
+    SmallVector<TriviallyCopyableType, 110, std::allocator<TriviallyCopyableType>>,
+    SmallVector<ComplexNonTriviallyRelocatableType, 120>, SmallVector<ComplexTriviallyRelocatableType, 130>,
+    SmallVector<NonTriviallyRelocatableType, 140>, vector<int32_t>, vector<TriviallyCopyableType>,
     vector<ComplexNonTriviallyRelocatableType>,
-    vector<ComplexTriviallyRelocatableType, std::allocator<ComplexTriviallyRelocatableType> >,
-    SmallVector<NonTriviallyRelocatableType, 0U, std::allocator<NonTriviallyRelocatableType>, uint64_t> >
+    vector<ComplexTriviallyRelocatableType, std::allocator<ComplexTriviallyRelocatableType>>,
+    SmallVector<NonTriviallyRelocatableType, 0U, std::allocator<NonTriviallyRelocatableType>, uint64_t>>
     MyTypesForRef;
-// clang-format on
 TYPED_TEST_SUITE(VectorRefTest, MyTypesForRef, );
 
 template <class T, class A, class S, class G, S N>
