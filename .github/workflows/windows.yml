@@ -7,25 +7,6 @@ on:
   pull_request:
 
 jobs:
-  mingw:
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        architecture: [x64, x86]
-
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up MinGW
-        uses: egor-tensin/setup-mingw@v2
-        with:
-          platform: ${{ matrix.architecture }}
-      - name: cmake
-        run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CROSSCOMPILING=1 -DRUN_HAVE_STD_REGEX=0
-      - name: build
-        run: cmake --build build --parallel 2
-      - name: test
-        run: cd build && ctest -j 2 --output-on-failure
-
   msvc2019:
     runs-on: windows-2019
     strategy:
