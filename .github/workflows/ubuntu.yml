@@ -11,13 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: [g++-5, g++-7, g++-9, g++-11]
+        compiler: [g++-7, g++-9, g++-11]
     steps:
       - uses: actions/checkout@v2
       - name: Install compiler
         run: |
-          echo "deb http://dk.archive.ubuntu.com/ubuntu/ xenial main" | sudo tee -a /etc/apt/sources.list
-          echo "deb http://dk.archive.ubuntu.com/ubuntu/ xenial universe" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://dk.archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
@@ -31,12 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: [g++-6, g++-8, g++-10]
+        compiler: [g++-8, g++-10, g++-12]
     steps:
       - uses: actions/checkout@v2
       - name: Install compiler
         run: |
-          echo "deb http://dk.archive.ubuntu.com/ubuntu/ bionic main universe" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://dk.archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
@@ -50,18 +49,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: ["6.0", "8", "10", "12"]
+        compiler: ["15", "17"]
     steps:
       - uses: actions/checkout@v2
-      - name: Install compiler
-        run: sudo apt-get install clang++-${{ matrix.compiler }}
-        if: matrix.compiler == '6.0' || matrix.compiler == '8'
       - name: Install compiler
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh ${{ matrix.compiler }}
-        if: matrix.compiler != '6.0' && matrix.compiler != '8'
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Release
       - name: build
@@ -73,18 +68,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: ["7", "9", "11", "13"]
+        compiler: ["16"]
     steps:
       - uses: actions/checkout@v2
-      - name: Install compiler
-        run: sudo apt-get install clang++-${{ matrix.compiler }}
-        if: matrix.compiler == '7'
       - name: Install compiler
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh ${{ matrix.compiler }}
-        if: matrix.compiler != '7'
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug
       - name: build
@@ -93,11 +84,11 @@ jobs:
         run: cd build && ctest -j 2 --output-on-failure
 
   ci_test_standards:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         standard: [11, 14, 17, 20]
-        compiler: [g++-11, clang++-14]
+        compiler: [g++-11]
     steps:
       - uses: actions/checkout@v2
       - name: Install compiler
