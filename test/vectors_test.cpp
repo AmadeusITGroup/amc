@@ -366,12 +366,15 @@ TEST(VectorTest, CustomOperations) {
 }
 
 TEST(VectorTest, NonCopyableType) {
-  using NonCopyableTypeVectorType = FixedCapacityVector<NonCopyableType, 10>;
+  using NonCopyableTypeVectorType = SmallVector<NonCopyableType, 6>;
   NonCopyableTypeVectorType v(6);
   EXPECT_EQ(v.front(), NonCopyableType());
   EXPECT_EQ(v.back(), NonCopyableType());
   v.resize(7);
   EXPECT_EQ(v[6], NonCopyableType());
+
+  v.emplace_back(1);
+  EXPECT_EQ(v.back(), NonCopyableType(1));
 }
 
 #ifdef AMC_NONSTD_FEATURES

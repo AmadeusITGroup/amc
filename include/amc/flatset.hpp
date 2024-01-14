@@ -2,11 +2,9 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
-#include <limits>
 #include <utility>
 
 #include "allocator.hpp"
@@ -79,6 +77,8 @@ class FlatSet : private Compare {
     node_type(node_type &&o) noexcept(std::is_nothrow_move_constructible<value_type>::value) = default;
     node_type &operator=(const node_type &) = delete;
     node_type &operator=(node_type &&o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
+
+    ~node_type() = default;
 
     bool empty() const noexcept { return !_optV.has_value(); }
     explicit operator bool() const noexcept { return _optV.has_value(); }

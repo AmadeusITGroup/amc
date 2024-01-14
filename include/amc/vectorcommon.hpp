@@ -69,7 +69,7 @@ inline void shift_right(T *first, SizeType n, SizeType count) noexcept {
   (void)amc::uninitialized_relocate_n(first, n, first + count);
 }
 
-/// Fill 'count' 'v' values at memory starting at 'first', with first 'n' slots on inintialized memory,
+/// Fill 'count' 'v' values at memory starting at 'first', with first 'n' slots on initialized memory,
 /// and next 'count - n' slots on uninitialized memory if there is overlap
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
 inline void fill_after_shift(T *first, SizeType n, SizeType count, const T &v) {
@@ -110,7 +110,7 @@ inline void assign_n(ForwardIt first, SizeType count, T *d_first, SizeType) {
 }
 
 /// Copy 'count' elements starting at 'first' to 'pos' location
-/// To be used in conjonction with 'shift_right'
+/// To be used in conjunction with 'shift_right'
 template <class ForwardIt, class SizeType, class T,
           typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
 inline void copy_after_shift(ForwardIt first, SizeType n, SizeType count, T *pos) {
@@ -184,7 +184,7 @@ inline void erase_at(T *first, SizeType count) {
 /// Requirements: n < count
 template <class T, class SizeType, typename std::enable_if<!std::is_trivially_copyable<T>::value, bool>::type = true>
 inline void fill(T *first, SizeType n, SizeType count, const T &v) {
-  // uninitialize fill first for slightly better exception safety
+  // uninitialized fill first for slightly better exception safety
   std::uninitialized_fill_n(first + n, count - n, v);
   std::fill_n(first, n, v);
 }
@@ -517,7 +517,7 @@ class StdVectorBase : private Alloc {
   void move_assign(StdVectorBase &o, SizeType) noexcept {
     if (_storage) {
       amc::destroy_n(_storage, _size);
-      freeStorage();  // Compared to swap, we can free memory directly for move assigment
+      freeStorage();  // Compared to swap, we can free memory directly for move assignment
     }
     _storage = amc::exchange(o._storage, nullptr);
     _capa = amc::exchange(o._capa, 0);
@@ -566,11 +566,12 @@ class StdVectorBase : private Alloc {
   iterator dynStorage() const noexcept { return _storage; }
 
  private:
-  SizeType _capa = 0, _size = 0;
-  T *_storage = nullptr;
-
   void shrink();
   void freeStorage() noexcept;
+
+  SizeType _capa = 0;
+  SizeType _size = 0;
+  T *_storage = nullptr;
 };
 
 template <class T, class Alloc, class SizeType>
@@ -619,7 +620,7 @@ class SmallVectorBase : private Alloc {
   /// for this special configuration: we will set size to MAX in this case.
   /// Maximum size and capacity would make no sense in a SmallVector for a small state, because it could not grow
   /// (it could be transformed into a FixedCapacityVector, or, if larger size is needed, SizeType could be upgraded
-  /// to a larger type). This invalid configuration is catched in a static_assert in SmallVector class.
+  /// to a larger type). This invalid configuration is caught in a static_assert in SmallVector class.
   explicit SmallVectorBase(SizeType inplaceCapa) noexcept : _capa(0), _size(inplaceCapa) {}
 
   SmallVectorBase(SizeType inplaceCapa, const Alloc &alloc) noexcept : Alloc(alloc), _capa(0), _size(inplaceCapa) {}
@@ -774,9 +775,6 @@ class SmallVectorBase : private Alloc {
   iterator dynStorage() const noexcept { return _storage.dyn(); }
 
  private:
-  SizeType _capa, _size;
-  ElemWithPtrStorage<T> _storage;
-
   static inline void SwapDynamicBuffer(SmallVectorBase &vDynBuf,
                                        SmallVectorBase &vSmall) noexcept(is_swap_noexcept<T>::value) {
     T *oDynStorage = vDynBuf._storage.dyn();
@@ -787,6 +785,9 @@ class SmallVectorBase : private Alloc {
   void shrink();
   void resetToSmall(SizeType);
   void freeStorage() noexcept;
+
+  SizeType _capa, _size;
+  ElemWithPtrStorage<T> _storage;
 };
 
 template <class T, class Alloc, class SizeType>

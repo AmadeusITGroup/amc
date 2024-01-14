@@ -71,7 +71,7 @@ class SmallSetIteratorCommon {
   using pointer = const T *;
   using reference = const T &;
 
-  // For a set, only equality and unequality operators are defined
+  // For a set, only equality and un-equality operators are defined
 #ifdef AMC_CXX20
   bool operator==(const SmallSetIteratorCommon &) const noexcept = default;
 #else
@@ -469,29 +469,29 @@ class SmallSet {
         grow();
       }
       _set.merge(o._set);
-    } else {
-      bool small = isSmall();
-      for (auto oit = o._vec.begin(); oit != o._vec.end();) {
-        FindFunctor<T> fFunc(key_comp(), *oit);
-        if (small) {
-          if (std::none_of(_vec.begin(), _vec.end(), fFunc)) {
-            if (isSmallContFull()) {
-              grow();
-              small = false;
-              _set.insert(std::move(*oit));
-            } else {
-              _vec.push_back(std::move(*oit));
-            }
-            oit = o._vec.erase(oit);
+      return;
+    }
+    bool small = isSmall();
+    for (auto oit = o._vec.begin(); oit != o._vec.end();) {
+      FindFunctor<T> fFunc(key_comp(), *oit);
+      if (small) {
+        if (std::none_of(_vec.begin(), _vec.end(), fFunc)) {
+          if (isSmallContFull()) {
+            grow();
+            small = false;
+            _set.insert(std::move(*oit));
           } else {
-            ++oit;
+            _vec.push_back(std::move(*oit));
           }
+          oit = o._vec.erase(oit);
         } else {
-          if (_set.insert(std::move(*oit)).second) {
-            oit = o._vec.erase(oit);
-          } else {
-            ++oit;
-          }
+          ++oit;
+        }
+      } else {
+        if (_set.insert(std::move(*oit)).second) {
+          oit = o._vec.erase(oit);
+        } else {
+          ++oit;
         }
       }
     }

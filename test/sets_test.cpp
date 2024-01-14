@@ -4,7 +4,6 @@
 #include <amc/config.hpp>
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
-#include <initializer_list>
 #include <list>
 #ifdef AMC_SMALLSET
 #include <amc/smallset.hpp>
@@ -68,8 +67,10 @@ TYPED_TEST(SetListTest, Insert) {
   TypeParam s;
   s.insert(8);
   s.insert(15);
+  s.insert(8);
   EXPECT_EQ(s.size(), 2U);
   EXPECT_FALSE(s.empty());
+  EXPECT_TRUE(s.contains(15));
 }
 
 TYPED_TEST(SetListTest, Emplace) {
