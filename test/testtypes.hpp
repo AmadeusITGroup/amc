@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <memory>
-#include <stdexcept>
+#include <new>
+#include <utility>
 
 #ifdef AMC_CXX20
 #include <compare>
@@ -78,7 +78,7 @@ struct NonCopyableType {
   bool operator==(const NonCopyableType &o) const { return _i == o._i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const NonCopyableType &o) const { return _i <=> o._i; }
+  auto operator<=>(const NonCopyableType &o) const = default;
 #endif
 
   operator int32_t() const { return _i; }
@@ -96,7 +96,7 @@ struct SimpleNonTriviallyCopyableType {
   operator int32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const SimpleNonTriviallyCopyableType &o) const { return _i <=> o._i; }
+  auto operator<=>(const SimpleNonTriviallyCopyableType &o) const = default;
 #endif
 
   int _i;
@@ -108,7 +108,7 @@ struct NonTrivialType {
   operator uint32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const NonTrivialType &o) const { return _i <=> o._i; }
+  auto operator<=>(const NonTrivialType &o) const = default;
 #endif
 
   uint32_t _i;

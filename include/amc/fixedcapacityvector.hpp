@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <type_traits>
 
+#include "config.hpp"
 #include "vectorcommon.hpp"
 
 namespace amc {
