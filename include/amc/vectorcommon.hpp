@@ -1497,18 +1497,18 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 #ifdef AMC_CXX20
   template <class V>
   friend size_type erase(Vector &c, const V &value) {
-    auto it = std::remove(c.begin(), c.end(), value);
-    auto r = std::distance(it, c.end());
+    const auto it = std::remove(c.begin(), c.end(), value);
+    const auto r = std::distance(it, c.end());
     c.erase(it, c.end());
-    return r;
+    return static_cast<size_type>(r);
   }
 
   template <class Pred>
   friend size_type erase_if(Vector &c, Pred pred) {
-    auto it = std::remove_if(c.begin(), c.end(), pred);
-    auto r = std::distance(it, c.end());
+    const auto it = std::remove_if(c.begin(), c.end(), pred);
+    const auto r = std::distance(it, c.end());
     c.erase(it, c.end());
-    return r;
+    return static_cast<size_type>(r);
   }
 #endif
 };
