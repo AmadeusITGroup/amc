@@ -524,17 +524,17 @@ class SmallSet {
       if (o.isSmall()) {
         // We are both small, we need to sort both containers
         auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
-        return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
+        return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
                                                       oSortedPtrs.end(), Comp());
       }
       // we are small: as we do not order elements in the small container, we need to sort them.
-      return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
+      return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
                                                     Comp());
     }
     if (o.isSmall()) {
       // other is small: as we do not order elements in the small container, we need to sort them.
       auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
-      return std::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
+      return amc::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
                                                     Comp());
     }
     return _set <=> o._set;
