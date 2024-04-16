@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 
+#include "algorithm.hpp"
 #include "config.hpp"
 #include "memory.hpp"
 #include "type_traits.hpp"
@@ -15,9 +16,6 @@
 
 #ifdef AMC_CXX14
 #include <functional>
-#ifdef AMC_CXX20
-#include <compare>
-#endif
 #endif
 
 namespace amc {

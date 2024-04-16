@@ -9,16 +9,13 @@
 #include <utility>
 #include <variant>
 
+#include "algorithm.hpp"
 #include "allocator.hpp"
 #include "config.hpp"
 #include "fixedcapacityvector.hpp"
 #include "istransparent.hpp"
 #include "memory.hpp"
 #include "type_traits.hpp"
-
-#ifdef AMC_CXX20
-#include <compare>
-#endif
 
 namespace amc {
 
