@@ -13,7 +13,7 @@ jobs:
       matrix:
         compiler: [g++-7, g++-9, g++-11]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install compiler
         run: |
           echo "deb http://dk.archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
@@ -32,7 +32,7 @@ jobs:
       matrix:
         compiler: [g++-8, g++-10, g++-12]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install compiler
         run: |
           echo "deb http://dk.archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
@@ -51,7 +51,7 @@ jobs:
       matrix:
         compiler: ["15", "17"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install compiler
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -70,7 +70,7 @@ jobs:
       matrix:
         compiler: ["16"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install compiler
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -90,7 +90,7 @@ jobs:
         standard: [11, 14, 17, 20]
         compiler: [g++-11]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install compiler
         run: |
           sudo apt-get update
@@ -105,7 +105,7 @@ jobs:
   ci_nonstandard_features:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DAMC_PEDANTIC=ON -DCMAKE_BUILD_TYPE=Debug
       - name: build
