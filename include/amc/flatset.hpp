@@ -87,8 +87,8 @@ class FlatSet : private Compare {
     value_type &value() { return _optV.value(); }
     const value_type &value() const { return _optV.value(); }
 
-    void swap(node_type &o) noexcept(
-        std::is_nothrow_move_constructible<T>::value &&amc::is_nothrow_swappable<T>::value) {
+    void swap(node_type &o) noexcept(std::is_nothrow_move_constructible<T>::value &&
+                                     amc::is_nothrow_swappable<T>::value) {
       _optV.swap(o._optV);
     }
 
@@ -117,8 +117,8 @@ class FlatSet : private Compare {
   value_compare value_comp() const { return *this; }
   allocator_type get_allocator() const { return _sortedVector.get_allocator(); }
 
-  FlatSet() noexcept(std::is_nothrow_default_constructible<Compare>::value
-                         &&std::is_nothrow_default_constructible<VecType>::value) = default;
+  FlatSet() noexcept(std::is_nothrow_default_constructible<Compare>::value &&
+                     std::is_nothrow_default_constructible<VecType>::value) = default;
 
   explicit FlatSet(const Compare &comp, const Alloc &alloc = Alloc()) : Compare(comp), _sortedVector(alloc) {}
 

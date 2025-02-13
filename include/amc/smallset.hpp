@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -183,15 +184,19 @@ class SmallSet {
     node_type &operator=(const node_type &) = delete;
     node_type &operator=(node_type &&o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
 
+    ~node_type() = default;
+
     bool empty() const noexcept { return !_optV.has_value(); }
+
     explicit operator bool() const noexcept { return _optV.has_value(); }
+
     allocator_type get_allocator() const { return static_cast<allocator_type>(*this); }
 
     value_type &value() { return _optV.value(); }
     const value_type &value() const { return _optV.value(); }
 
-    void swap(node_type &o) noexcept(
-        std::is_nothrow_move_constructible<T>::value &&amc::is_nothrow_swappable<T>::value) {
+    void swap(node_type &o) noexcept(std::is_nothrow_move_constructible<T>::value &&
+                                     amc::is_nothrow_swappable<T>::value) {
       _optV.swap(o._optV);
     }
 
@@ -220,8 +225,8 @@ class SmallSet {
 
   allocator_type get_allocator() const { return _set.get_allocator(); }
 
-  SmallSet() noexcept(std::is_nothrow_default_constructible<VecType>::value
-                          &&std::is_nothrow_default_constructible<SetType>::value) = default;
+  SmallSet() noexcept(std::is_nothrow_default_constructible<VecType>::value &&
+                      std::is_nothrow_default_constructible<SetType>::value) = default;
 
   explicit SmallSet(const Compare &comp, const Alloc &alloc = Alloc()) : _set(comp, alloc) {}
 
@@ -419,8 +424,8 @@ class SmallSet {
                      : iterator(_set.erase(first.toSetIt(), last.toSetIt()));
   }
 
-  void swap(SmallSet &o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType &>())) &&noexcept(
-      std::declval<SetType>().swap(std::declval<SetType &>()))) {
+  void swap(SmallSet &o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType &>())) &&
+                                  noexcept(std::declval<SetType>().swap(std::declval<SetType &>()))) {
     _vec.swap(o._vec);
     _set.swap(o._set);
   }
@@ -521,17 +526,17 @@ class SmallSet {
       if (o.isSmall()) {
         // We are both small, we need to sort both containers
         auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
-        return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
+        return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
                                                       oSortedPtrs.end(), Comp());
       }
       // we are small: as we do not order elements in the small container, we need to sort them.
-      return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
+      return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
                                                     Comp());
     }
     if (o.isSmall()) {
       // other is small: as we do not order elements in the small container, we need to sort them.
       auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
-      return amc::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
+      return std::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
                                                     Comp());
     }
     return _set <=> o._set;

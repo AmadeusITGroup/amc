@@ -9,8 +9,8 @@ if (NOT GTest_FOUND)
 
   FetchContent_Declare(
     googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.14.0
+    URL https://github.com/google/googletest/archive/refs/tags/v1.16.0.tar.gz
+    URL_HASH SHA256=78c676fc63881529bf97bf9d45948d905a66833fbfa5318ea2cd7478cb98f399
   )
 
   # For Windows: Prevent overriding the parent project's compiler/linker settings

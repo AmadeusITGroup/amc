@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: ["15", "17"]
+        compiler: ["17", "19"]
     steps:
       - uses: actions/checkout@v4
       - name: Install compiler
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: ["16"]
+        compiler: ["20"]
     steps:
       - uses: actions/checkout@v4
       - name: Install compiler
@@ -88,7 +88,7 @@ jobs:
     strategy:
       matrix:
         standard: [11, 14, 17, 20]
-        compiler: [g++-11]
+        compiler: [g++-13]
     steps:
       - uses: actions/checkout@v4
       - name: Install compiler

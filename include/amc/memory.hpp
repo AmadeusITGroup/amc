@@ -276,7 +276,8 @@ template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt dest, MemMoveInALoop) {
   for (; first != last; ++dest, void(), ++first) {
     using ValueType = typename std::iterator_traits<InputIt>::value_type;
-    std::memcpy(std::addressof(*dest), std::addressof(*first), sizeof(ValueType));
+    ::std::memcpy(static_cast<void *>(std::addressof(*dest)), static_cast<const void *>(std::addressof(*first)),
+                  sizeof(ValueType));
   }
   return dest;
 }
@@ -287,7 +288,7 @@ inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt de
   typename std::iterator_traits<InputIt>::difference_type count = last - first;
   if (count > 0) {
     // We can use memcpy here as for uninitialized_copy, we know that ranges do not overlap
-    std::memcpy(dest, first, count * sizeof(ValueType));
+    ::std::memcpy(static_cast<void *>(dest), static_cast<const void *>(first), count * sizeof(ValueType));
   }
   return dest + count;
 }
@@ -310,7 +311,8 @@ template <class InputIt, class Size, class OutputIt>
 inline OutputIt uninitialized_copy_n_impl(InputIt first, Size count, OutputIt dest, MemMoveInALoop) {
   for (; count > 0; ++dest, void(), ++first, --count) {
     using ValueType = typename std::iterator_traits<InputIt>::value_type;
-    std::memcpy(std::addressof(*dest), std::addressof(*first), sizeof(ValueType));
+    ::std::memcpy(static_cast<void *>(std::addressof(*dest)), static_cast<const void *>(std::addressof(*first)),
+                  sizeof(ValueType));
   }
   return dest;
 }
@@ -320,7 +322,7 @@ inline OutputIt uninitialized_copy_n_impl(InputIt first, Size count, OutputIt de
   using ValueType = typename std::iterator_traits<InputIt>::value_type;
   // We can use memcpy here as for uninitialized_copy, we know that ranges do not overlap
   if (count > 0) {
-    std::memcpy(dest, first, count * sizeof(ValueType));
+    ::std::memcpy(static_cast<void *>(dest), static_cast<const void *>(first), count * sizeof(ValueType));
   }
   return dest + count;
 }
@@ -359,7 +361,8 @@ inline std::pair<InputIt, OutputIt> uninitialized_move_n_impl(InputIt first, Siz
                                                               MemMoveInALoop) {
   for (; count > 0; ++dest, void(), ++first, --count) {
     using ValueType = typename std::iterator_traits<InputIt>::value_type;
-    std::memcpy(std::addressof(*dest), std::addressof(*first), sizeof(ValueType));
+    ::std::memcpy(static_cast<void *>(std::addressof(*dest)), static_cast<const void *>(std::addressof(*first)),
+                  sizeof(ValueType));
   }
   return std::pair<InputIt, OutputIt>(first, dest);
 }
@@ -423,7 +426,7 @@ inline T *relocate_at_impl(T *elem, T *dest, MemMove) {
   AMC_PUSH_WARNING
   AMC_DISABLE_WARNING("-Wclass-memaccess")
 #endif
-  std::memmove(dest, elem, sizeof(T));
+  ::std::memmove(static_cast<void *>(dest), static_cast<const void *>(elem), sizeof(T));
 #if __GNUC__ >= 8
   AMC_POP_WARNING
 #endif
@@ -488,7 +491,7 @@ inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first,
     AMC_PUSH_WARNING
     AMC_DISABLE_WARNING("-Wclass-memaccess")
 #endif
-    std::memmove(dest, first, count * sizeof(ValueType));
+    ::std::memmove(static_cast<void *>(dest), static_cast<const void *>(first), count * sizeof(ValueType));
 #if __GNUC__ >= 8
     AMC_POP_WARNING
 #endif

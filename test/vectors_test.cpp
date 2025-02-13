@@ -482,6 +482,7 @@ TEST(VectorTest, TrickyPushBack) {
 TEST(VectorTest, SizeTypeNoIntegerOverflowFixedCapacityVector) {
   using IntVector = FixedCapacityVector<int, 255U>;
   using ExceptionType = std::out_of_range;
+
   static_assert(sizeof(IntVector::size_type) == 1U, "");
   IntVector v(250);
   constexpr int kTab[] = {1, 2, 3, 4, 5, 6};
