@@ -167,7 +167,7 @@ void Growing(benchmark::State &state) {
   using SizeType = typename VecType::size_type;
   TypeStats::_stats = TypeStats();
 
-  const SizeType kMaxSize = 10000U;
+  const SizeType kMaxSize = 1000000U;
   TypeStats::_stats.start();
   for (auto _ : state) {
     VecType v;
