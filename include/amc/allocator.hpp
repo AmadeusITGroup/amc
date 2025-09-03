@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdlib>
-#include <limits>
 #include <new>
 
 #include "config.hpp"

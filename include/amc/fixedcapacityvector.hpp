@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <type_traits>
 
@@ -38,6 +39,15 @@ struct ExceptionGrowingPolicy {
   static inline void Check(uintmax_t capacity, uintmax_t maxCapacity) {
     if (AMC_UNLIKELY(maxCapacity < capacity)) {
       throw std::out_of_range("Growing is not possible");
+    }
+  }
+};
+
+/// Throw std::bad_alloc in the case we attempt to exceed inplace capacity (same as std::inplace_vector)
+struct BadAllocGrowingPolicy {
+  static inline void Check(uintmax_t capacity, uintmax_t maxCapacity) {
+    if (AMC_UNLIKELY(maxCapacity < capacity)) {
+      throw std::bad_alloc();
     }
   }
 };
@@ -89,5 +99,9 @@ struct UncheckedGrowingPolicy {
 template <class T, uintmax_t N, class GrowingPolicy = vec::ExceptionGrowingPolicy,
           class SizeType = typename vec::SmallestSizeType<N>::type>
 using FixedCapacityVector = Vector<T, vec::EmptyAlloc, SizeType, GrowingPolicy, vec::SanitizeInlineSize<N, SizeType>()>;
+
+/// Compatibility with std::inplace_vector (C++26)
+template <class T, uintmax_t N>
+using inplace_vector = FixedCapacityVector<T, N, vec::BadAllocGrowingPolicy, std::size_t>;
 
 }  // namespace amc

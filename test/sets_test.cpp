@@ -262,7 +262,7 @@ TYPED_TEST(SetListTest, ReturnedIteratorsInsertErase) {
   EXPECT_EQ(s, TypeParam({1, 2, 4}));
 }
 
-TYPED_TEST(SetListTest, InsertRange) {
+TYPED_TEST(SetListTest, InsertIterators) {
   using value_type = typename TypeParam::value_type;
   const value_type kNewEls[] = {18, 4, 3, 6, 4};
   TypeParam s{1, 2, 3};
@@ -273,6 +273,22 @@ TYPED_TEST(SetListTest, InsertRange) {
   EXPECT_TRUE(s.contains(6));
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
 }
+
+#ifdef AMC_CXX23
+
+TYPED_TEST(SetListTest, InsertRange) {
+  using value_type = typename TypeParam::value_type;
+  const value_type kNewEls[] = {18, 4, 3, 6, 4};
+  TypeParam s{1, 2, 3};
+  s.insert_range(kNewEls);
+  EXPECT_NE(s.find(18), s.end());
+  EXPECT_FALSE(s.contains(5));
+  EXPECT_TRUE(s.contains(2));
+  EXPECT_TRUE(s.contains(6));
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
+}
+
+#endif
 
 TYPED_TEST(SetListTest, RangeConstructor) {
   using value_type = typename TypeParam::value_type;

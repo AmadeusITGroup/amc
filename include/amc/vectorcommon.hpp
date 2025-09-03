@@ -16,6 +16,9 @@
 
 #ifdef AMC_CXX14
 #include <functional>
+#ifdef AMC_CXX23
+#include <ranges>
+#endif
 #endif
 
 namespace amc {
@@ -799,6 +802,7 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
  public:
   using reference = T &;
   using iterator = T *;
+  using pointer = T *;
   using const_iterator = const T *;
   using size_type = SizeType;
 
@@ -823,6 +827,59 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
     amc::construct_at(endIt, std::forward<Args &&>(args)...);
     this->incrSize();
     return *endIt;
+  }
+
+  template <class... Args>
+  pointer try_emplace_back(Args &&...args) {
+    if (this->size() == this->capacity()) {
+      return nullptr;
+    }
+    iterator endIt = this->begin() + this->size();
+    amc::construct_at(endIt, std::forward<Args &&>(args)...);
+    this->incrSize();
+    return endIt;
+  }
+
+  template <class... Args>
+  reference unchecked_emplace_back(Args &&...args) {
+    iterator endIt = this->begin() + this->size();
+    amc::construct_at(endIt, std::forward<Args &&>(args)...);
+    this->incrSize();
+    return *endIt;
+  }
+
+  pointer try_push_back(const T &value) {
+    if (this->size() == this->capacity()) {
+      return nullptr;
+    }
+    iterator endIt = this->begin() + this->size();
+    *endIt = value;
+    this->incrSize();
+    return endIt;
+  }
+
+  pointer try_push_back(T &&value) {
+    if (this->size() == this->capacity()) {
+      return nullptr;
+    }
+    iterator endIt = this->begin() + this->size();
+    *endIt = std::move(value);
+    this->incrSize();
+    return endIt;
+  }
+
+  pointer unchecked_push_back(const T &value) {
+    iterator endIt = this->begin() + this->size();
+    *endIt = value;
+    this->incrSize();
+    return endIt;
+  }
+
+  pointer unchecked_push_back(T &&value) {
+    iterator endIt = this->begin() + this->size();
+    *endIt = std::move(value);
+    this->incrSize();
+    return endIt;
   }
 
  protected:
@@ -1209,6 +1266,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   void assign(std::initializer_list<T> ilist) { assign(ilist.begin(), ilist.end()); }
 
+#ifdef AMC_CXX23
+  template <class R>
+  void assign_range(R &&rg) {
+    assign(std::ranges::cbegin(rg), std::ranges::cend(rg));
+  }
+#endif
+
   iterator insert(const_iterator position, const_reference v) {
     assert(position >= this->cbegin() && position <= cend());
     const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, v, &position);
@@ -1270,6 +1334,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   iterator insert(const_iterator pos, std::initializer_list<T> list) { return insert(pos, list.begin(), list.end()); }
+
+#ifdef AMC_CXX23
+  template <class R>
+  iterator insert_range(const_iterator pos, R &&rg) {
+    return insert(pos, std::ranges::cbegin(rg), std::ranges::cend(rg));
+  }
+#endif
 
   /// @brief Erases element at position in the vector. A 'large' SmallVector will not become small even if the size can
   /// fit in its inline storage.
@@ -1359,6 +1430,33 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   void append(std::initializer_list<T> list) { append(list.begin(), list.end()); }
+
+#ifdef AMC_CXX23
+ public:
+  template <class R>
+  void append_range(R &&rg) {
+    append(std::ranges::cbegin(rg), std::ranges::cend(rg));
+  }
+
+  template <class R>
+  std::ranges::borrowed_iterator_t<R> try_append_range(R &&rg) {
+    using It = std::ranges::borrowed_iterator_t<R>;
+    It first = std::ranges::begin(rg);
+    if constexpr (std::random_access_iterator<It>) {
+      uintmax_t count = std::min<SizeType>(std::ranges::size(rg), this->capacity() - this->size());
+      amc::uninitialized_copy_n(first, static_cast<SizeType>(count), this->end());
+      this->setSize(this->size() + static_cast<SizeType>(count));
+      return first + count;
+    } else {
+      It last = std::ranges::end(rg);
+      for (; first != last && this->size() < this->capacity(); ++first) {
+        this->data()[this->size()] = *first;
+        this->incrSize();
+      }
+      return first;
+    }
+  }
+#endif
 
  protected:
   template <class... Args>

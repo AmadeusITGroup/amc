@@ -18,6 +18,10 @@
 #include "memory.hpp"
 #include "type_traits.hpp"
 
+#ifdef AMC_CXX23
+#include <ranges>
+#endif
+
 namespace amc {
 
 /**
@@ -335,6 +339,13 @@ class SmallSet {
     }
     return end();
   }
+
+#ifdef AMC_CXX23
+  template <class R>
+  void insert_range(R &&rg) {
+    insert(std::ranges::begin(rg), std::ranges::end(rg));
+  }
+#endif
 
   template <class... Args>
   std::pair<iterator, bool> emplace(Args &&...args) {
