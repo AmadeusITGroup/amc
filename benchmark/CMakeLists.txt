@@ -12,8 +12,8 @@ if (NOT benchmark_FOUND)
 
   FetchContent_Declare(
     googlebenchmark
-    URL https://github.com/google/benchmark/archive/refs/tags/v1.9.1.tar.gz
-    URL_HASH SHA256=32131c08ee31eeff2c8968d7e874f3cb648034377dfc32a4c377fa8796d84981
+    URL https://github.com/google/benchmark/archive/refs/tags/v1.9.4.tar.gz
+    URL_HASH SHA256=b334658edd35efcf06a99d9be21e4e93e092bd5f95074c1673d5c8705d95c104
   )
 
   FetchContent_MakeAvailable(googlebenchmark)

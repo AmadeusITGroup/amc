@@ -365,6 +365,63 @@ TEST(VectorTest, CustomOperations) {
   }
 }
 
+#ifdef AMC_CXX23
+TEST(VectorTest, AppendRange) {
+  using IntVectorType = SmallVector<int, 4>;
+  IntVectorType v{1, 2, 3};
+  std::list<int> l{4, 5, 6};
+  v.append_range(l);
+  EXPECT_EQ(v, IntVectorType({1, 2, 3, 4, 5, 6}));
+  v.append_range(std::vector<int>{7, 8, 9, 10, 11});
+  EXPECT_EQ(v, IntVectorType({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
+}
+
+TEST(VectorTest, InsertRange) {
+  using IntVectorType = SmallVector<int, 4>;
+  IntVectorType v{1, 2, 3};
+  std::list<int> l{4, 5, 6};
+  v.insert_range(v.begin() + 1, l);
+  EXPECT_EQ(v, IntVectorType({1, 4, 5, 6, 2, 3}));
+  v.insert_range(v.end(), std::vector<int>{7, 8, 9, 10, 11});
+  EXPECT_EQ(v, IntVectorType({1, 4, 5, 6, 2, 3, 7, 8, 9, 10, 11}));
+}
+
+TEST(VectorTest, TryAppendRangeInputIterator) {
+  using IntVectorType = FixedCapacityVector<int, 5>;
+  IntVectorType v{1, 2, 3};
+  std::list<int> rg{4, 5, 6};
+  EXPECT_EQ(v.try_append_range(rg), std::next(rg.begin(), 2));
+}
+
+TEST(VectorTest, TryAppendRangeRandomAccessIterator) {
+  using IntVectorType = FixedCapacityVector<int, 5>;
+  IntVectorType v{1, 2, 3};
+  std::vector<int> rg{4, 5, 6, 7};
+  EXPECT_EQ(v.try_append_range(rg), rg.begin() + 2);
+}
+
+#endif
+
+TEST(VectorTest, TryEmplacePushBack) {
+  using IntVectorType = FixedCapacityVector<int, 4>;
+  IntVectorType v;
+  for (int i = 0; i < 10; ++i) {
+    int *p;
+    if (i % 2 == 0) {
+      p = v.try_emplace_back(i);
+    } else {
+      p = v.try_push_back(i);
+    }
+    if (i < 4) {
+      EXPECT_NE(p, nullptr);
+      EXPECT_EQ(*p, i);
+    } else {
+      EXPECT_EQ(p, nullptr);
+    }
+    EXPECT_EQ(v.size(), static_cast<uint32_t>(std::min(i + 1, 4)));
+  }
+}
+
 TEST(VectorTest, NonCopyableType) {
   using NonCopyableTypeVectorType = SmallVector<NonCopyableType, 6>;
   NonCopyableTypeVectorType v(6);
