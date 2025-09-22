@@ -491,7 +491,8 @@ inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first,
     AMC_PUSH_WARNING
     AMC_DISABLE_WARNING("-Wclass-memaccess")
 #endif
-    ::std::memmove(static_cast<void *>(dest), static_cast<const void *>(first), count * sizeof(ValueType));
+    ::std::memmove(static_cast<void *>(dest), static_cast<const void *>(first),
+                   static_cast<std::size_t>(count) * sizeof(ValueType));
 #if __GNUC__ >= 8
     AMC_POP_WARNING
 #endif

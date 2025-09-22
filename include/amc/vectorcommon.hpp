@@ -1253,7 +1253,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// The behavior is undefined if either argument is an iterator into *this.
   template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
   void assign(InputIt first, InputIt last) {
-    uintmax_t count = std::distance(first, last);
+    uintmax_t count = static_cast<uintmax_t>(std::distance(first, last));
     if (static_cast<uintmax_t>(this->size()) < count) {
       this->adjustCapacity(count);
       assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
@@ -1315,7 +1315,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
   iterator insert(const_iterator position, InputIt first, InputIt last) {
     assert(position >= this->cbegin() && position <= cend());
-    typename std::iterator_traits<InputIt>::difference_type count = std::distance(first, last);
+    auto count = static_cast<uintmax_t>(std::distance(first, last));
     iterator pos;
     if (count > 0) {
       pos = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count, position);
@@ -1413,7 +1413,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// The behavior is undefined if first and last are iterators into *this
   template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
   void append(InputIt first, InputIt last) {
-    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + std::distance(first, last));
+    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + static_cast<uintmax_t>(std::distance(first, last)));
     this->setSize(static_cast<SizeType>(amc::uninitialized_copy(first, last, end()) - this->begin()));
   }
 
