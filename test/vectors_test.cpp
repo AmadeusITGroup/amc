@@ -42,8 +42,9 @@ typedef ::testing::Types<
 TYPED_TEST_SUITE(VectorTest, MyTypes, );
 
 template <class VecType>
-void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecType::value_type> expectedValues) {
+void ChecksAgainstTab(const VecType& cont, std::initializer_list<typename VecType::value_type> expectedValues) {
   using ValueType = typename VecType::value_type;
+  using SzType = typename VecType::size_type;
   using ConstIt = typename VecType::const_iterator;
   using RefVec = std::vector<ValueType>;
 
@@ -51,7 +52,7 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
   EXPECT_EQ(static_cast<uint32_t>(cont.size()), expectedValues.size());
   auto it = expectedValues.begin();
   EXPECT_EQ(cont.front(), *it);
-  for (const ValueType &v : cont) {
+  for (const ValueType& v : cont) {
     EXPECT_EQ(*it, v);
     ++it;
   }
@@ -64,7 +65,7 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
       gTabPos = 0;
     }
     ConstIt randIt = cpy.begin() + gTabPos;
-    const ValueType &randValue = expectedValues.begin()[gTabPos++];
+    const ValueType& randValue = expectedValues.begin()[gTabPos++];
     cpy.erase(randIt);
     VecType cpy2 = cont;
     RefVec refTab(cont.begin(), cont.end());
@@ -75,8 +76,8 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
     EXPECT_EQ(cpy2, cont);
     for (int i = std::max(0, v - 2);
          i < v + 3 && i <= static_cast<int>(cpy2.size()) && cpy2.size() + v <= cpy2.max_size(); ++i) {
-      refTab.insert(refTab.begin() + i, v, randValue + i);
-      cpy2.insert(cpy2.begin() + i, v, randValue + i);
+      refTab.insert(refTab.begin() + i, v, static_cast<ValueType>(randValue + i));
+      cpy2.insert(cpy2.begin() + i, static_cast<SzType>(v), static_cast<ValueType>(randValue + i));
       EXPECT_EQ(cpy2, VecType(refTab.begin(), refTab.end()));
     }
 
@@ -84,17 +85,18 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
     EXPECT_NE(cpy, cont);
     EXPECT_NE(std::find(cont.begin(), cont.end(), randValue), cont.end());
     if (gTabPos != expectedValues.size()) {
-      EXPECT_EQ(cpy[gTabPos - 1], cont[gTabPos]);
+      EXPECT_EQ(cpy[static_cast<typename VecType::size_type>(gTabPos - 1)],
+                cont[static_cast<typename VecType::size_type>(gTabPos)]);
     }
-    cpy.emplace(cpy.begin() + cpy.size() / 2, v / 2);
+    cpy.emplace(cpy.begin() + cpy.size() / 2, static_cast<ValueType>(v / 2));
     cpy2 = cpy;
     EXPECT_EQ(cpy2, cpy);
     cpy.shrink_to_fit();
     EXPECT_EQ(cpy2, cpy);
     cpy.clear();
     EXPECT_TRUE(cpy.empty());
-    cpy.resize(v + 1, 42);
-    refTab.assign(v + 1, 42);
+    cpy.resize(static_cast<SzType>(v + 1), ValueType(42));
+    refTab.assign(v + 1, ValueType(42));
     EXPECT_EQ(cpy, VecType(refTab.begin(), refTab.end()));
 
 #ifdef AMC_NONSTD_FEATURES
@@ -108,9 +110,9 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
     EXPECT_TRUE(cpy.empty() || cpy.back() == ValueType(42));
     for (int copyType = 0; copyType < 2; ++copyType) {
       // Test Copy constructor
-      cpy2.assign(v, 9 + v);
+      cpy2.assign(static_cast<SzType>(v), static_cast<ValueType>(9 + v));
       VecType newCont = cpy2;
-      refTab.assign(v, 9 + v);
+      refTab.assign(v, static_cast<ValueType>(9 + v));
       EXPECT_EQ(newCont, VecType(refTab.begin(), refTab.end()));
       for (int i = std::max(0, v - 1); i < v + 7; ++i) {
         // Test Copy assignment
@@ -118,18 +120,18 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
           VecType c;
           newCont.swap(c);
         }
-        VecType cpy3(i, 42 + v);
+        VecType cpy3(static_cast<SzType>(i), static_cast<ValueType>(42 + v));
         newCont = cpy3;
-        refTab.assign(i, 42 + v);
+        refTab.assign(i, static_cast<ValueType>(42 + v));
         EXPECT_EQ(newCont, VecType(refTab.begin(), refTab.end()));
       }
     }
 
     for (int moveType = 0; moveType < 2; ++moveType) {
       // Test Move constructor
-      cpy2.assign(v, 9 + v);
+      cpy2.assign(static_cast<SzType>(v), static_cast<ValueType>(9 + v));
       VecType newCont = std::move(cpy2);
-      refTab.assign(v, 9 + v);
+      refTab.assign(v, static_cast<ValueType>(9 + v));
       EXPECT_EQ(newCont, VecType(refTab.begin(), refTab.end()));
       for (int i = std::max(0, v - 1); i < v + 7; ++i) {
         // Test Move assignment
@@ -137,8 +139,8 @@ void ChecksAgainstTab(const VecType &cont, std::initializer_list<typename VecTyp
           VecType c;
           newCont.swap(c);
         }
-        newCont = VecType(i, 42 + v);
-        refTab.assign(i, 42 + v);
+        newCont = VecType(static_cast<SzType>(i), static_cast<ValueType>(42 + v));
+        refTab.assign(i, static_cast<ValueType>(42 + v));
         EXPECT_EQ(newCont, VecType(refTab.begin(), refTab.end()));
       }
     }
@@ -150,10 +152,10 @@ TYPED_TEST(VectorTest, Main) {
   using Type = typename VectorType::value_type;
   VectorType s;
   EXPECT_TRUE(s.empty());
-  s.push_back(8);
-  s.emplace_back(15);
-  s.insert(s.begin(), 3);
-  s.insert(s.end(), 8);
+  s.push_back(Type(8));
+  s.emplace_back(Type(15));
+  s.insert(s.begin(), Type(3));
+  s.insert(s.end(), Type(8));
   EXPECT_EQ(static_cast<unsigned int>(s.size()), 4U);
   EXPECT_EQ(s[1], Type(8));
   EXPECT_EQ(s.front(), Type(3));
@@ -264,13 +266,14 @@ typedef ::testing::Types<
 TYPED_TEST_SUITE(VectorRefTest, MyTypesForRef, );
 
 template <class T, class A, class S, class G, S N>
-inline bool operator==(const Vector<T, A, S, G, N> &lhs, const typename std::vector<T> &rhs) {
+inline bool operator==(const Vector<T, A, S, G, N>& lhs, const typename std::vector<T>& rhs) {
   return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
 
 TYPED_TEST(VectorRefTest, CompareToRefVector) {
   using VectorType = TypeParam;
   using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
   using RefVecType = typename std::vector<Type>;
 
   VectorType v(100U, 2);
@@ -280,8 +283,8 @@ TYPED_TEST(VectorRefTest, CompareToRefVector) {
   std::array<Type, 200U> kTab;
   std::iota(kTab.begin(), kTab.end(), 0);
   for (int i = 10, s = 19; i < 100; i += 7, s += 3) {
-    v.insert(std::min(v.begin() + i, v.end()), static_cast<uint32_t>(s), s);
-    r.insert(std::min(r.begin() + i, r.end()), static_cast<uint32_t>(s), s);
+    v.insert(std::min(v.begin() + i, v.end()), static_cast<SzType>(s), static_cast<Type>(s));
+    r.insert(std::min(r.begin() + i, r.end()), static_cast<typename RefVecType::size_type>(s), static_cast<Type>(s));
     EXPECT_EQ(v, r);
     v.erase(v.begin(), v.begin() + s);
     r.erase(r.begin(), r.begin() + s);
@@ -406,7 +409,7 @@ TEST(VectorTest, TryEmplacePushBack) {
   using IntVectorType = FixedCapacityVector<int, 4>;
   IntVectorType v;
   for (int i = 0; i < 10; ++i) {
-    int *p;
+    int* p;
     if (i % 2 == 0) {
       p = v.try_emplace_back(i);
     } else {
@@ -620,7 +623,7 @@ TEST(VectorTest, RelocatabilityAgainstRefVector) {
 }
 
 TEST(VectorTest, SmallVectorSizeOptimization) {
-  constexpr auto kPtrNbBytes = sizeof(char *);
+  constexpr auto kPtrNbBytes = sizeof(char*);
   static_assert(sizeof(SmallVector<char, kPtrNbBytes>) == sizeof(SmallVector<char, 1>),
                 "SmallVector size should be optimized");
   static_assert(kPtrNbBytes != 4 || sizeof(SmallVector<int16_t, 2>) == sizeof(SmallVector<int16_t, 1>),

@@ -34,16 +34,16 @@ struct CanReallocate
                                               has_reallocate<Alloc>::value> {};
 
 template <class Alloc, class T, class SizeType, typename std::enable_if<CanReallocate<Alloc>::value, bool>::type = true>
-inline T *Reallocate(Alloc &alloc, T *p, SizeType oldCapa, SizeType newCapa, SizeType size) {
+inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, SizeType size) {
   return alloc.reallocate(p, oldCapa, newCapa, size);
 }
 
 template <class Alloc, class T, class SizeType,
           typename std::enable_if<!CanReallocate<Alloc>::value, bool>::type = true>
-inline T *Reallocate(Alloc &alloc, T *p, SizeType oldCapa, SizeType newCapa, SizeType size) {
-  T *newPtr = alloc.allocate(newCapa);
+inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, SizeType size) {
+  T* newPtr = alloc.allocate(static_cast<size_t>(newCapa));
   (void)amc::uninitialized_relocate_n(p, size, newPtr);
-  alloc.deallocate(p, oldCapa);
+  alloc.deallocate(p, static_cast<size_t>(oldCapa));
   return newPtr;
 }
 
@@ -53,13 +53,13 @@ void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
   if (isSmall()) {
     SizeType oldCapa = _size == std::numeric_limits<SizeType>::max() ? _capa : _size;
     newCapa = SafeNextCapacity(oldCapa, minSize, exact);
-    T *dynStorage = this->allocate(newCapa);
+    T* dynStorage = this->allocate(static_cast<size_t>(newCapa));
     (void)amc::uninitialized_relocate_n(_storage.ptr(), _capa, dynStorage);
     _storage.setDyn(dynStorage);
     _size = _capa;
   } else {
     newCapa = SafeNextCapacity(_capa, minSize, exact);
-    _storage.setDyn(vec::Reallocate(static_cast<Alloc &>(*this), _storage.dyn(), _capa, newCapa, _size));
+    _storage.setDyn(vec::Reallocate(static_cast<Alloc&>(*this), _storage.dyn(), _capa, newCapa, _size));
   }
   _capa = newCapa;
 }
@@ -67,44 +67,44 @@ void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
   SizeType newCapa = SafeNextCapacity(_capa, minSize, exact);
-  _storage = vec::Reallocate(static_cast<Alloc &>(*this), _storage, _capa, newCapa, _size);
+  _storage = vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, newCapa, _size);
   _capa = newCapa;
 }
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::shrink() {
-  _storage.setDyn(vec::Reallocate(static_cast<Alloc &>(*this), _storage.dyn(), _capa, _size, _size));
+  _storage.setDyn(vec::Reallocate(static_cast<Alloc&>(*this), _storage.dyn(), _capa, _size, _size));
   _capa = _size;
 }
 
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::shrink() {
   if (_size == 0U) {
-    this->deallocate(_storage, _capa);
+    this->deallocate(_storage, static_cast<size_t>(_capa));
     _storage = nullptr;
   } else {
-    _storage = vec::Reallocate(static_cast<Alloc &>(*this), _storage, _capa, _size, _size);
+    _storage = vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, _size, _size);
   }
   _capa = _size;
 }
 
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
-  this->deallocate(_storage, _capa);
+  this->deallocate(_storage, static_cast<size_t>(_capa));
 }
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::resetToSmall(SizeType inplaceCapa) {
-  T *dynStorage = _storage.dyn();
+  T* dynStorage = _storage.dyn();
   (void)amc::uninitialized_relocate_n(dynStorage, _size, _storage.ptr());
-  this->deallocate(dynStorage, _capa);
+  this->deallocate(dynStorage, static_cast<size_t>(_capa));
   _capa = _size;
   _size = _size == inplaceCapa ? std::numeric_limits<SizeType>::max() : inplaceCapa;
 }
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
-  this->deallocate(_storage.dyn(), _capa);
+  this->deallocate(_storage.dyn(), static_cast<size_t>(_capa));
 }
 }  // namespace vec
 

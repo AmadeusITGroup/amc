@@ -116,7 +116,7 @@ TYPED_TEST(SetListTest, Iteration) {
     cpy.insert(*it);
   }
   EXPECT_EQ(s, cpy);
-  for (const auto &v : s) {
+  for (const auto& v : s) {
     EXPECT_NE(s.find(v), s.end());
   }
 }
@@ -322,19 +322,19 @@ TYPED_TEST(SetListTest, EraseIf) {
   using ValueType = typename TypeParam::value_type;
   using SizeType = typename TypeParam::size_type;
   TypeParam s1{1, 2, 3};
-  EXPECT_EQ(erase_if(s1, [](const ValueType &v) { return v > ValueType{2}; }), SizeType{1});
+  EXPECT_EQ(erase_if(s1, [](const ValueType& v) { return v > ValueType{2}; }), SizeType{1});
   EXPECT_EQ(s1, TypeParam({1, 2}));
 
   TypeParam s2{1, 4, 3};
-  EXPECT_EQ(erase_if(s2, [](const ValueType &v) { return (v % 2) == 0; }), SizeType{1});
+  EXPECT_EQ(erase_if(s2, [](const ValueType& v) { return (v % 2) == 0; }), SizeType{1});
   EXPECT_EQ(s2, TypeParam({1, 3}));
 
   TypeParam s3{1, 4, 3, 7};
-  EXPECT_EQ(erase_if(s3, [](const ValueType &v) { return v < ValueType{4}; }), SizeType{2});
+  EXPECT_EQ(erase_if(s3, [](const ValueType& v) { return v < ValueType{4}; }), SizeType{2});
   EXPECT_EQ(s3, TypeParam({4, 7}));
 
   TypeParam s4{1, 2, 3, 1, 2, 3, 4};
-  EXPECT_EQ(erase_if(s4, [](const ValueType &v) { return v > ValueType{2}; }), SizeType{2});
+  EXPECT_EQ(erase_if(s4, [](const ValueType& v) { return v > ValueType{2}; }), SizeType{2});
   EXPECT_EQ(s4, TypeParam({1, 2, 1, 2}));
 }
 #endif
@@ -531,8 +531,8 @@ TYPED_TEST(SetListEquivalentType, FindEquivalentType) {
 
 TYPED_TEST(SetListEquivalentType, ContainsEquivalentType) {
   TypeParam s{-3, 0, 6, 7};
-  EXPECT_TRUE(s.contains(false));
-  EXPECT_FALSE(s.contains(true));
+  EXPECT_TRUE(s.contains(0LL));
+  EXPECT_FALSE(s.contains(1LL));
   EXPECT_TRUE(s.contains(7ULL));
   EXPECT_FALSE(s.contains(static_cast<char>(4)));
 }
@@ -554,7 +554,7 @@ TEST(SmallSetTest, MergeDifferentCompare) {
 TEST(FlatSetTest, SpecificPointerMethods) {
   using SetType = FlatSet<int>;
   SetType s{-2, 0, 2, 3, 4, 6, 19};
-  const SetType::value_type *pValue = s.data();  // to ensure return type of data() is a pointer
+  const SetType::value_type* pValue = s.data();  // to ensure return type of data() is a pointer
   EXPECT_EQ(pValue[0], -2);
   EXPECT_EQ(s[1], 0);
   EXPECT_EQ(s.at(2), 2);
