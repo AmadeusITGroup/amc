@@ -36,7 +36,8 @@ option(AMC_PEDANTIC "If set, only standard API (in respect to STL) will be defin
 # Activate all warnings, in all build modes
 if(MAIN_PROJECT)
   if (MSVC)
-    add_compile_options(/W4)
+    # Replace CMake's default /W3 with /W4 to avoid D9025 warning
+    string(REGEX REPLACE "/W[0-3]" "/W4" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   else()
     add_compile_options(-Wall -Wextra -pedantic)
   endif()
