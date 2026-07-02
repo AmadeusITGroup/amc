@@ -299,15 +299,50 @@ inline void assign_after_shift(T* pos, V&& v) {
   amc::construct_at(pos, std::forward<V>(v));
 }
 
-/// Insert 'v' at 'pos', shifting 'n' elements starting at 'pos' to the right
-template <class T, class SizeType, class V>
-inline void insert_n(T* pos, SizeType n, V&& v) {
+/// Insert an lvalue 'v' at 'pos', shifting the 'n' elements starting at 'pos' one slot to the right.
+///
+/// 'v' is allowed to be a reference to an element already stored in the vector: this is the case exercised by the
+/// 'const_reference' overload of 'vector::insert' and the C++ Standard requires it to be well-defined, even when
+/// the referenced element is located at or after 'pos' - i.e. among the elements that this function shifts.
+/// Nothing in [vector.modifiers] forbids 'v' from aliasing the container for this overload, contrary to the range
+/// and 'InputIt' overloads, which explicitly document that their arguments must not be iterators into '*this'.
+///
+/// 'shift_right' moves the elements of '[pos, pos + n)' one slot to the right, so if 'v' aliases one of them the
+/// object it designates ends up one slot further, at 'std::addressof(v) + 1'. We therefore detect this situation
+/// *before* shifting and bind our source reference accordingly; reading it back *after* the shift then yields the
+/// intended value. Only a copy is performed, leaving the (shifted) source element untouched, exactly as mandated.
+template <class T, class SizeType>
+inline void insert_n(T* pos, SizeType n, const T& v) {
   if (n == 0) {
-    amc::construct_at(pos, std::forward<V>(v));
+    amc::construct_at(pos, v);
+  } else {
+    // If 'v' aliases one of the elements about to be shifted, 'shift_right' relocates it one slot to the right.
+    // Bind the source to its post-shift location so the correct value is read once the shift has been performed.
+    const T* pv = std::addressof(v);
+    const T& src = (pv >= pos && pv < pos + n) ? *(pv + 1) : v;
+    shift_right(pos, n);
+    try {
+      assign_after_shift(pos, src);
+    } catch (...) {
+      shift_left(pos + 1, n);
+      throw;
+    }
+  }
+}
+
+/// Insert an rvalue 'v' at 'pos', shifting the 'n' elements starting at 'pos' one slot to the right.
+///
+/// This overload is selected by the 'T&&' overload of 'vector::insert'. As permitted by [res.on.arguments], an
+/// rvalue argument is treated as a temporary: 'v' is assumed *not* to alias the vector, so - unlike the 'const T&'
+/// overload above - no aliasing check is performed and the element is moved into place.
+template <class T, class SizeType>
+inline void insert_n(T* pos, SizeType n, T&& v) {
+  if (n == 0) {
+    amc::construct_at(pos, std::move(v));
   } else {
     shift_right(pos, n);
     try {
-      assign_after_shift(pos, std::forward<V>(v));
+      assign_after_shift(pos, std::move(v));
     } catch (...) {
       shift_left(pos + 1, n);
       throw;
@@ -1299,8 +1334,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       if (nElemsToShift == 0) {
         std::uninitialized_fill_n(pos, count, newV);
       } else {
+        // 'newV' may alias one of the elements about to be shifted (e.g. inserting several copies of an element
+        // located at or after 'pos'). 'shift_right' relocates that element 'count' slots to the right, so bind the
+        // source to its post-shift location to keep reading the intended value - same rationale as 'insert_n'.
+        const T* pv = std::addressof(newV);
+        const_reference src = (pv >= pos && pv < pos + nElemsToShift) ? *(pv + count) : newV;
         shift_right(pos, nElemsToShift, count);
-        fill_after_shift(pos, nElemsToShift, count, newV);
+        fill_after_shift(pos, nElemsToShift, count, src);
       }
       this->setSize(this->size() + count);
     } else {
@@ -1368,9 +1408,18 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     this->incrSize();
   }
 
+  /// Appends the given element value to the end of the container, moving from 'v'.
+  ///
+  /// 'v' may be an rvalue reference to an element already stored in this vector (for instance
+  /// 'v.push_back(std::move(v.front()))'). If a reallocation is needed to grow the container, that element is
+  /// relocated into the freshly allocated storage and the original reference would be left dangling. We therefore
+  /// route 'v' through the same 'adjustCapacity' helper as the 'const_reference' overload: it returns a reference
+  /// to 'v' at its (possibly relocated) location, which we only read from once the growth has taken place. The
+  /// 'const_cast' is safe here because 'v' always binds to a non-const 'T' object, whether it lives inside or
+  /// outside the vector.
   void push_back(T&& v) {
-    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U);
-    amc::construct_at(end(), std::move(v));
+    const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, v);
+    amc::construct_at(end(), std::move(const_cast<reference>(newV)));
     this->incrSize();
   }
 

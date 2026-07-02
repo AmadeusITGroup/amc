@@ -6,7 +6,9 @@
 #include <array>
 #include <initializer_list>
 #include <list>
+#include <memory>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #include "testhelpers.hpp"
@@ -537,6 +539,119 @@ TEST(VectorTest, TrickyPushBack) {
   const SimpleNonTriviallyCopyableType expectedRes2[] = {38, 42, 38, 38, 38, 41, 40, 39};
   EXPECT_EQ(v.size(), sizeof(expectedRes2) / sizeof(expectedRes2[0]));
   EXPECT_TRUE(std::equal(v.begin(), v.end(), expectedRes2));
+}
+
+// Inserting a 'const_reference' that aliases an element located at or after the insertion point must be
+// well-defined (see GitHub issue #63): 'shift_right' moves the source element out of the way, so a naive
+// implementation ends up inserting a neighbouring value instead of the intended one.
+TYPED_TEST(VectorTest, InsertSelfReferenceAfterPosition) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  for (bool inplace : {true, false}) {
+    VectorType vec;
+    for (int i = 0; i < 6; ++i) {
+      vec.push_back(Type(i + 1));  // {1, 2, 3, 4, 5, 6}
+    }
+    if (inplace) {
+      vec.reserve(vec.size() + 1U);  // no reallocation will happen during insert
+    } else {
+      vec.shrink_to_fit();  // force a reallocation during insert for growable vectors
+    }
+    // Insert element #4 (value 5) at index 2. Its source is *after* the insertion point, hence among the
+    // elements shifted to the right by insert.
+    typename VectorType::iterator p = vec.insert(vec.begin() + 2, vec[4]);
+    EXPECT_EQ(*p, Type(5));
+    EXPECT_EQ(static_cast<uint32_t>(vec.size()), 7U);
+    const Type kExpected[] = {Type(1), Type(2), Type(5), Type(3), Type(4), Type(5), Type(6)};
+    EXPECT_TRUE(std::equal(vec.begin(), vec.end(), kExpected));
+  }
+}
+
+// Same aliasing concern as above, but for the 'insert(pos, count, const_reference)' overload: 'fill_after_shift'
+// must read the source value from its post-shift location when it aliases a shifted element.
+TYPED_TEST(VectorTest, InsertCountSelfReferenceAfterPosition) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
+  for (bool inplace : {true, false}) {
+    VectorType vec;
+    for (int i = 0; i < 6; ++i) {
+      vec.push_back(Type(i + 1));  // {1, 2, 3, 4, 5, 6}
+    }
+    if (inplace) {
+      vec.reserve(vec.size() + 3U);  // no reallocation will happen during insert
+    } else {
+      vec.shrink_to_fit();  // force a reallocation during insert for growable vectors
+    }
+    // Insert 3 copies of element #4 (value 5) at index 1. The source is among the shifted elements.
+    typename VectorType::iterator p = vec.insert(vec.begin() + 1, static_cast<SzType>(3), vec[4]);
+    EXPECT_EQ(*p, Type(5));
+    EXPECT_EQ(static_cast<uint32_t>(vec.size()), 9U);
+    const Type kExpected[] = {Type(1), Type(5), Type(5), Type(5), Type(2), Type(3), Type(4), Type(5), Type(6)};
+    EXPECT_TRUE(std::equal(vec.begin(), vec.end(), kExpected));
+  }
+}
+
+// Exact reproduction of the first scenario reported in GitHub issue #63.
+TEST(VectorTest, InsertSelfReferenceString) {
+  for (bool inplace : {true, false}) {
+    vector<std::string> vec;
+    const std::string str("very long string much longer than SSO");
+    vec.resize(6, str);
+    vec[3] = "a";
+    vec[5] = "b";
+    ASSERT_EQ(vec[4], str);
+    if (inplace) {
+      vec.reserve(vec.size() + 1U);
+    }
+    vector<std::string>::iterator p = vec.insert(vec.begin() + 3, vec[4]);
+    EXPECT_EQ(*p, str);
+    EXPECT_EQ(vec[3], str);
+    EXPECT_EQ(vec[4], "a");
+    EXPECT_EQ(vec[5], str);
+    EXPECT_EQ(vec[6], "b");
+  }
+}
+
+// Exact reproduction of the second scenario reported in GitHub issue #63: the rvalue overload of push_back
+// must handle an argument that aliases the vector, even when a reallocation is required to grow the container.
+TEST(VectorTest, PushBackRvalueSelfReference) {
+  vector<std::unique_ptr<int>> vec;
+  vec.reserve(5);
+  for (int i = 0; i < 5; ++i) {
+    vec.push_back(std::make_unique<int>(i));
+  }
+  ASSERT_EQ(vec.capacity(), vec.size());  // the next push_back must reallocate
+  int* d = vec.front().get();
+  vec.push_back(std::move(vec.front()));
+  EXPECT_EQ(vec.back().get(), d);  // the moved-from pointer landed at the back untouched
+  EXPECT_FALSE(vec.front());       // the source element has been moved from
+  EXPECT_NO_THROW(vec.clear());
+}
+
+template <class VectorType>
+void PushBackRvalueSelfReferenceGrowImpl() {
+  using Type = typename VectorType::value_type;
+  VectorType vec;
+  vec.reserve(5);
+  for (uint32_t i = 1; i <= 5; ++i) {
+    vec.push_back(Type(i));  // {1, 2, 3, 4, 5}
+  }
+  ASSERT_EQ(static_cast<uint32_t>(vec.capacity()), static_cast<uint32_t>(vec.size()));  // force a reallocation
+  const Type frontValue = vec.front();                                                  // == Type(1)
+  vec.push_back(std::move(vec.front()));
+  EXPECT_EQ(static_cast<uint32_t>(vec.size()), 6U);
+  EXPECT_EQ(vec.back(), frontValue);  // the front's value is preserved at the back despite the reallocation
+  const Type kMiddle[] = {Type(2), Type(3), Type(4), Type(5)};
+  EXPECT_TRUE(std::equal(vec.begin() + 1, vec.end() - 1, kMiddle));
+}
+
+// Same as above but forcing a reallocation for both the trivially and non trivially relocatable code paths.
+TEST(VectorTest, PushBackRvalueSelfReferenceGrow) {
+  PushBackRvalueSelfReferenceGrowImpl<vector<ComplexNonTriviallyRelocatableType>>();
+  PushBackRvalueSelfReferenceGrowImpl<vector<ComplexTriviallyRelocatableType>>();
+  PushBackRvalueSelfReferenceGrowImpl<SmallVector<ComplexNonTriviallyRelocatableType, 2>>();
+  PushBackRvalueSelfReferenceGrowImpl<SmallVector<ComplexTriviallyRelocatableType, 2>>();
 }
 
 TEST(VectorTest, SizeTypeNoIntegerOverflowFixedCapacityVector) {
