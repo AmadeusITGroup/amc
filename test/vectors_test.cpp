@@ -638,6 +638,52 @@ TYPED_TEST(VectorTest, InsertCountSelfReferenceAfterPosition) {
   }
 }
 
+// Same aliasing concern for 'emplace', whose arguments may reference an element of the vector (see LWG 2164).
+TYPED_TEST(VectorTest, EmplaceSelfReference) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  for (bool inplace : {true, false}) {
+    VectorType vec;
+    for (int i = 0; i < 6; ++i) {
+      vec.push_back(Type(i + 1));  // {1, 2, 3, 4, 5, 6}
+    }
+    if (inplace) {
+      vec.reserve(vec.size() + 2U);  // no reallocation will happen during emplace
+    } else {
+      vec.shrink_to_fit();  // force a reallocation during first emplace for growable vectors
+    }
+    // Emplace a copy of element #4 (value 5) at index 2. The source is among the shifted elements.
+    typename VectorType::iterator p = vec.emplace(vec.begin() + 2, vec[4]);
+    EXPECT_EQ(*p, Type(5));
+    // Emplace a copy of element #1 (value 2) at index 1. The source is the element at the emplace position.
+    p = vec.emplace(vec.begin() + 1, vec[1]);
+    EXPECT_EQ(*p, Type(2));
+    EXPECT_EQ(static_cast<uint32_t>(vec.size()), 8U);
+    const Type kExpected[] = {Type(1), Type(2), Type(2), Type(5), Type(3), Type(4), Type(5), Type(6)};
+    EXPECT_TRUE(std::equal(vec.begin(), vec.end(), kExpected));
+  }
+}
+
+// 'emplace' arguments may also reference an element of the vector indirectly, here through a pointer.
+template <class VectorType>
+void CheckEmplaceFromPointerToShiftedElement() {
+  using Type = typename VectorType::value_type;
+  VectorType vec{3, 2, 1};
+  vec.reserve(4U);                               // no reallocation will happen during emplace
+  vec.emplace(vec.begin() + 1, vec.data() + 2);  // Type(const Type *) copies the pointed element
+  const Type kExpected[] = {Type(3), Type(1), Type(2), Type(1)};
+  EXPECT_EQ(static_cast<uint32_t>(vec.size()), 4U);
+  EXPECT_TRUE(std::equal(vec.begin(), vec.end(), kExpected));
+}
+
+TEST(VectorTest, EmplaceFromPointerToShiftedElement) {
+  CheckEmplaceFromPointerToShiftedElement<vector<ComplexTriviallyRelocatableType>>();
+  CheckEmplaceFromPointerToShiftedElement<vector<ComplexNonTriviallyRelocatableType>>();
+  CheckEmplaceFromPointerToShiftedElement<SmallVector<ComplexNonTriviallyRelocatableType, 4>>();
+  CheckEmplaceFromPointerToShiftedElement<FixedCapacityVector<ComplexTriviallyRelocatableType, 4>>();
+  CheckEmplaceFromPointerToShiftedElement<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 4>>();
+}
+
 // Exact reproduction of the first scenario reported in GitHub issue #63.
 TEST(VectorTest, InsertSelfReferenceString) {
   for (bool inplace : {true, false}) {

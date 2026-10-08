@@ -135,15 +135,6 @@ inline void copy_after_shift(ForwardIt first, SizeType, SizeType count, T* pos) 
   amc::uninitialized_copy_n(first, count, pos);
 }
 
-/// Call destroy from a memory that has been moved from only for non trivially relocatable types
-template <class T, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void destroy_after_shift(T* pos) {
-  amc::destroy_at(pos);
-}
-
-template <class T, typename std::enable_if<amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void destroy_after_shift(T*) {}
-
 /// Shift 'n' elements starting at 'first' one slot back to the left
 /// Requirements: n != 0 with one slot of initialized memory at first - 1
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
@@ -259,37 +250,6 @@ inline void move_n(T* first, SizeType n, T* d_first, SizeType d_n) {
   (void)amc::uninitialized_relocate_n(first, n, d_first);
 }
 
-// Shift 'n' elements starting at 'first' one slot back to the left
-// Requirements: 'n' != 0 with one slot of uninitialized memory at first - 1
-template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void uninitialized_shift_left(T* first, SizeType n) noexcept(is_shift_nothrow<T>::value) {
-  amc::construct_at(first - 1, std::move(*first));  // move first element to uninitialized memory slot 'first - 1'
-  // move next 'n - 1' elements one slot to the left and destroy last moved element
-  amc::destroy_at(std::move(first + 1, first + n, first));
-}
-
-template <class T, class SizeType, typename std::enable_if<amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void uninitialized_shift_left(T* first, SizeType n) noexcept {
-  amc::uninitialized_relocate_n(first, n, first - 1);
-}
-
-/// Construct at 'pos' the T from 'args' parameters, shifting 'n' elements starting at 'pos' to the right
-template <class T, class SizeType, class... Args>
-inline void emplace_n(T* pos, SizeType n, Args&&... args) {
-  if (n == 0) {
-    amc::construct_at(pos, std::forward<Args>(args)...);
-  } else {
-    shift_right(pos, n);
-    destroy_after_shift(pos);
-    try {
-      amc::construct_at(pos, std::forward<Args>(args)...);
-    } catch (...) {
-      uninitialized_shift_left(pos + 1, n);
-      throw;
-    }
-  }
-}
-
 template <class T, class V, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
 inline void assign_after_shift(T* pos, V&& v) {
   *pos = std::forward<V>(v);
@@ -369,6 +329,39 @@ class ElemStorage {
  private:
   alignas(T) std::uint8_t _el[sizeof(T)];
 };
+
+/// Relocate the element 'e', constructed outside of the vector, at 'pos', shifting the 'n' elements starting at 'pos'
+/// one slot to the right.
+template <class T, class SizeType>
+inline void relocate_insert_n(T* pos, SizeType n, T* e) {
+  if (n == 0) {
+    amc::relocate_at(e, pos);
+  } else {
+    shift_right(pos, n);
+    try {
+      relocate_after_shift(e, pos);
+    } catch (...) {
+      shift_left(pos + 1, n);
+      throw;
+    }
+  }
+}
+
+/// Construct at 'pos' the T from 'args' parameters, shifting 'n' elements starting at 'pos' to the right.
+///
+/// 'args' may reference, directly or indirectly, an element of the vector, including one of those about to be shifted
+/// (the C++ Standard requires 'emplace' to support it, see LWG 2164). Therefore, like standard library
+/// implementations, the new element is constructed in a temporary storage before shifting any element.
+template <class T, class SizeType, class... Args>
+inline void emplace_n(T* pos, SizeType n, Args&&... args) {
+  if (n == 0) {
+    amc::construct_at(pos, std::forward<Args>(args)...);
+  } else {
+    ElemStorage<T> e;
+    amc::construct_at(e.ptr(), std::forward<Args>(args)...);
+    relocate_insert_n(pos, n, e.ptr());
+  }
+}
 
 /// This class represents a merge of a pointer and some inline storage elements.
 /// Thanks to this optimization, SmallVector behaves like a string type with SSO
@@ -988,17 +981,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
       SizeType idx = static_cast<SizeType>(position - this->begin());
       this->grow(this->size() + 1U);
       pos = this->begin() + idx;
-      if (nElemsToShift == 0) {
-        amc::relocate_at(e.ptr(), pos);
-      } else {
-        shift_right(pos, nElemsToShift);
-        try {
-          relocate_after_shift(e.ptr(), pos);
-        } catch (...) {
-          shift_left(pos + 1, nElemsToShift);
-          throw;
-        }
-      }
+      relocate_insert_n(pos, nElemsToShift, e.ptr());
     } else {
       pos = const_cast<iterator>(position);
       emplace_n(pos, nElemsToShift, std::forward<Args>(args)...);
