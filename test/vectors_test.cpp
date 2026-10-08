@@ -858,6 +858,26 @@ TEST(VectorTest, SmallVectorMoveAssignFromVector) {
   EXPECT_EQ(v.capacity(), 0U);
 }
 
+TEST(VectorTest, SmallVectorMoveAssignFromLargeDoesNotLeak) {
+  using SV = SmallVector<int, 2, BasicAllocatorWrapper<int, CountingAllocator>>;
+  // Move assign a large SmallVector to large ones of all sizes, including the empty one
+  for (int size = 0; size < 4; ++size) {
+    const int64_t nbLiveAllocations = CountingAllocator::NbLiveAllocations();
+    {
+      SV sv;
+      sv.reserve(10);
+      for (int i = 0; i < size; ++i) {
+        sv.push_back(i);
+      }
+      EXPECT_EQ(sv.capacity(), 10U);
+      SV o{5, 6, 7, 8};
+      sv = std::move(o);
+      EXPECT_EQ(sv, SV({5, 6, 7, 8}));
+    }
+    EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations);
+  }
+}
+
 template <typename T>
 class VectorTestUnalignedStorage : public ::testing::Test {
  public:
