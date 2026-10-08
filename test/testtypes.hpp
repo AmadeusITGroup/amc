@@ -358,6 +358,42 @@ class TestAllocator {
   char bytes[20];
 };
 
+/// Basic allocator counting its live allocations, to detect memory leaks without relying on sanitizers.
+class CountingAllocator {
+ public:
+  static int64_t &NbLiveAllocations() {
+    static int64_t nbLiveAllocations = 0;
+    return nbLiveAllocations;
+  }
+
+  void *allocate(size_t n) {
+    void *p = malloc(n);
+    if (!p) {
+      throw std::bad_alloc();
+    }
+    ++NbLiveAllocations();
+    return p;
+  }
+
+  void *reallocate(void *p, size_t, size_t newSz) {
+    void *newPtr = realloc(p, newSz);
+    if (!newPtr) {
+      throw std::bad_alloc();
+    }
+    if (!p) {
+      ++NbLiveAllocations();
+    }
+    return newPtr;
+  }
+
+  void deallocate(void *p, size_t) {
+    if (p) {
+      --NbLiveAllocations();
+    }
+    free(p);
+  }
+};
+
 struct BiggerAllocateException {};
 
 class TestReallocateAllocator {

@@ -615,7 +615,7 @@ class SmallVectorBase : private Alloc {
   void destroyFreeStorage() noexcept {
     if (isSmall()) {
       amc::destroy_n(_storage.ptr(), _capa);
-    } else if (_size != 0) {
+    } else {
       amc::destroy_n(_storage.dyn(), _size);
       freeStorage();
     }
