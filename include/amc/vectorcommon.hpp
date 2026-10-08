@@ -887,7 +887,7 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
       return nullptr;
     }
     iterator endIt = this->begin() + this->size();
-    *endIt = value;
+    amc::construct_at(endIt, value);
     this->incrSize();
     return endIt;
   }
@@ -897,21 +897,21 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
       return nullptr;
     }
     iterator endIt = this->begin() + this->size();
-    *endIt = std::move(value);
+    amc::construct_at(endIt, std::move(value));
     this->incrSize();
     return endIt;
   }
 
   pointer unchecked_push_back(const T& value) {
     iterator endIt = this->begin() + this->size();
-    *endIt = value;
+    amc::construct_at(endIt, value);
     this->incrSize();
     return endIt;
   }
 
   pointer unchecked_push_back(T&& value) {
     iterator endIt = this->begin() + this->size();
-    *endIt = std::move(value);
+    amc::construct_at(endIt, std::move(value));
     this->incrSize();
     return endIt;
   }
@@ -1498,7 +1498,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     } else {
       It last = std::ranges::end(rg);
       for (; first != last && this->size() < this->capacity(); ++first) {
-        this->data()[this->size()] = *first;
+        amc::construct_at(this->end(), *first);
         this->incrSize();
       }
       return first;
