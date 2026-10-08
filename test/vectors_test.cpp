@@ -405,15 +405,38 @@ TEST(VectorTest, TryAppendRangeRandomAccessIterator) {
   EXPECT_EQ(v.try_append_range(rg), rg.begin() + 2);
 }
 
+TEST(VectorTest, TryAppendRangeInputIteratorConstructElements) {
+  using ValueType = ComplexNonTriviallyRelocatableType;
+  using VectorType = FixedCapacityVector<ValueType, 3>;
+  std::list<ValueType> rg{1, 2, 3, 4};
+  VectorType v{0};
+
+  TypeStats& stats = TypeStats::_stats;
+  stats = TypeStats();
+  stats.start();
+  EXPECT_EQ(v.try_append_range(rg), std::next(rg.begin(), 2));
+  stats.end();
+
+  EXPECT_EQ(stats._nbCopyAssignments, 0U);
+  EXPECT_EQ(stats._nbMoveAssignments, 0U);
+  EXPECT_EQ(stats._nbCopyConstructs, 2U);
+  EXPECT_EQ(v, VectorType({0, 1, 2}));
+}
+
 #endif
 
 TEST(VectorTest, TryEmplacePushBack) {
-  using IntVectorType = FixedCapacityVector<int, 4>;
-  IntVectorType v;
+  using VectorType = FixedCapacityVector<Foo, 4>;
+  VectorType v;
   for (int i = 0; i < 10; ++i) {
-    int* p;
+    VectorType::pointer p;
     if (i % 2 == 0) {
-      p = v.try_emplace_back(i);
+      if (i == 0) {
+        p = v.unchecked_push_back(i);
+      } else {
+        p = v.try_emplace_back(i);
+      }
+
     } else {
       p = v.try_push_back(i);
     }
@@ -425,6 +448,29 @@ TEST(VectorTest, TryEmplacePushBack) {
     }
     EXPECT_EQ(v.size(), static_cast<uint32_t>(std::min(i + 1, 4)));
   }
+}
+
+TEST(VectorTest, TryUncheckedPushBackConstructElements) {
+  using ValueType = ComplexNonTriviallyRelocatableType;
+  using VectorType = FixedCapacityVector<ValueType, 4>;
+  const ValueType lvalue(42);
+  VectorType v;
+
+  TypeStats& stats = TypeStats::_stats;
+  stats = TypeStats();
+  stats.start();
+  EXPECT_NE(v.try_push_back(lvalue), nullptr);
+  EXPECT_NE(v.try_push_back(ValueType(43)), nullptr);
+  EXPECT_NE(v.unchecked_push_back(lvalue), nullptr);
+  EXPECT_NE(v.unchecked_push_back(ValueType(44)), nullptr);
+  EXPECT_EQ(v.try_push_back(lvalue), nullptr);
+  stats.end();
+
+  EXPECT_EQ(stats._nbCopyAssignments, 0U);
+  EXPECT_EQ(stats._nbMoveAssignments, 0U);
+  EXPECT_EQ(stats._nbCopyConstructs, 2U);
+  EXPECT_EQ(stats._nbMoveConstructs, 2U);
+  EXPECT_EQ(v, VectorType({42, 43, 42, 44}));
 }
 
 TEST(VectorTest, NonCopyableType) {
