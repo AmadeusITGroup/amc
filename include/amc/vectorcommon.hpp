@@ -711,13 +711,9 @@ class SmallVectorBase : private Alloc {
       // Besides, if 'this' is large, let's not shrink to small size and keep our dynamic memory for now.
       // To sum-up, in this context, we do not touch our capacity, only move and relocates o's elements
       move_n(o._storage.ptr(), o._capa, begin(), size());
-      if (o._size == kMaxSize) {
-        if (isSmall()) {
-          _size = kMaxSize;
-        }
-        o._size = inplaceCapa;
-      }
-      msize() = amc::exchange(o._capa, 0);
+      // Use setSize for both as it correctly handles the encoding of the full small state
+      setSize(o._capa);
+      o.setSize(0);
     } else {
       // Clear our stuff before stealing o's guts
       destroyFreeStorage();

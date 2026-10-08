@@ -878,6 +878,39 @@ TEST(VectorTest, SmallVectorMoveAssignFromLargeDoesNotLeak) {
   }
 }
 
+// Move assigning a small SmallVector should keep the capacity of both SmallVectors, whatever their sizes and states.
+template <class SV>
+void CheckSmallVectorMoveAssignFromSmall() {
+  static_assert(SV::kInlineCapacity == 4U, "values below are designed for 4 inline elements");
+  using Values = std::vector<typename SV::value_type>;
+  const std::vector<Values> smallValues{{}, {1}, {1, 2, 3}, {1, 2, 3, 4}};
+  std::vector<Values> lhsValuesList = smallValues;
+  lhsValuesList.push_back({1, 2, 3, 4, 5});  // large state
+  for (const Values& lhsValues : lhsValuesList) {
+    for (const Values& rhsValues : smallValues) {
+      SV lhs(lhsValues.begin(), lhsValues.end());
+      SV rhs(rhsValues.begin(), rhsValues.end());
+      const auto lhsCapacity = lhs.capacity();
+      lhs = std::move(rhs);
+      EXPECT_EQ(lhs, SV(rhsValues.begin(), rhsValues.end()));
+      EXPECT_EQ(lhs.capacity(), lhsCapacity);
+      EXPECT_TRUE(rhs.empty());
+      EXPECT_EQ(rhs.capacity(), 4U);
+      // Filling the remaining capacity should not grow
+      while (lhs.size() < lhsCapacity) {
+        lhs.push_back(0);
+      }
+      EXPECT_EQ(lhs.capacity(), lhsCapacity);
+    }
+  }
+}
+
+TEST(VectorTest, SmallVectorMoveAssignFromSmall) {
+  CheckSmallVectorMoveAssignFromSmall<SmallVector<int, 4>>();
+  CheckSmallVectorMoveAssignFromSmall<SmallVector<ComplexTriviallyRelocatableType, 4>>();
+  CheckSmallVectorMoveAssignFromSmall<SmallVector<ComplexNonTriviallyRelocatableType, 4>>();
+}
+
 template <typename T>
 class VectorTestUnalignedStorage : public ::testing::Test {
  public:
