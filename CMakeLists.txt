@@ -21,16 +21,14 @@ if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
 endif()
 
 # By default, build benchmarks only if not Debug and main project (benchs do not make sense in Debug)
-set(ASAN_BUILD OFF)
 set(BENCH_BUILD ${MAIN_PROJECT})
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(ASAN_BUILD ON)
   set(BENCH_BUILD OFF)
 endif()
 
 option(AMC_ENABLE_TESTS "Build the unit tests" ${MAIN_PROJECT})
 option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${BENCH_BUILD})
-option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" ${ASAN_BUILD})
+option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" OFF)
 option(AMC_PEDANTIC "If set, only standard API (in respect to STL) will be defined. Additional features are enabled when OFF" OFF)
 
 # Activate all warnings, in all build modes

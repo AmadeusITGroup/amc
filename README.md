@@ -134,7 +134,7 @@ This is only necessary for non trivially copyable types, because trivially copya
 | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | AMC_ENABLE_TESTS      | Build **amc** with unit tests (default if main project)                                                            |
 | AMC_ENABLE_BENCHMARKS | Build **amc** with benchmarks against STL (default if main project and Release mode)                               |
-| AMC_ENABLE_ASAN       | Build with Address Sanitizer mode (only GCC and Clang)                                                             |
+| AMC_ENABLE_ASAN       | Build with Address and Undefined Behavior Sanitizers (only GCC and Clang, **OFF** by default)                      |
 | AMC_PEDANTIC          | If **OFF**, non standard methods and constructors are added for containers (see [Other benefits](#other-benefits)) |
 
 ### As a main project
