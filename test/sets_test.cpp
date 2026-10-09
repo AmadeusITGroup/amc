@@ -462,6 +462,41 @@ TYPED_TEST(SetListExtractTest, Extract) {
   ref.emplace(16);
   EXPECT_EQ(s, ref);
 }
+
+// Inserting a node whose value is already present fails and leaves the node untouched: it keeps its value.
+TYPED_TEST(SetListExtractTest, InsertNodeAlreadyPresent) {
+  using SetType = TypeParam;
+  using ValueType = typename SetType::value_type;
+  using SizeType = typename SetType::size_type;
+  for (int nbElems : {2, 6}) {  // small and large states of SmallSets
+    SetType s;
+    for (int i = 0; i < nbElems; ++i) {
+      s.emplace(i);
+    }
+    SetType o;
+    o.emplace(1);
+
+    auto irt = s.insert(o.extract(1));
+    EXPECT_FALSE(irt.inserted);
+    ASSERT_FALSE(irt.node.empty());
+    EXPECT_EQ(irt.node.value(), ValueType(1));
+    EXPECT_EQ(*irt.position, ValueType(1));
+    EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems));
+
+    auto it = s.insert(s.end(), std::move(irt.node));
+    ASSERT_FALSE(irt.node.empty());
+    EXPECT_EQ(irt.node.value(), ValueType(1));
+    EXPECT_EQ(*it, ValueType(1));
+    EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems));
+
+    // a successful insertion empties the node
+    irt.node.value() = ValueType(nbElems + 10);
+    it = s.insert(s.end(), std::move(irt.node));
+    EXPECT_TRUE(irt.node.empty());
+    EXPECT_EQ(*it, ValueType(nbElems + 10));
+    EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems + 1));
+  }
+}
 #endif
 
 template <typename T>

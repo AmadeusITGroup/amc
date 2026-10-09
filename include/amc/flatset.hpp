@@ -227,22 +227,31 @@ class FlatSet : private Compare {
   void insert(std::initializer_list<value_type> ilist) { insert(ilist.begin(), ilist.end()); }
 
 #ifdef AMC_CXX17
+  /// If the insertion fails (equivalent element already present), the returned node keeps its value.
   insert_return_type insert(node_type &&nh) {
     insert_return_type irt{end(), false, std::move(nh)};
     if (irt.node) {
+      // the value is only moved from if it is inserted
       std::tie(irt.position, irt.inserted) = insert(std::move(*irt.node._optV));
-      irt.node._optV = std::nullopt;
+      if (irt.inserted) {
+        irt.node._optV = std::nullopt;
+      }
     }
     return irt;
   }
 
+  /// If the insertion fails (equivalent element already present), 'nh' is unchanged.
   iterator insert(const_iterator hint, node_type &&nh) {
-    if (nh) {
-      iterator retIt = insert(hint, std::move(*nh._optV));
-      nh._optV = std::nullopt;
-      return retIt;
+    if (!nh) {
+      return end();
     }
-    return end();
+    // the value is only moved from if it is inserted
+    const size_type oldSize = size();
+    iterator retIt = insert(hint, std::move(*nh._optV));
+    if (size() != oldSize) {
+      nh._optV = std::nullopt;
+    }
+    return retIt;
   }
 #endif
 
