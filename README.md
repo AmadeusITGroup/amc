@@ -3,6 +3,7 @@
 [![MacOS](https://github.com/AmadeusITGroup/amc/actions/workflows/macos.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/macos.yml)
 
 [![formatted](https://github.com/AmadeusITGroup/amc/actions/workflows/clang-format-check.yml/badge.svg)](https://github.com/AmadeusITGroup/amc/actions/workflows/clang-format-check.yml)
+[![codecov](https://codecov.io/gh/AmadeusITGroup/amc/branch/main/graph/badge.svg)](https://codecov.io/gh/AmadeusITGroup/amc)
 
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/AmadeusITGroup/amc/master/LICENSE)
 [![GitHub Releases](https://img.shields.io/github/release/AmadeusITGroup/amc.svg)](https://github.com/AmadeusITGroup/amc/releases)
@@ -26,6 +27,7 @@
   - [Build with CMake](#build-with-cmake)
     - [Options](#options)
     - [As a main project](#as-a-main-project)
+      - [Code coverage](#code-coverage)
     - [As a sub-project with cmake](#as-a-sub-project-with-cmake)
       - [With FetchContent](#with-fetchcontent)
       - [By installing amc](#by-installing-amc)
@@ -135,6 +137,7 @@ This is only necessary for non trivially copyable types, because trivially copya
 | AMC_ENABLE_TESTS      | Build **amc** with unit tests (default if main project)                                                            |
 | AMC_ENABLE_BENCHMARKS | Build **amc** with benchmarks against STL (default if main project and Release mode)                               |
 | AMC_ENABLE_ASAN       | Build with Address and Undefined Behavior Sanitizers (only GCC and Clang, **OFF** by default)                      |
+| AMC_ENABLE_COVERAGE   | Instrument the unit tests for code coverage and add a `coverage` target (only Clang, **OFF** by default)           |
 | AMC_PEDANTIC          | If **OFF**, non standard methods and constructors are added for containers (see [Other benefits](#other-benefits)) |
 
 ### As a main project
@@ -159,6 +162,18 @@ If not installed on your machine, `cmake` will retrieve them automatically thank
 To compile and launch the tests in `Debug` mode, simply launch
 
 `mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug .. && make && ctest`
+
+#### Code coverage
+
+Code coverage is measured with [LLVM source-based code coverage](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html), so it requires Clang, and `llvm-profdata` / `llvm-cov` of the same version (package `llvm-<version>` on Debian / Ubuntu).
+Configure with `AMC_ENABLE_COVERAGE` and build the `coverage` target:
+
+```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DAMC_ENABLE_COVERAGE=ON
+cmake --build build --target coverage
+```
+
+It runs all the unit tests and prints the coverage of each header of `include/amc`. The detailed report, with line and branch counts, is written in `build/coverage/html/index.html`, and an lcov export in `build/coverage/amc.lcov`.
 
 ### As a sub-project with cmake
 

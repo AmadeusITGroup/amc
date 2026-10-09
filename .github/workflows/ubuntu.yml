@@ -112,3 +112,40 @@ jobs:
         run: cmake --build build --parallel 2
       - name: test
         run: cd build && ctest -j 2 --output-on-failure
+
+  ci_coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Codecov upload with OIDC, no CODECOV_TOKEN secret needed (tokenless for pull requests from forks)
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install compiler
+        run: |
+          wget --retry-connrefused --waitretry=5 --tries=5 https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y llvm-21
+      - name: cmake
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-21 -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_COVERAGE=ON
+      - name: build, test and report coverage
+        run: cmake --build build --target coverage --parallel 2
+      - name: summary
+        run: |
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cat build/coverage/report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: upload to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: build/coverage/amc.lcov
+          disable_search: true
+          use_oidc: true
+          fail_ci_if_error: false # a Codecov outage should not fail the CI
+      - name: archive coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            build/coverage/html
+            build/coverage/amc.lcov
