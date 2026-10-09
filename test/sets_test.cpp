@@ -23,39 +23,36 @@ class SetListTest : public ::testing::Test {
   using List = typename std::list<T>;
 };
 
+// Each type exercises a distinct combination of what the sets depend on, as every type multiplies the compilation time
+// of the typed tests:
+//  - SmallSet: the container of the large state (std::set or FlatSet), the inline capacity (with a small capacity, most
+//    tests run in the large state), the comparator, the element type. The allocator is only used by the container of
+//    the large state.
+//  - FlatSet: the underlying vector (amc::vector, SmallVector, FixedCapacityVector, std::vector) and its allocator, the
+//    comparator, the element type.
 typedef ::testing::Types<
 #ifdef AMC_SMALLSET
-    SmallSet<char, 2>, SmallSet<char, 3>, SmallSet<char, 10>, SmallSet<uint32_t, 4, std::greater<uint32_t>>,
-    SmallSet<char, 5, std::less<char>, amc::allocator<char>>, SmallSet<char, 6, std::less<char>, std::allocator<char>>,
+    SmallSet<char, 2>, SmallSet<char, 10>, SmallSet<uint32_t, 4, std::greater<uint32_t>>,
+    SmallSet<uint32_t, 1, std::greater<uint32_t>>,
     SmallSet<char, 10, std::less<char>, amc::allocator<char>, FlatSet<char>>,
-    SmallSet<uint32_t, 1, std::greater<uint32_t>, amc::allocator<uint32_t>>,
     SmallSet<int64_t, 2, std::less<int64_t>, std::allocator<int64_t>,
              FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>>>,
-    SmallSet<uint16_t, 3, std::less<uint16_t>, amc::allocator<uint16_t>>,
-    SmallSet<uint8_t, 10, std::less<uint8_t>, std::allocator<uint8_t>>,
-    SmallSet<int32_t, 4, std::greater<int32_t>, std::allocator<int32_t>>, SmallSet<ComplexTriviallyRelocatableType, 8>,
+    SmallSet<ComplexTriviallyRelocatableType, 8>,
     SmallSet<ComplexTriviallyRelocatableType, 5, std::less<ComplexTriviallyRelocatableType>,
              amc::allocator<ComplexTriviallyRelocatableType>, FlatSet<ComplexTriviallyRelocatableType>>,
     SmallSet<Foo, 7>,
     SmallSet<Foo, 14, std::less<Foo>, amc::allocator<Foo>,
              FlatSet<Foo, std::less<Foo>, amc::allocator<Foo>, SmallVector<Foo, 50>>>,
 #endif
-    FlatSet<char>,
+    FlatSet<char>, FlatSet<uint32_t, std::greater<uint32_t>>,
     FlatSet<uint32_t, std::less<uint32_t>, FixedCapacityVector<uint32_t, 20>::allocator_type,
             FixedCapacityVector<uint32_t, 20>>,
-    FlatSet<uint32_t, std::greater<uint32_t>>,
     FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 4>>,
-    FlatSet<char, std::less<char>, std::allocator<char>>,
-    FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 3>>,
+    FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>, SmallVector<int64_t, 6, std::allocator<int64_t>>>,
     FlatSet<uint32_t, std::greater<uint32_t>, amc::allocator<uint32_t>,
             std::vector<uint32_t, amc::allocator<uint32_t>>>,
-    FlatSet<int64_t, std::less<int64_t>, std::allocator<int64_t>, SmallVector<int64_t, 6, std::allocator<int64_t>>>,
-    FlatSet<uint16_t, std::less<uint16_t>, amc::allocator<uint16_t>, SmallVector<uint16_t, 2>>,
-    FlatSet<uint8_t, std::greater<uint8_t>, std::allocator<uint8_t>, SmallVector<uint8_t, 11, std::allocator<uint8_t>>>,
-    FlatSet<int32_t, std::less<int32_t>, std::allocator<int32_t>>, FlatSet<ComplexTriviallyRelocatableType>,
-    FlatSet<ComplexTriviallyRelocatableType, std::less<ComplexTriviallyRelocatableType>,
-            amc::allocator<ComplexTriviallyRelocatableType>, SmallVector<ComplexTriviallyRelocatableType, 6>>,
-    FlatSet<Foo>, FlatSet<Foo, std::less<Foo>, std::allocator<Foo>, SmallVector<Foo, 5, std::allocator<Foo>, int16_t>>>
+    FlatSet<ComplexTriviallyRelocatableType>,
+    FlatSet<Foo, std::less<Foo>, std::allocator<Foo>, SmallVector<Foo, 5, std::allocator<Foo>, int16_t>>>
     SetsType;
 TYPED_TEST_SUITE(SetListTest, SetsType, );
 
@@ -132,6 +129,8 @@ TYPED_TEST(SetListTest, ReverseIteration) {
     cpy.insert(*it);
   }
   EXPECT_EQ(s, cpy);
+  EXPECT_EQ(*std::prev(s.rend()), *s.begin());
+  EXPECT_EQ(*std::prev(s.end()), *s.rbegin());
 }
 
 TYPED_TEST(SetListTest, IteratorOperators) {
@@ -194,7 +193,7 @@ TYPED_TEST(SetListTest, EraseRange) {
 }
 
 // Erasing all elements of a large SmallSet makes it small again: the returned iterators must still compare equal to
-// end(), so that the usual erase loops terminate.
+// end(), so that the usual erase loops terminate. Same for clear.
 TYPED_TEST(SetListTest, EraseAllElementsReturnsEnd) {
   using value_type = typename TypeParam::value_type;
   constexpr int kNbElems = 20;  // larger than the inline capacity of all tested SmallSets
@@ -228,6 +227,13 @@ TYPED_TEST(SetListTest, EraseAllElementsReturnsEnd) {
   EXPECT_EQ(erase_if(s4, [](const value_type&) { return true; }), static_cast<typename TypeParam::size_type>(kNbElems));
   EXPECT_TRUE(s4.empty());
 #endif
+
+  TypeParam s5 = s;
+  s5.clear();
+  EXPECT_TRUE(s5.empty());
+  EXPECT_EQ(s5.begin(), s5.end());
+  s5.insert(value_type(4));
+  EXPECT_EQ(s5, TypeParam{value_type(4)});
 }
 
 TYPED_TEST(SetListTest, InsertHint1) {
@@ -353,8 +359,17 @@ TYPED_TEST(SetListTest, RangeConstructorInputIterators) {
 }
 
 TYPED_TEST(SetListTest, ComparisonOperators) {
+  using value_type = typename TypeParam::value_type;
   TypeParam s{1, 3, 4};
+  TypeParam large;  // large state for all tested SmallSets
+  for (int i = 1; i <= 20; ++i) {
+    large.insert(value_type(i));
+  }
+  EXPECT_NE(s, TypeParam({1, 3}));
+  EXPECT_NE(s, large);
   if (std::is_same<typename TypeParam::key_compare, std::less<typename TypeParam::value_type>>::value) {
+    EXPECT_GT(s, large);
+    EXPECT_LT(large, s);
     EXPECT_GT(s, TypeParam({1, 2, 3, 4}));
     EXPECT_LT(s, TypeParam({1, 4}));
     EXPECT_GE(s, TypeParam({4, 1, 3}));
@@ -365,6 +380,8 @@ TYPED_TEST(SetListTest, ComparisonOperators) {
     EXPECT_EQ(s <=> TypeParam({3, 1, 4}), std::strong_ordering::equal);
 #endif
   } else if (std::is_same<typename TypeParam::key_compare, std::greater<typename TypeParam::value_type>>::value) {
+    EXPECT_LT(s, large);
+    EXPECT_GT(large, s);
     EXPECT_LT(s, TypeParam({1, 2, 3, 4}));
     EXPECT_GT(s, TypeParam({1, 4}));
     EXPECT_LE(s, TypeParam({1, 3, 4}));
@@ -494,6 +511,14 @@ TYPED_TEST(SetListExtractTest, InsertNodeAlreadyPresent) {
     it = s.insert(s.end(), std::move(irt.node));
     EXPECT_TRUE(irt.node.empty());
     EXPECT_EQ(*it, ValueType(nbElems + 10));
+    EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems + 1));
+
+    // extracting a missing key gives an empty node, inserting an empty node does nothing
+    irt = s.insert(s.extract(42));
+    EXPECT_FALSE(irt.inserted);
+    EXPECT_TRUE(irt.node.empty());
+    EXPECT_EQ(irt.position, s.end());
+    EXPECT_EQ(s.insert(s.begin(), s.extract(42)), s.end());
     EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems + 1));
   }
 }
