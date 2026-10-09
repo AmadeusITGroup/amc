@@ -29,6 +29,7 @@ endif()
 option(AMC_ENABLE_TESTS "Build the unit tests" ${MAIN_PROJECT})
 option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${BENCH_BUILD})
 option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" OFF)
+option(AMC_ENABLE_COVERAGE "Instrument the unit tests for LLVM source-based code coverage and add a 'coverage' target (Clang only)" OFF)
 option(AMC_PEDANTIC "If set, only standard API (in respect to STL) will be defined. Additional features are enabled when OFF" OFF)
 
 # Activate all warnings, in all build modes
