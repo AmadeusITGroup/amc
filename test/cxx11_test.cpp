@@ -87,6 +87,9 @@ void CheckVector(const char* description) {
   VectorType copy(v);
   VectorType moved(std::move(copy));
   Check(moved == v && v.size() == 12U && v[1] == 42 && v[4] == 2 && v.back() == 9, description);
+  const VectorType empty;
+  const VectorType emptyCopy(empty);  // copy of no element (from a null pointer for vector)
+  Check(emptyCopy.empty(), description);
 }
 
 }  // namespace

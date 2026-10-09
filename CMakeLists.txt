@@ -6,7 +6,7 @@ if (POLICY CMP0092)
 endif()
 
 project(amc 
-  VERSION 2.6.1
+  VERSION 2.7.0
   DESCRIPTION "Header base library of C++ containers"
   LANGUAGES CXX
 )

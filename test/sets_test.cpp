@@ -251,6 +251,8 @@ TYPED_TEST(SetListTest, InsertHint1) {
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
   s.insert(std::next(s.end(), -2), 4);  // bad hint
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7}));
+  s.insert(std::prev(s.end()), 8);  // hint on the last element, value after it (with std::less)
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 7, 8}));
 }
 
 TYPED_TEST(SetListTest, InsertHint2) {
@@ -525,6 +527,8 @@ TYPED_TEST(SetListExtractTest, Extract) {
   ref.emplace(2);
   ref.emplace(17);
   ref.emplace(16);
+  EXPECT_EQ(s, ref);
+  EXPECT_TRUE(s.extract(5).empty());  // absent key, smaller than some present ones
   EXPECT_EQ(s, ref);
 }
 
