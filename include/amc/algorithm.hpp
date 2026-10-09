@@ -1,16 +1,17 @@
 #pragma once
 
-#include <algorithm>
-
 #include "config.hpp"
 
-#if AMC_CXX20
+#ifdef AMC_CXX20
+#include <algorithm>
 #include <compare>
+#include <type_traits>
+#include <utility>
 #endif
 
 namespace amc {
 
-#if AMC_CXX20
+#ifdef AMC_CXX20
 #if !defined(_LIBCPP_VERSION) || _LIBCPP_VERSION >= 170000
 using std::lexicographical_compare_three_way;
 #else

@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <type_traits>
 #include <utility>
 
 #include "allocator.hpp"
@@ -16,11 +18,9 @@
 #include "istransparent.hpp"
 #ifdef AMC_CXX17
 #include <optional>
-#ifdef AMC_CXX20
-#include <compare>
+#include <tuple>
 #ifdef AMC_CXX23
 #include <ranges>
-#endif
 #endif
 #endif
 #endif
@@ -54,7 +54,7 @@ class FlatSet : private Compare {
  public:
   using key_type = T;
   using value_type = T;
-  using difference_type = ptrdiff_t;
+  using difference_type = std::ptrdiff_t;
   using size_type = typename VecType::size_type;
   using iterator = typename VecType::const_iterator;
   using const_iterator = typename VecType::const_iterator;

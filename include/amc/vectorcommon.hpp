@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -10,6 +11,8 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 #include "config.hpp"
 #include "memory.hpp"
@@ -263,8 +266,8 @@ void swap_deep(T* first1, SizeType1 count1, T* first2, SizeType2 count2) noexcep
 /// storages, which is possible only if each capacity (and thus size) fits in the size type of the other vector.
 template <class SizeType1, class SizeType2>
 inline bool CapacitiesFitEachOther(SizeType1 capacity1, SizeType2 capacity2) noexcept {
-  return static_cast<uintmax_t>(capacity1) <= static_cast<uintmax_t>(std::numeric_limits<SizeType2>::max()) &&
-         static_cast<uintmax_t>(capacity2) <= static_cast<uintmax_t>(std::numeric_limits<SizeType1>::max());
+  return static_cast<std::uintmax_t>(capacity1) <= static_cast<std::uintmax_t>(std::numeric_limits<SizeType2>::max()) &&
+         static_cast<std::uintmax_t>(capacity2) <= static_cast<std::uintmax_t>(std::numeric_limits<SizeType1>::max());
 }
 
 /// Swap of sizes (or capacities) of different size types.
@@ -578,9 +581,9 @@ inline bool AllocatorsAreEqual(const Alloc& lhs, const Alloc& rhs) noexcept {
 /// Maximum capacity of a vector: its size type and its allocator (whose number of bytes to allocate must fit in a
 /// size_t) both limit it.
 template <class SizeType, class Alloc>
-inline uintmax_t MaxCapacity(const Alloc& alloc) noexcept {
-  return std::min(static_cast<uintmax_t>(std::numeric_limits<SizeType>::max()),
-                  static_cast<uintmax_t>(std::allocator_traits<Alloc>::max_size(alloc)));
+inline std::uintmax_t MaxCapacity(const Alloc& alloc) noexcept {
+  return std::min(static_cast<std::uintmax_t>(std::numeric_limits<SizeType>::max()),
+                  static_cast<std::uintmax_t>(std::allocator_traits<Alloc>::max_size(alloc)));
 }
 
 template <class T, class SizeType>
@@ -694,7 +697,7 @@ class StdVectorBase : private Alloc {
     _size = amc::exchange(o._size, SizeType{0});
   }
 
-  void grow(uintmax_t minSize, bool exact = false);
+  void grow(std::uintmax_t minSize, bool exact = false);
 
   void shrink_impl(SizeType) noexcept {
     if (_size != _capa) {
@@ -864,7 +867,7 @@ class SmallVectorBase : private Alloc {
     }
   }
 
-  void grow(uintmax_t minSize, bool exact = false);
+  void grow(std::uintmax_t minSize, bool exact = false);
 
   void shrink_impl(SizeType inplaceCapa) {
     if (!isSmall()) {
@@ -1086,19 +1089,19 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
   }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
-  void adjustCapacity(uintmax_t neededCapacity) const { GrowingPolicy::Check(neededCapacity, this->capacity()); }
+  void adjustCapacity(std::uintmax_t neededCapacity) const { GrowingPolicy::Check(neededCapacity, this->capacity()); }
 
-  T* adjustCapacity(uintmax_t neededCapacity, const T* position) const {
+  T* adjustCapacity(std::uintmax_t neededCapacity, const T* position) const {
     adjustCapacity(neededCapacity);
     return const_cast<T*>(position);
   }
 
-  const T& adjustCapacity(uintmax_t neededCapacity, const T& v) const {
+  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v) const {
     adjustCapacity(neededCapacity);
     return v;
   }
 
-  const T& adjustCapacity(uintmax_t neededCapacity, const T& v, const T**) const {
+  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v, const T**) const {
     adjustCapacity(neededCapacity);
     return v;
   }
@@ -1202,14 +1205,14 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
-  inline void adjustCapacity(uintmax_t neededCapacity) {
-    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
+  inline void adjustCapacity(std::uintmax_t neededCapacity) {
+    if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       this->grow(neededCapacity);
     }
   }
 
-  inline T* adjustCapacity(uintmax_t neededCapacity, const T* position) {
-    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
+  inline T* adjustCapacity(std::uintmax_t neededCapacity, const T* position) {
+    if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       SizeType idx = static_cast<SizeType>(position - this->begin());  // pos will be invalidated
       this->grow(neededCapacity);
       return this->begin() + idx;
@@ -1217,10 +1220,10 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     return const_cast<T*>(position);
   }
 
-  inline const T& adjustCapacity(uintmax_t neededCapacity, const T& v) {
-    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
+  inline const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v) {
+    if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       const T* ptr = std::addressof(v);
-      ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
+      std::ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
       this->grow(neededCapacity);
       if (idx != -1) {
         return this->begin()[idx];
@@ -1229,10 +1232,10 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     return v;
   }
 
-  inline const T& adjustCapacity(uintmax_t neededCapacity, const T& v, const T** position) {
-    if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
+  inline const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v, const T** position) {
+    if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       const T* ptr = std::addressof(v);
-      ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
+      std::ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
       SizeType itIdx = static_cast<SizeType>(*position - this->begin());  // pos will be invalidated
       this->grow(neededCapacity);
       *position = this->begin() + itIdx;
@@ -1309,7 +1312,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   using const_iterator = const T*;
   using pointer = T*;
   using const_pointer = const T*;
-  using difference_type = ptrdiff_t;
+  using difference_type = std::ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
   using size_type = SizeType;
@@ -1441,7 +1444,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class R>
   void assign_range(R&& rg) {
     if constexpr (std::ranges::forward_range<R>) {
-      assignN(std::ranges::begin(rg), static_cast<uintmax_t>(std::ranges::distance(rg)));
+      assignN(std::ranges::begin(rg), static_cast<std::uintmax_t>(std::ranges::distance(rg)));
     } else {
       assignInput(std::ranges::begin(rg), std::ranges::end(rg));
     }
@@ -1450,7 +1453,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   iterator insert(const_iterator position, const_reference v) {
     assert(position >= this->cbegin() && position <= cend());
-    const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, v, &position);
+    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v, &position);
     iterator pos = const_cast<iterator>(position);
     insert_n(pos, this->size() - (pos - this->begin()), newV);
     this->incrSize();
@@ -1459,7 +1462,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   iterator insert(const_iterator position, T&& v) {
     assert(position >= this->cbegin() && position <= cend());
-    iterator pos = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, position);
+    iterator pos = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, position);
     insert_n(pos, this->size() - (pos - this->begin()), std::move(v));
     this->incrSize();
     return pos;
@@ -1469,7 +1472,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     assert(position >= this->cbegin() && position <= cend());
     iterator pos;
     if (count > 0) {
-      const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count, v, &position);
+      const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, v, &position);
       pos = const_cast<iterator>(position);
       SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
       if (nElemsToShift == 0) {
@@ -1511,7 +1514,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   iterator insert_range(const_iterator pos, R&& rg) {
     assert(pos >= this->cbegin() && pos <= cend());
     if constexpr (std::ranges::forward_range<R>) {
-      return insertN(pos, std::ranges::begin(rg), static_cast<uintmax_t>(std::ranges::distance(rg)));
+      return insertN(pos, std::ranges::begin(rg), static_cast<std::uintmax_t>(std::ranges::distance(rg)));
     } else {
       return insertInput(pos, std::ranges::begin(rg), std::ranges::end(rg));
     }
@@ -1544,7 +1547,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   void push_back(const_reference v) {
-    const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, v);
+    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
     amc::construct_at(end(), newV);
     this->incrSize();
   }
@@ -1559,7 +1562,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// 'const_cast' is safe here because 'v' always binds to a non-const 'T' object, whether it lives inside or
   /// outside the vector.
   void push_back(T&& v) {
-    const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + 1U, v);
+    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
     amc::construct_at(end(), std::move(const_cast<reference>(newV)));
     this->incrSize();
   }
@@ -1606,13 +1609,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   void append(size_type count) {
-    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count);
+    this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count);
     amc::uninitialized_value_construct_n(end(), count);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
 
   void append(size_type count, const_reference v) {
-    const_reference newV = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count, v);
+    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, v);
     std::uninitialized_fill_n(end(), count, newV);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
@@ -1625,7 +1628,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class R>
   void append_range(R&& rg) {
     if constexpr (std::ranges::forward_range<R>) {
-      appendN(std::ranges::begin(rg), static_cast<uintmax_t>(std::ranges::distance(rg)));
+      appendN(std::ranges::begin(rg), static_cast<std::uintmax_t>(std::ranges::distance(rg)));
     } else {
       appendInput(std::ranges::begin(rg), std::ranges::end(rg));
     }
@@ -1638,8 +1641,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     auto first = std::ranges::begin(rg);
     if constexpr (std::ranges::sized_range<R> && std::ranges::random_access_range<R>) {
       // compute in uintmax_t as the size of the range may not fit in SizeType
-      const uintmax_t count = std::min(static_cast<uintmax_t>(std::ranges::size(rg)),
-                                       static_cast<uintmax_t>(this->capacity() - this->size()));
+      const std::uintmax_t count = std::min(static_cast<std::uintmax_t>(std::ranges::size(rg)),
+                                            static_cast<std::uintmax_t>(this->capacity() - this->size()));
       amc::uninitialized_copy_n(first, static_cast<SizeType>(count), this->end());
       this->setSize(static_cast<SizeType>(this->size() + count));
       return first + static_cast<std::ranges::range_difference_t<R> >(count);
@@ -1664,7 +1667,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   template <class ForwardIt>
   void assignImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
-    assignN(first, static_cast<uintmax_t>(std::distance(first, last)));
+    assignN(first, static_cast<std::uintmax_t>(std::distance(first, last)));
   }
 
   template <class InputIt>
@@ -1674,7 +1677,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   template <class ForwardIt>
   iterator insertImpl(const_iterator position, ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
-    return insertN(position, first, static_cast<uintmax_t>(std::distance(first, last)));
+    return insertN(position, first, static_cast<std::uintmax_t>(std::distance(first, last)));
   }
 
   template <class InputIt>
@@ -1684,7 +1687,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   template <class ForwardIt>
   void appendImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
-    appendN(first, static_cast<uintmax_t>(std::distance(first, last)));
+    appendN(first, static_cast<std::uintmax_t>(std::distance(first, last)));
   }
 
   template <class InputIt>
@@ -1693,8 +1696,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   template <class ForwardIt>
-  void assignN(ForwardIt first, uintmax_t count) {
-    if (static_cast<uintmax_t>(this->size()) < count) {
+  void assignN(ForwardIt first, std::uintmax_t count) {
+    if (static_cast<std::uintmax_t>(this->size()) < count) {
       this->adjustCapacity(count);
       assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
     } else {
@@ -1721,10 +1724,10 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   template <class ForwardIt>
-  iterator insertN(const_iterator position, ForwardIt first, uintmax_t count) {
+  iterator insertN(const_iterator position, ForwardIt first, std::uintmax_t count) {
     iterator pos;
     if (count > 0) {
-      pos = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count, position);
+      pos = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, position);
       const SizeType n = static_cast<SizeType>(count);
       const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
       if (nElemsToShift == 0) {
@@ -1757,8 +1760,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   template <class ForwardIt>
-  void appendN(ForwardIt first, uintmax_t count) {
-    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count);
+  void appendN(ForwardIt first, std::uintmax_t count) {
+    this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count);
     amc::uninitialized_copy_n(first, static_cast<SizeType>(count), end());
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
@@ -1795,7 +1798,7 @@ class VectorWithInplaceStorage : public VectorImpl<T, Alloc, SizeType, true, Gro
       _elems[N - (std::is_same<GrowingPolicy, DynamicGrowingPolicy>::value ? ElemWithPtrStorage<T>::kNbSlots : 1)];
 };
 
-template <class T, class GrowingPolicy, uintmax_t N>
+template <class T, class GrowingPolicy, std::uintmax_t N>
 struct NoInlineStorage : std::integral_constant<bool, std::is_same<GrowingPolicy, DynamicGrowingPolicy>::value &&
                                                           (N <= ElemWithPtrStorage<T>::kNbSlots)> {};
 
@@ -1816,9 +1819,9 @@ class VectorWithInplaceStorage<T, Alloc, SizeType, GrowingPolicy, N,
 };
 
 /// Number of inline elements 'N' as a SizeType, checked to fit in it.
-template <uintmax_t N, class SizeType>
+template <std::uintmax_t N, class SizeType>
 struct SanitizeInlineSize : std::integral_constant<SizeType, static_cast<SizeType>(N)> {
-  static_assert(N <= static_cast<uintmax_t>(std::numeric_limits<SizeType>::max()),
+  static_assert(N <= static_cast<std::uintmax_t>(std::numeric_limits<SizeType>::max()),
                 "Inline storage too large for SizeType");
 };
 }  // namespace vec

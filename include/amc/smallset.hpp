@@ -1,22 +1,28 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <set>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
 
-#include "algorithm.hpp"
 #include "allocator.hpp"
 #include "config.hpp"
 #include "fixedcapacityvector.hpp"
 #include "istransparent.hpp"
-#include "memory.hpp"
 #include "type_traits.hpp"
+
+#ifdef AMC_CXX20
+#include "algorithm.hpp"
+#endif
 
 #ifdef AMC_CXX23
 #include <ranges>
@@ -62,7 +68,7 @@ class SmallSetIteratorCommon {
 
   template <class, class, bool>
   friend class SmallSetIterator;
-  template <class, uintmax_t, class, class, class>
+  template <class, std::uintmax_t, class, class, class>
   friend class SmallSet;
 
  public:
@@ -138,7 +144,7 @@ class SmallSetIterator : public SmallSetIteratorCommon<T, SetItType> {
  * It does not allow duplicated elements.
  * Elements a, b are equivalent if !Compare(a, b) && !Compare(b, a)
  */
-template <class T, uintmax_t N, class Compare = std::less<T>, class Alloc = amc::allocator<T>,
+template <class T, std::uintmax_t N, class Compare = std::less<T>, class Alloc = amc::allocator<T>,
           class SetType = typename std::set<T, Compare, Alloc>>
 class SmallSet {
  private:
@@ -154,7 +160,7 @@ class SmallSet {
  public:
   using key_type = T;
   using value_type = T;
-  using difference_type = ptrdiff_t;
+  using difference_type = std::ptrdiff_t;
   using allocator_type = Alloc;
 
   // Optim: If Set iterator type is a pointer, do not use SmallSetIterator but a pointer instead.
@@ -205,7 +211,7 @@ class SmallSet {
     }
 
    private:
-    template <class, uintmax_t, class, class, class>
+    template <class, std::uintmax_t, class, class, class>
     friend class SmallSet;
 
     explicit node_type(Alloc alloc) : Alloc(alloc) {}
@@ -492,7 +498,7 @@ class SmallSet {
   /// Merge elements from 'o' set into 'this'.
   /// If the merge can occur without grow, 'this' will stay small.
   /// No grow is performed on 'o'.
-  template <uintmax_t N2, class C2, class SetType2>
+  template <std::uintmax_t N2, class C2, class SetType2>
   void merge(SmallSet<T, N2, C2, Alloc, SetType2> &o) {
     if (!o.isSmall()) {
       if (isSmall()) {
@@ -708,14 +714,14 @@ class SmallSet {
     return sortedPtrs;
   }
 
-  template <class, uintmax_t, class, class, class>
+  template <class, std::uintmax_t, class, class, class>
   friend class SmallSet;
 
   VecType _vec;
   SetType _set;
 };
 
-template <class T, uintmax_t N, class Compare, class Alloc, class SetType>
+template <class T, std::uintmax_t N, class Compare, class Alloc, class SetType>
 inline void swap(SmallSet<T, N, Compare, Alloc, SetType> &lhs, SmallSet<T, N, Compare, Alloc, SetType> &rhs) {
   lhs.swap(rhs);
 }
