@@ -5,9 +5,11 @@
 #include <amc/vector.hpp>
 #include <array>
 #include <initializer_list>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <numeric>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -174,6 +176,47 @@ TYPED_TEST(VectorTest, Main) {
 
     ChecksAgainstTab(VectorType(kNewEls, kNewEls + 5), {18, 4, 3, 6, 4});
   }
+}
+
+// Single pass input iterators (here, reading from a stream) can be traversed only once.
+TYPED_TEST(VectorTest, InputIterators) {
+  using VectorType = TypeParam;
+  using InputIt = std::istream_iterator<int>;
+
+  std::istringstream constructSs("1 2 3 4 5");
+  InputIt first(constructSs);
+  InputIt last;
+  VectorType v(first, last);
+  EXPECT_EQ(v, VectorType({1, 2, 3, 4, 5}));
+
+  std::istringstream assignLessSs("6 7");
+  v.assign(InputIt(assignLessSs), InputIt());
+  EXPECT_EQ(v, VectorType({6, 7}));
+
+  std::istringstream assignMoreSs("8 9 10 11");
+  v.assign(InputIt(assignMoreSs), InputIt());
+  EXPECT_EQ(v, VectorType({8, 9, 10, 11}));
+
+  std::istringstream insertMiddleSs("12 13");
+  typename VectorType::iterator it = v.insert(v.begin() + 1, InputIt(insertMiddleSs), InputIt());
+  EXPECT_EQ(it, v.begin() + 1);
+  EXPECT_EQ(v, VectorType({8, 12, 13, 9, 10, 11}));
+
+  std::istringstream insertEndSs("14");
+  it = v.insert(v.end(), InputIt(insertEndSs), InputIt());
+  EXPECT_EQ(it, v.begin() + 6);
+  EXPECT_EQ(v, VectorType({8, 12, 13, 9, 10, 11, 14}));
+
+  std::istringstream insertEmptySs("");
+  it = v.insert(v.begin(), InputIt(insertEmptySs), InputIt());
+  EXPECT_EQ(it, v.begin());
+  EXPECT_EQ(v, VectorType({8, 12, 13, 9, 10, 11, 14}));
+
+#ifdef AMC_NONSTD_FEATURES
+  std::istringstream appendSs("15 16");
+  v.append(InputIt(appendSs), InputIt());
+  EXPECT_EQ(v, VectorType({8, 12, 13, 9, 10, 11, 14, 15, 16}));
+#endif
 }
 
 TEST(VectorTest, Operators) {
