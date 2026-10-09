@@ -118,6 +118,31 @@ static_assert(!std::is_trivial<NonTrivialType>::value, "");
 static_assert(std::is_trivially_copyable<NonTrivialType>::value, "");
 static_assert(!std::is_trivially_copyable<SimpleNonTriviallyCopyableType>::value, "");
 
+/// Type whose move assignment does not preserve its value when self move assigned, which is allowed by the standard
+/// (Cpp17MoveAssignable specifies the value of the assigned object only when it is not the moved-from object).
+struct SelfMoveUnsafeType {
+  static constexpr int32_t kMovedFromValue = -1;
+
+  SelfMoveUnsafeType(int32_t i = 0) : _i(i) {}
+
+  SelfMoveUnsafeType(const SelfMoveUnsafeType &) = default;
+  SelfMoveUnsafeType &operator=(const SelfMoveUnsafeType &) = default;
+
+  SelfMoveUnsafeType(SelfMoveUnsafeType &&o) noexcept : _i(o._i) { o._i = kMovedFromValue; }
+
+  SelfMoveUnsafeType &operator=(SelfMoveUnsafeType &&o) noexcept {
+    _i = o._i;
+    o._i = kMovedFromValue;
+    return *this;
+  }
+
+  operator int32_t() const { return _i; }
+
+  int32_t _i;
+};
+
+static_assert(!amc::is_trivially_relocatable<SelfMoveUnsafeType>::value, "");
+
 struct TypeStats {
   static TypeStats _stats;
 

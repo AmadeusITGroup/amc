@@ -1374,8 +1374,12 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   iterator erase(const_iterator first, const_iterator last) {
     assert(first <= last && first >= this->cbegin() && last <= cend());
-    const SizeType n = static_cast<SizeType>(last - first);
     const iterator mfirst = const_cast<iterator>(first);
+    if (first == last) {
+      // Nothing to erase. Return early, as 'erase_n' would self move assign all next elements, which may change them.
+      return mfirst;
+    }
+    const SizeType n = static_cast<SizeType>(last - first);
     erase_n(mfirst, n, static_cast<SizeType>(this->size() - (last - this->begin())));
     this->setSize(this->size() - n);
     return mfirst;

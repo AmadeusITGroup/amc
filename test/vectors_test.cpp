@@ -245,6 +245,24 @@ TEST(VectorTest, EraseIf) {
 }
 #endif
 
+// Erasing an empty range must not modify any element, even for types not supporting self move assignment.
+template <class VectorType>
+void CheckEraseEmptyRange() {
+  VectorType v{1, 2, 3};
+  for (int pos = 0; pos <= 3; ++pos) {
+    typename VectorType::iterator it = v.erase(v.begin() + pos, v.begin() + pos);
+    EXPECT_EQ(it, v.begin() + pos);
+    EXPECT_EQ(v, VectorType({1, 2, 3}));
+  }
+}
+
+TEST(VectorTest, EraseEmptyRange) {
+  CheckEraseEmptyRange<vector<SelfMoveUnsafeType>>();
+  CheckEraseEmptyRange<SmallVector<SelfMoveUnsafeType, 4>>();
+  CheckEraseEmptyRange<FixedCapacityVector<SelfMoveUnsafeType, 4>>();
+  CheckEraseEmptyRange<vector<ComplexTriviallyRelocatableType>>();
+}
+
 template <typename T>
 class VectorRefTest : public ::testing::Test {
  public:
