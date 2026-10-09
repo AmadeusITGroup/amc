@@ -1,0 +1,192 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="988" viewBox="0 0 880 988" role="img" aria-labelledby="title desc">
+<title id="title">amc::SmallVector&lt;T, 16&gt; vs std::vector</title>
+<desc id="desc">Time to fill, read and destroy std::vector, amc::vector and amc::SmallVector, from all small to all large.</desc>
+<style>
+:root { --bg: #f6f8fa; --ink: #1f2328; --ink2: #59636e; --grid: #e1e4e8; --axis: #c8d1da;
+        --s-ref: #eb6834; --s-uno: #1baf7a; --s-amc: #2a78d6; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161b22; --ink: #f0f6fc; --ink2: #9198a1; --grid: #262c36; --axis: #3d444d;
+          --s-ref: #d95926; --s-uno: #199e70; --s-amc: #3987e5; }
+}
+text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: var(--ink); }
+.bg { fill: var(--bg); }
+.title { font-size: 18px; font-weight: 600; }
+.subtitle { font-size: 13px; fill: var(--ink2); }
+.panel { font-size: 13px; font-weight: 600; }
+.label { font-size: 13px; }
+.tick { font-size: 11px; fill: var(--ink2); font-variant-numeric: tabular-nums; }
+.ratio { font-size: 13px; font-variant-numeric: tabular-nums; }
+.ratio tspan.word { fill: var(--ink2); }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--axis); stroke-width: 1; }
+.link { stroke: var(--axis); stroke-width: 2; stroke-linecap: round; }
+.dot { stroke: var(--bg); stroke-width: 1.5; }
+.ring { fill: var(--bg); stroke-width: 2.5; }
+.ring.ref { stroke: var(--s-ref); } .ring.uno { stroke: var(--s-uno); }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dot.amc { fill: var(--s-amc); } .dot.amcv { fill: var(--s-uno); }
+.line.ref { stroke: var(--s-ref); fill: none; } .line.uno { stroke: var(--s-uno); fill: none; }
+.line.amc { stroke: var(--s-amc); fill: none; }
+</style>
+<rect class="bg" width="880" height="988" rx="12"/>
+<text x="28.0" y="44.0" class="title" text-anchor="start">amc::SmallVector&lt;T, 16&gt; vs std::vector</text>
+<text x="28.0" y="66.0" class="subtitle" text-anchor="start">A vector is filled by emplace_back, read and destroyed. Small vectors have 1 to 16 elements, large ones 17 to 64.</text>
+<text x="28.0" y="84.0" class="subtitle" text-anchor="start">Time per vector, log scale - lower is better · GCC 13 · AMD Ryzen AI 9 HX PRO 370 (L2 1 MiB, L3 16 MiB)</text>
+<circle cx="34.0" cy="110.0" r="5.5" class="ring ref"/>
+<text x="46.0" y="114.0" class="label" text-anchor="start">std::vector</text>
+<circle cx="166.2" cy="110.0" r="4.5" class="dot amcv"/>
+<text x="178.2" y="114.0" class="label" text-anchor="start">amc::vector</text>
+<circle cx="298.4" cy="110.0" r="4.5" class="dot amc"/>
+<text x="310.4" y="114.0" class="label" text-anchor="start">amc::SmallVector&lt;T, 16&gt;</text>
+<text x="852.0" y="114.0" class="subtitle" text-anchor="end">SmallVector vs std::vector</text>
+<text x="28.0" y="154.0" class="panel" text-anchor="start">Complex trivially relocatable type</text>
+<line x1="266.0" y1="166.0" x2="266.0" y2="376.0" class="grid"/>
+<text x="266.0" y="393.0" class="tick" text-anchor="middle">10 ns</text>
+<line x1="495.0" y1="166.0" x2="495.0" y2="376.0" class="grid"/>
+<text x="495.0" y="393.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="724.0" y1="166.0" x2="724.0" y2="376.0" class="grid"/>
+<text x="724.0" y="393.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="258.0" y1="376.0" x2="732.0" y2="376.0" class="axis"/>
+<text x="28.0" y="185.5" class="label" text-anchor="start">All large</text>
+<line x1="622.6" y1="181.0" x2="636.1" y2="181.0" class="link"/>
+<circle cx="629.1" cy="181.0" r="5.5" class="ring ref"/>
+<circle cx="636.1" cy="181.0" r="4.5" class="dot amcv"/>
+<circle cx="622.6" cy="181.0" r="4.5" class="dot amc"/>
+<text x="852" y="185.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="215.5" class="label" text-anchor="start">50 % small</text>
+<line x1="571.2" y1="211.0" x2="595.3" y2="211.0" class="link"/>
+<circle cx="584.6" cy="211.0" r="5.5" class="ring ref"/>
+<circle cx="595.3" cy="211.0" r="4.5" class="dot amcv"/>
+<circle cx="571.2" cy="211.0" r="4.5" class="dot amc"/>
+<text x="852" y="215.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="245.5" class="label" text-anchor="start">80 % small</text>
+<line x1="517.7" y1="241.0" x2="554.2" y2="241.0" class="link"/>
+<circle cx="539.7" cy="241.0" r="5.5" class="ring ref"/>
+<circle cx="554.2" cy="241.0" r="4.5" class="dot amcv"/>
+<circle cx="517.7" cy="241.0" r="4.5" class="dot amc"/>
+<text x="852" y="245.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="275.5" class="label" text-anchor="start">90 % small</text>
+<line x1="489.4" y1="271.0" x2="534.0" y2="271.0" class="link"/>
+<circle cx="518.3" cy="271.0" r="5.5" class="ring ref"/>
+<circle cx="534.0" cy="271.0" r="4.5" class="dot amcv"/>
+<circle cx="489.4" cy="271.0" r="4.5" class="dot amc"/>
+<text x="852" y="275.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="305.5" class="label" text-anchor="start">95 % small</text>
+<line x1="471.7" y1="301.0" x2="521.6" y2="301.0" class="link"/>
+<circle cx="506.7" cy="301.0" r="5.5" class="ring ref"/>
+<circle cx="521.6" cy="301.0" r="4.5" class="dot amcv"/>
+<circle cx="471.7" cy="301.0" r="4.5" class="dot amc"/>
+<text x="852" y="305.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.4×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="335.5" class="label" text-anchor="start">99 % small</text>
+<line x1="455.6" y1="331.0" x2="509.8" y2="331.0" class="link"/>
+<circle cx="494.4" cy="331.0" r="5.5" class="ring ref"/>
+<circle cx="509.8" cy="331.0" r="4.5" class="dot amcv"/>
+<circle cx="455.6" cy="331.0" r="4.5" class="dot amc"/>
+<text x="852" y="335.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.5×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="365.5" class="label" text-anchor="start">All small</text>
+<line x1="447.9" y1="361.0" x2="506.0" y2="361.0" class="link"/>
+<circle cx="491.3" cy="361.0" r="5.5" class="ring ref"/>
+<circle cx="506.0" cy="361.0" r="4.5" class="dot amcv"/>
+<circle cx="447.9" cy="361.0" r="4.5" class="dot amc"/>
+<text x="852" y="365.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.5×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="438.0" class="panel" text-anchor="start">uint32_t</text>
+<line x1="266.0" y1="450.0" x2="266.0" y2="660.0" class="grid"/>
+<text x="266.0" y="677.0" class="tick" text-anchor="middle">10 ns</text>
+<line x1="495.0" y1="450.0" x2="495.0" y2="660.0" class="grid"/>
+<text x="495.0" y="677.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="724.0" y1="450.0" x2="724.0" y2="660.0" class="grid"/>
+<text x="724.0" y="677.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="258.0" y1="660.0" x2="732.0" y2="660.0" class="axis"/>
+<text x="28.0" y="469.5" class="label" text-anchor="start">All large</text>
+<line x1="445.3" y1="465.0" x2="481.1" y2="465.0" class="link"/>
+<circle cx="465.7" cy="465.0" r="5.5" class="ring ref"/>
+<circle cx="481.1" cy="465.0" r="4.5" class="dot amcv"/>
+<circle cx="445.3" cy="465.0" r="4.5" class="dot amc"/>
+<text x="852" y="469.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="499.5" class="label" text-anchor="start">50 % small</text>
+<line x1="413.7" y1="495.0" x2="452.7" y2="495.0" class="link"/>
+<circle cx="449.2" cy="495.0" r="5.5" class="ring ref"/>
+<circle cx="452.7" cy="495.0" r="4.5" class="dot amcv"/>
+<circle cx="413.7" cy="495.0" r="4.5" class="dot amc"/>
+<text x="852" y="499.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.4×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="529.5" class="label" text-anchor="start">80 % small</text>
+<line x1="362.9" y1="525.0" x2="428.9" y2="525.0" class="link"/>
+<circle cx="428.9" cy="525.0" r="5.5" class="ring ref"/>
+<circle cx="418.2" cy="525.0" r="4.5" class="dot amcv"/>
+<circle cx="362.9" cy="525.0" r="4.5" class="dot amc"/>
+<text x="852" y="529.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.9×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="559.5" class="label" text-anchor="start">90 % small</text>
+<line x1="337.9" y1="555.0" x2="421.5" y2="555.0" class="link"/>
+<circle cx="421.5" cy="555.0" r="5.5" class="ring ref"/>
+<circle cx="403.5" cy="555.0" r="4.5" class="dot amcv"/>
+<circle cx="337.9" cy="555.0" r="4.5" class="dot amc"/>
+<text x="852" y="559.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.3×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="589.5" class="label" text-anchor="start">95 % small</text>
+<line x1="323.0" y1="585.0" x2="416.8" y2="585.0" class="link"/>
+<circle cx="416.8" cy="585.0" r="5.5" class="ring ref"/>
+<circle cx="394.9" cy="585.0" r="4.5" class="dot amcv"/>
+<circle cx="323.0" cy="585.0" r="4.5" class="dot amc"/>
+<text x="852" y="589.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.6×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="619.5" class="label" text-anchor="start">99 % small</text>
+<line x1="306.8" y1="615.0" x2="412.3" y2="615.0" class="link"/>
+<circle cx="412.3" cy="615.0" r="5.5" class="ring ref"/>
+<circle cx="388.8" cy="615.0" r="4.5" class="dot amcv"/>
+<circle cx="306.8" cy="615.0" r="4.5" class="dot amc"/>
+<text x="852" y="619.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.9×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="649.5" class="label" text-anchor="start">All small</text>
+<line x1="297.7" y1="645.0" x2="412.0" y2="645.0" class="link"/>
+<circle cx="412.0" cy="645.0" r="5.5" class="ring ref"/>
+<circle cx="389.6" cy="645.0" r="4.5" class="dot amcv"/>
+<circle cx="297.7" cy="645.0" r="4.5" class="dot amc"/>
+<text x="852" y="649.5" class="ratio" text-anchor="end"><tspan font-weight="600">3.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="722.0" class="panel" text-anchor="start">Complex non trivially relocatable type</text>
+<line x1="266.0" y1="734.0" x2="266.0" y2="944.0" class="grid"/>
+<text x="266.0" y="961.0" class="tick" text-anchor="middle">10 ns</text>
+<line x1="495.0" y1="734.0" x2="495.0" y2="944.0" class="grid"/>
+<text x="495.0" y="961.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="724.0" y1="734.0" x2="724.0" y2="944.0" class="grid"/>
+<text x="724.0" y="961.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="258.0" y1="944.0" x2="732.0" y2="944.0" class="axis"/>
+<text x="28.0" y="753.5" class="label" text-anchor="start">All large</text>
+<line x1="625.3" y1="749.0" x2="659.7" y2="749.0" class="link"/>
+<circle cx="625.3" cy="749.0" r="5.5" class="ring ref"/>
+<circle cx="659.7" cy="749.0" r="4.5" class="dot amcv"/>
+<circle cx="654.0" cy="749.0" r="4.5" class="dot amc"/>
+<text x="852" y="753.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="783.5" class="label" text-anchor="start">50 % small</text>
+<line x1="582.1" y1="779.0" x2="613.1" y2="779.0" class="link"/>
+<circle cx="582.1" cy="779.0" r="5.5" class="ring ref"/>
+<circle cx="613.1" cy="779.0" r="4.5" class="dot amcv"/>
+<circle cx="599.5" cy="779.0" r="4.5" class="dot amc"/>
+<text x="852" y="783.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="813.5" class="label" text-anchor="start">80 % small</text>
+<line x1="537.2" y1="809.0" x2="560.9" y2="809.0" class="link"/>
+<circle cx="539.6" cy="809.0" r="5.5" class="ring ref"/>
+<circle cx="560.9" cy="809.0" r="4.5" class="dot amcv"/>
+<circle cx="537.2" cy="809.0" r="4.5" class="dot amc"/>
+<text x="852" y="813.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="843.5" class="label" text-anchor="start">90 % small</text>
+<line x1="503.7" y1="839.0" x2="538.3" y2="839.0" class="link"/>
+<circle cx="517.3" cy="839.0" r="5.5" class="ring ref"/>
+<circle cx="538.3" cy="839.0" r="4.5" class="dot amcv"/>
+<circle cx="503.7" cy="839.0" r="4.5" class="dot amc"/>
+<text x="852" y="843.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="873.5" class="label" text-anchor="start">95 % small</text>
+<line x1="481.6" y1="869.0" x2="524.7" y2="869.0" class="link"/>
+<circle cx="505.9" cy="869.0" r="5.5" class="ring ref"/>
+<circle cx="524.7" cy="869.0" r="4.5" class="dot amcv"/>
+<circle cx="481.6" cy="869.0" r="4.5" class="dot amc"/>
+<text x="852" y="873.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="903.5" class="label" text-anchor="start">99 % small</text>
+<line x1="458.3" y1="899.0" x2="511.6" y2="899.0" class="link"/>
+<circle cx="494.9" cy="899.0" r="5.5" class="ring ref"/>
+<circle cx="511.6" cy="899.0" r="4.5" class="dot amcv"/>
+<circle cx="458.3" cy="899.0" r="4.5" class="dot amc"/>
+<text x="852" y="903.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.4×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="933.5" class="label" text-anchor="start">All small</text>
+<line x1="447.9" y1="929.0" x2="507.1" y2="929.0" class="link"/>
+<circle cx="494.4" cy="929.0" r="5.5" class="ring ref"/>
+<circle cx="507.1" cy="929.0" r="4.5" class="dot amcv"/>
+<circle cx="447.9" cy="929.0" r="4.5" class="dot amc"/>
+<text x="852" y="933.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.6×</tspan> <tspan class="word">faster</tspan></text>
+</svg>

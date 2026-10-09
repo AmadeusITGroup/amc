@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="910" viewBox="0 0 880 910" role="img" aria-labelledby="title desc">
+<title id="title">amc::vector vs std::vector</title>
+<desc id="desc">Benchmark times of std::vector and amc::vector for several operations and types.</desc>
+<style>
+:root { --bg: #f6f8fa; --ink: #1f2328; --ink2: #59636e; --grid: #e1e4e8; --axis: #c8d1da;
+        --s-ref: #eb6834; --s-uno: #1baf7a; --s-amc: #2a78d6; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161b22; --ink: #f0f6fc; --ink2: #9198a1; --grid: #262c36; --axis: #3d444d;
+          --s-ref: #d95926; --s-uno: #199e70; --s-amc: #3987e5; }
+}
+text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: var(--ink); }
+.bg { fill: var(--bg); }
+.title { font-size: 18px; font-weight: 600; }
+.subtitle { font-size: 13px; fill: var(--ink2); }
+.panel { font-size: 13px; font-weight: 600; }
+.label { font-size: 13px; }
+.tick { font-size: 11px; fill: var(--ink2); font-variant-numeric: tabular-nums; }
+.ratio { font-size: 13px; font-variant-numeric: tabular-nums; }
+.ratio tspan.word { fill: var(--ink2); }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--axis); stroke-width: 1; }
+.link { stroke: var(--axis); stroke-width: 2; stroke-linecap: round; }
+.dot { stroke: var(--bg); stroke-width: 1.5; }
+.ring { fill: var(--bg); stroke-width: 2.5; }
+.ring.ref { stroke: var(--s-ref); } .ring.uno { stroke: var(--s-uno); }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dot.amc { fill: var(--s-amc); } .dot.amcv { fill: var(--s-uno); }
+.line.ref { stroke: var(--s-ref); fill: none; } .line.uno { stroke: var(--s-uno); fill: none; }
+.line.amc { stroke: var(--s-amc); fill: none; }
+</style>
+<rect class="bg" width="880" height="910" rx="12"/>
+<text x="28.0" y="44.0" class="title" text-anchor="start">amc::vector vs std::vector</text>
+<text x="28.0" y="66.0" class="subtitle" text-anchor="start">Time per benchmark iteration, log scale - lower is better · GCC 13 · AMD Ryzen AI 9 HX PRO 370 (L2 1 MiB, L3 16 MiB)</text>
+<circle cx="34.0" cy="92.0" r="5.5" class="ring ref"/>
+<text x="46.0" y="96.0" class="label" text-anchor="start">std::vector</text>
+<circle cx="166.2" cy="92.0" r="4.5" class="dot amc"/>
+<text x="178.2" y="96.0" class="label" text-anchor="start">amc::vector</text>
+<text x="852.0" y="96.0" class="subtitle" text-anchor="end">amc vs std::vector</text>
+<text x="28.0" y="136.0" class="panel" text-anchor="start">Complex trivially relocatable type</text>
+<line x1="290.6" y1="148.0" x2="290.6" y2="328.0" class="grid"/>
+<text x="290.6" y="345.0" class="tick" text-anchor="middle">10 ns</text>
+<line x1="372.4" y1="148.0" x2="372.4" y2="328.0" class="grid"/>
+<text x="372.4" y="345.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="454.1" y1="148.0" x2="454.1" y2="328.0" class="grid"/>
+<text x="454.1" y="345.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="535.9" y1="148.0" x2="535.9" y2="328.0" class="grid"/>
+<text x="535.9" y="345.0" class="tick" text-anchor="middle">10 µs</text>
+<line x1="617.6" y1="148.0" x2="617.6" y2="328.0" class="grid"/>
+<text x="617.6" y="345.0" class="tick" text-anchor="middle">100 µs</text>
+<line x1="699.4" y1="148.0" x2="699.4" y2="328.0" class="grid"/>
+<text x="699.4" y="345.0" class="tick" text-anchor="middle">1 ms</text>
+<line x1="258.0" y1="328.0" x2="732.0" y2="328.0" class="axis"/>
+<text x="28.0" y="167.5" class="label" text-anchor="start">Assign a count or a range</text>
+<line x1="521.0" y1="163.0" x2="521.3" y2="163.0" class="link"/>
+<circle cx="521.3" cy="163.0" r="5.5" class="ring ref"/>
+<circle cx="521.0" cy="163.0" r="4.5" class="dot amc"/>
+<text x="852" y="167.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="197.5" class="label" text-anchor="start">Construct and swap</text>
+<line x1="408.4" y1="193.0" x2="408.8" y2="193.0" class="link"/>
+<circle cx="408.8" cy="193.0" r="5.5" class="ring ref"/>
+<circle cx="408.4" cy="193.0" r="4.5" class="dot amc"/>
+<text x="852" y="197.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="227.5" class="label" text-anchor="start">Insert at end, erase at front</text>
+<line x1="585.7" y1="223.0" x2="592.4" y2="223.0" class="link"/>
+<circle cx="592.4" cy="223.0" r="5.5" class="ring ref"/>
+<circle cx="585.7" cy="223.0" r="4.5" class="dot amc"/>
+<text x="852" y="227.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="257.5" class="label" text-anchor="start">Insert N copies</text>
+<line x1="401.5" y1="253.0" x2="481.0" y2="253.0" class="link"/>
+<circle cx="481.0" cy="253.0" r="5.5" class="ring ref"/>
+<circle cx="401.5" cy="253.0" r="4.5" class="dot amc"/>
+<text x="852" y="257.5" class="ratio" text-anchor="end"><tspan font-weight="600">9.4×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="287.5" class="label" text-anchor="start">Insert a range of pointers</text>
+<line x1="547.5" y1="283.0" x2="555.3" y2="283.0" class="link"/>
+<circle cx="555.3" cy="283.0" r="5.5" class="ring ref"/>
+<circle cx="547.5" cy="283.0" r="4.5" class="dot amc"/>
+<text x="852" y="287.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="317.5" class="label" text-anchor="start">Insert a std::set range</text>
+<line x1="555.5" y1="313.0" x2="572.9" y2="313.0" class="link"/>
+<circle cx="572.9" cy="313.0" r="5.5" class="ring ref"/>
+<circle cx="555.5" cy="313.0" r="4.5" class="dot amc"/>
+<text x="852" y="317.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.6×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="390.0" class="panel" text-anchor="start">uint32_t</text>
+<line x1="290.6" y1="402.0" x2="290.6" y2="612.0" class="grid"/>
+<text x="290.6" y="629.0" class="tick" text-anchor="middle">10 ns</text>
+<line x1="372.4" y1="402.0" x2="372.4" y2="612.0" class="grid"/>
+<text x="372.4" y="629.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="454.1" y1="402.0" x2="454.1" y2="612.0" class="grid"/>
+<text x="454.1" y="629.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="535.9" y1="402.0" x2="535.9" y2="612.0" class="grid"/>
+<text x="535.9" y="629.0" class="tick" text-anchor="middle">10 µs</text>
+<line x1="617.6" y1="402.0" x2="617.6" y2="612.0" class="grid"/>
+<text x="617.6" y="629.0" class="tick" text-anchor="middle">100 µs</text>
+<line x1="699.4" y1="402.0" x2="699.4" y2="612.0" class="grid"/>
+<text x="699.4" y="629.0" class="tick" text-anchor="middle">1 ms</text>
+<line x1="258.0" y1="612.0" x2="732.0" y2="612.0" class="axis"/>
+<text x="28.0" y="421.5" class="label" text-anchor="start">Assign a count or a range</text>
+<line x1="297.0" y1="417.0" x2="303.2" y2="417.0" class="link"/>
+<circle cx="297.0" cy="417.0" r="5.5" class="ring ref"/>
+<circle cx="303.2" cy="417.0" r="4.5" class="dot amc"/>
+<text x="852" y="421.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="451.5" class="label" text-anchor="start">Construct and swap</text>
+<line x1="286.3" y1="447.0" x2="291.8" y2="447.0" class="link"/>
+<circle cx="291.8" cy="447.0" r="5.5" class="ring ref"/>
+<circle cx="286.3" cy="447.0" r="4.5" class="dot amc"/>
+<text x="852" y="451.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="481.5" class="label" text-anchor="start">Insert at end, erase at front</text>
+<line x1="398.3" y1="477.0" x2="399.7" y2="477.0" class="link"/>
+<circle cx="399.7" cy="477.0" r="5.5" class="ring ref"/>
+<circle cx="398.3" cy="477.0" r="4.5" class="dot amc"/>
+<text x="852" y="481.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="511.5" class="label" text-anchor="start">Insert N copies</text>
+<line x1="326.9" y1="507.0" x2="330.2" y2="507.0" class="link"/>
+<circle cx="326.9" cy="507.0" r="5.5" class="ring ref"/>
+<circle cx="330.2" cy="507.0" r="4.5" class="dot amc"/>
+<text x="852" y="511.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="541.5" class="label" text-anchor="start">Insert a range of pointers</text>
+<line x1="364.5" y1="537.0" x2="366.2" y2="537.0" class="link"/>
+<circle cx="366.2" cy="537.0" r="5.5" class="ring ref"/>
+<circle cx="364.5" cy="537.0" r="4.5" class="dot amc"/>
+<text x="852" y="541.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="571.5" class="label" text-anchor="start">Insert a std::set range</text>
+<line x1="513.3" y1="567.0" x2="515.0" y2="567.0" class="link"/>
+<circle cx="515.0" cy="567.0" r="5.5" class="ring ref"/>
+<circle cx="513.3" cy="567.0" r="4.5" class="dot amc"/>
+<text x="852" y="571.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="601.5" class="label" text-anchor="start">Grow to 1M by emplace_back</text>
+<line x1="703.3" y1="597.0" x2="710.2" y2="597.0" class="link"/>
+<circle cx="710.2" cy="597.0" r="5.5" class="ring ref"/>
+<circle cx="703.3" cy="597.0" r="4.5" class="dot amc"/>
+<text x="852" y="601.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="674.0" class="panel" text-anchor="start">Complex non trivially relocatable type</text>
+<line x1="290.6" y1="686.0" x2="290.6" y2="866.0" class="grid"/>
+<text x="290.6" y="883.0" class="tick" text-anchor="middle">10 ns</text>
+<line x1="372.4" y1="686.0" x2="372.4" y2="866.0" class="grid"/>
+<text x="372.4" y="883.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="454.1" y1="686.0" x2="454.1" y2="866.0" class="grid"/>
+<text x="454.1" y="883.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="535.9" y1="686.0" x2="535.9" y2="866.0" class="grid"/>
+<text x="535.9" y="883.0" class="tick" text-anchor="middle">10 µs</text>
+<line x1="617.6" y1="686.0" x2="617.6" y2="866.0" class="grid"/>
+<text x="617.6" y="883.0" class="tick" text-anchor="middle">100 µs</text>
+<line x1="699.4" y1="686.0" x2="699.4" y2="866.0" class="grid"/>
+<text x="699.4" y="883.0" class="tick" text-anchor="middle">1 ms</text>
+<line x1="258.0" y1="866.0" x2="732.0" y2="866.0" class="axis"/>
+<text x="28.0" y="705.5" class="label" text-anchor="start">Assign a count or a range</text>
+<line x1="521.1" y1="701.0" x2="521.6" y2="701.0" class="link"/>
+<circle cx="521.6" cy="701.0" r="5.5" class="ring ref"/>
+<circle cx="521.1" cy="701.0" r="4.5" class="dot amc"/>
+<text x="852" y="705.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="735.5" class="label" text-anchor="start">Construct and swap</text>
+<line x1="408.9" y1="731.0" x2="409.7" y2="731.0" class="link"/>
+<circle cx="408.9" cy="731.0" r="5.5" class="ring ref"/>
+<circle cx="409.7" cy="731.0" r="4.5" class="dot amc"/>
+<text x="852" y="735.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="765.5" class="label" text-anchor="start">Insert at end, erase at front</text>
+<line x1="589.6" y1="761.0" x2="589.8" y2="761.0" class="link"/>
+<circle cx="589.8" cy="761.0" r="5.5" class="ring ref"/>
+<circle cx="589.6" cy="761.0" r="4.5" class="dot amc"/>
+<text x="852" y="765.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="795.5" class="label" text-anchor="start">Insert N copies</text>
+<line x1="480.5" y1="791.0" x2="484.1" y2="791.0" class="link"/>
+<circle cx="484.1" cy="791.0" r="5.5" class="ring ref"/>
+<circle cx="480.5" cy="791.0" r="4.5" class="dot amc"/>
+<text x="852" y="795.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="825.5" class="label" text-anchor="start">Insert a range of pointers</text>
+<line x1="557.5" y1="821.0" x2="558.9" y2="821.0" class="link"/>
+<circle cx="558.9" cy="821.0" r="5.5" class="ring ref"/>
+<circle cx="557.5" cy="821.0" r="4.5" class="dot amc"/>
+<text x="852" y="825.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<text x="28.0" y="855.5" class="label" text-anchor="start">Insert a std::set range</text>
+<line x1="568.5" y1="851.0" x2="572.1" y2="851.0" class="link"/>
+<circle cx="572.1" cy="851.0" r="5.5" class="ring ref"/>
+<circle cx="568.5" cy="851.0" r="4.5" class="dot amc"/>
+<text x="852" y="855.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
+</svg>

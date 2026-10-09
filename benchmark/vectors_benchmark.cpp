@@ -26,6 +26,13 @@ using REFRelocType = std::vector<ComplexTriviallyRelocatableType>;
 using REFNonRelocType = std::vector<ComplexNonTriviallyRelocatableType>;
 using REFInt = std::vector<uint32_t>;
 
+/// Inline capacity of the SmallVector of the SmallSizes benchmark.
+constexpr uint32_t kSmallSize = 16;
+
+using AMCSmallRelocType = amc::SmallVector<ComplexTriviallyRelocatableType, kSmallSize>;
+using AMCSmallNonRelocType = amc::SmallVector<ComplexNonTriviallyRelocatableType, kSmallSize>;
+using AMCSmallInt = amc::SmallVector<uint32_t, kSmallSize>;
+
 template <class VecType>
 void InsertNElemsRandom(benchmark::State &state) {
   TypeStats::_stats = TypeStats();
@@ -220,7 +227,48 @@ void CommonUsage(benchmark::State &state) {
   PrintStats(state);
 }
 
+/// Life of a vector: filled by emplace_back, read, then destroyed.
+/// state.range(0) % of the vectors are small, with 1 to kSmallSize elements, the others have kSmallSize + 1 to
+/// 4 * kSmallSize elements (sizes are uniformly distributed in both ranges).
+template <class VecType>
+void SmallSizes(benchmark::State &state) {
+  using ValueType = typename VecType::value_type;
+  TypeStats::_stats = TypeStats();
+  const auto smallPercent = static_cast<uint64_t>(state.range(0));
+  uint64_t s = 0;
+  uint32_t sum = 0;
+  TypeStats::_stats.start();
+  for (auto _ : state) {
+    const uint64_t hash = HashValue64(++s);
+    const auto r = static_cast<uint32_t>(hash >> 32);
+    const uint32_t size = hash % 100U < smallPercent ? 1U + r % kSmallSize : kSmallSize + 1U + r % (3U * kSmallSize);
+    VecType v;
+    for (uint32_t i = 0; i < size; ++i) {
+      v.emplace_back(i);
+    }
+    // Without it, the compiler could remove the allocations of a vector which does not escape
+    benchmark::DoNotOptimize(v.data());
+    for (const ValueType &e : v) {
+      sum += static_cast<uint32_t>(e);
+    }
+    benchmark::DoNotOptimize(sum);
+  }
+  TypeStats::_stats.end();
+  PrintStats(state);
+}
+
+/// Percentages of small vectors of the SmallSizes benchmark.
+void SmallSizesArgs(benchmark::internal::Benchmark *b) {
+  for (int smallPercent : {0, 50, 80, 90, 95, 99, 100}) {
+    b->Arg(smallPercent);
+  }
+}
+
 }  // namespace
+
+// The vector of these benchmarks grows at each iteration: with the adaptive number of iterations of Google Benchmark,
+// the fastest container would be measured on a bigger vector. A fixed number makes std and amc do the same work.
+constexpr benchmark::IterationCount kNbIterations = 10000;
 
 BENCHMARK_TEMPLATE(AssignRandom, REFRelocType);
 BENCHMARK_TEMPLATE(AssignRandom, AMCRelocType);
@@ -228,17 +276,17 @@ BENCHMARK_TEMPLATE(AssignRandom, AMCRelocType);
 BENCHMARK_TEMPLATE(SwapRandom, REFRelocType);
 BENCHMARK_TEMPLATE(SwapRandom, AMCRelocType);
 
-BENCHMARK_TEMPLATE(EraseRandom, REFRelocType);
-BENCHMARK_TEMPLATE(EraseRandom, AMCRelocType);
+BENCHMARK_TEMPLATE(EraseRandom, REFRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(EraseRandom, AMCRelocType)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertNElemsRandom, REFRelocType);
-BENCHMARK_TEMPLATE(InsertNElemsRandom, AMCRelocType);
+BENCHMARK_TEMPLATE(InsertNElemsRandom, REFRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertNElemsRandom, AMCRelocType)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertFromPointerRandom, REFRelocType);
-BENCHMARK_TEMPLATE(InsertFromPointerRandom, AMCRelocType);
+BENCHMARK_TEMPLATE(InsertFromPointerRandom, REFRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertFromPointerRandom, AMCRelocType)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertFromForwardItRandom, REFRelocType);
-BENCHMARK_TEMPLATE(InsertFromForwardItRandom, AMCRelocType);
+BENCHMARK_TEMPLATE(InsertFromForwardItRandom, REFRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertFromForwardItRandom, AMCRelocType)->Iterations(kNbIterations);
 
 BENCHMARK_TEMPLATE(Growing, REFRelocType);
 BENCHMARK_TEMPLATE(Growing, AMCRelocType);
@@ -249,17 +297,17 @@ BENCHMARK_TEMPLATE(AssignRandom, AMCInt);
 BENCHMARK_TEMPLATE(SwapRandom, REFInt);
 BENCHMARK_TEMPLATE(SwapRandom, AMCInt);
 
-BENCHMARK_TEMPLATE(EraseRandom, REFInt);
-BENCHMARK_TEMPLATE(EraseRandom, AMCInt);
+BENCHMARK_TEMPLATE(EraseRandom, REFInt)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(EraseRandom, AMCInt)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertNElemsRandom, REFInt);
-BENCHMARK_TEMPLATE(InsertNElemsRandom, AMCInt);
+BENCHMARK_TEMPLATE(InsertNElemsRandom, REFInt)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertNElemsRandom, AMCInt)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertFromPointerRandom, REFInt);
-BENCHMARK_TEMPLATE(InsertFromPointerRandom, AMCInt);
+BENCHMARK_TEMPLATE(InsertFromPointerRandom, REFInt)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertFromPointerRandom, AMCInt)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertFromForwardItRandom, REFInt);
-BENCHMARK_TEMPLATE(InsertFromForwardItRandom, AMCInt);
+BENCHMARK_TEMPLATE(InsertFromForwardItRandom, REFInt)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertFromForwardItRandom, AMCInt)->Iterations(kNbIterations);
 
 BENCHMARK_TEMPLATE(Growing, REFInt);
 BENCHMARK_TEMPLATE(Growing, AMCInt);
@@ -270,20 +318,32 @@ BENCHMARK_TEMPLATE(AssignRandom, AMCNonRelocType);
 BENCHMARK_TEMPLATE(SwapRandom, REFNonRelocType);
 BENCHMARK_TEMPLATE(SwapRandom, AMCNonRelocType);
 
-BENCHMARK_TEMPLATE(EraseRandom, REFNonRelocType);
-BENCHMARK_TEMPLATE(EraseRandom, AMCNonRelocType);
+BENCHMARK_TEMPLATE(EraseRandom, REFNonRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(EraseRandom, AMCNonRelocType)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertNElemsRandom, REFNonRelocType);
-BENCHMARK_TEMPLATE(InsertNElemsRandom, AMCNonRelocType);
+BENCHMARK_TEMPLATE(InsertNElemsRandom, REFNonRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertNElemsRandom, AMCNonRelocType)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertFromPointerRandom, REFNonRelocType);
-BENCHMARK_TEMPLATE(InsertFromPointerRandom, AMCNonRelocType);
+BENCHMARK_TEMPLATE(InsertFromPointerRandom, REFNonRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertFromPointerRandom, AMCNonRelocType)->Iterations(kNbIterations);
 
-BENCHMARK_TEMPLATE(InsertFromForwardItRandom, REFNonRelocType);
-BENCHMARK_TEMPLATE(InsertFromForwardItRandom, AMCNonRelocType);
+BENCHMARK_TEMPLATE(InsertFromForwardItRandom, REFNonRelocType)->Iterations(kNbIterations);
+BENCHMARK_TEMPLATE(InsertFromForwardItRandom, AMCNonRelocType)->Iterations(kNbIterations);
 
 BENCHMARK_TEMPLATE(Growing, REFNonRelocType);
 BENCHMARK_TEMPLATE(Growing, AMCNonRelocType);
+
+BENCHMARK_TEMPLATE(SmallSizes, REFRelocType)->Apply(SmallSizesArgs);
+BENCHMARK_TEMPLATE(SmallSizes, AMCRelocType)->Apply(SmallSizesArgs);
+BENCHMARK_TEMPLATE(SmallSizes, AMCSmallRelocType)->Apply(SmallSizesArgs);
+
+BENCHMARK_TEMPLATE(SmallSizes, REFInt)->Apply(SmallSizesArgs);
+BENCHMARK_TEMPLATE(SmallSizes, AMCInt)->Apply(SmallSizesArgs);
+BENCHMARK_TEMPLATE(SmallSizes, AMCSmallInt)->Apply(SmallSizesArgs);
+
+BENCHMARK_TEMPLATE(SmallSizes, REFNonRelocType)->Apply(SmallSizesArgs);
+BENCHMARK_TEMPLATE(SmallSizes, AMCNonRelocType)->Apply(SmallSizesArgs);
+BENCHMARK_TEMPLATE(SmallSizes, AMCSmallNonRelocType)->Apply(SmallSizesArgs);
 
 BENCHMARK_TEMPLATE(CommonUsage, amc::vector<int>, 30);
 BENCHMARK_TEMPLATE(CommonUsage, amc::SmallVector<int, 32>, 30);

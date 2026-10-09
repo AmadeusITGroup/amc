@@ -3,11 +3,13 @@
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
 #include <amc/smallvector.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <set>
 #include <type_traits>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 #ifdef AMC_SMALLSET
 #include <amc/smallset.hpp>
@@ -46,39 +48,39 @@ void InsertRandom(benchmark::State &state) {
   PrintStats(state);
 }
 
-template <class SetType, unsigned InitNbInserts>
+/// Value of the 'i'-th element of the sets of the EraseRandom and LookUp benchmarks.
+/// Values are spread over the whole uint32_t range and inserted in random order: consecutive values would be collision
+/// free with the identity hash of libstdc++ and libc++, and would lay out the nodes of node based sets in memory in the
+/// order of their values, both of which are unrealistic.
+uint32_t RandomValue(uint64_t i) { return static_cast<uint32_t>(HashValue64(i)); }
+
+/// Copies a set of state.range(0) values, then erases all of them in random order.
+template <class SetType>
 void EraseRandom(benchmark::State &state) {
   TypeStats::_stats = TypeStats();
-  uint32_t s = 0;
-  SetType elems;
+  const auto size = static_cast<uint32_t>(state.range(0));
   using ValueType = typename SetType::value_type;
-  std::vector<ValueType> remainingElems;
-  for (uint32_t i = 0; i < InitNbInserts; ++i) {
-    elems.emplace(i);
-    if (remainingElems.empty()) {
-      remainingElems.emplace_back(i);
-    } else {
-      remainingElems.emplace(remainingElems.begin() + (HashValue64(++s) % remainingElems.size()), i);
-    }
+  std::vector<uint32_t> values(size);
+  for (uint32_t i = 0; i < size; ++i) {
+    values[i] = RandomValue(i);
   }
+  const SetType elems(values.begin(), values.end());
+  // Erase in another order than the insertion one (Fisher-Yates shuffle), the same at each iteration
+  for (uint32_t i = size; i > 1; --i) {
+    std::swap(values[i - 1], values[static_cast<std::size_t>(HashValue64(size + i) % i)]);
+  }
+  const std::vector<ValueType> eraseOrder(values.begin(), values.end());
   TypeStats::_stats.start();
   for (auto _ : state) {
     SetType v = elems;
-    while (!remainingElems.empty() && !v.empty()) {
-      ValueType elemToRemove = std::move(remainingElems.back());
-      remainingElems.pop_back();
-      v.erase(elemToRemove);
+    for (const ValueType &value : eraseOrder) {
+      v.erase(value);
     }
+    benchmark::DoNotOptimize(v);
   }
   TypeStats::_stats.end();
   PrintStats(state);
 }
-
-/// Value of the 'i'-th element of the sets of the LookUp benchmark.
-/// Values are spread over the whole uint32_t range and inserted in random order: consecutive values would be collision
-/// free with the identity hash of libstdc++ and libc++, and would lay out the nodes of node based sets in memory in the
-/// order of their values, both of which are unrealistic.
-uint32_t LookUpValue(uint64_t i) { return static_cast<uint32_t>(HashValue64(i)); }
 
 /// Set of the last LookUp benchmark run, with its size and the address of a variable identifying its type.
 struct LookUpSetCache {
@@ -89,7 +91,7 @@ struct LookUpSetCache {
 
 LookUpSetCache gLookUpSetCache;
 
-/// Returns the set of the first 'size' values of LookUpValue (slightly fewer elements, because of duplicates).
+/// Returns the set of the first 'size' values of RandomValue (slightly fewer elements, because of duplicates).
 /// Google Benchmark calls a benchmark several times to calibrate its number of iterations, and filling a big node based
 /// set takes much longer than the measured lookups: the set is reused by successive calls with the same type and size.
 /// Only the last one is kept, to bound memory usage.
@@ -100,7 +102,7 @@ const SetType &LookUpSet(uint32_t size) {
     gLookUpSetCache = LookUpSetCache();  // frees the previous set before filling the new one
     std::vector<uint32_t> values(size);
     for (uint32_t i = 0; i < size; ++i) {
-      values[i] = LookUpValue(i);
+      values[i] = RandomValue(i);
     }
     gLookUpSetCache.set = std::make_shared<SetType>(values.begin(), values.end());
     gLookUpSetCache.typeId = &kTypeId;
@@ -136,7 +138,7 @@ void LookUpImpl(benchmark::State &state) {
   for (auto _ : state) {
     // Maps 32 random bits to [0, size) with a multiplication instead of a slower modulo
     const uint64_t i = ((HashValue64(++s) >> 32) * size) >> 32;
-    ValueType vToLookFor(LookUpValue(i));
+    ValueType vToLookFor(RandomValue(i));
     const auto it = elems.find(vToLookFor);
     if (it != elems.end()) {
       ChainLookUp(std::integral_constant<bool, Chained>(), it, s);
@@ -190,8 +192,8 @@ void CommonUsage(benchmark::State &state) {
 BENCHMARK_TEMPLATE(InsertRandom, REFRelocType);
 BENCHMARK_TEMPLATE(InsertRandom, AMCRelocType);
 
-BENCHMARK_TEMPLATE(EraseRandom, REFRelocType, 1000);
-BENCHMARK_TEMPLATE(EraseRandom, AMCRelocType, 1000);
+BENCHMARK_TEMPLATE(EraseRandom, REFRelocType)->Arg(1000);
+BENCHMARK_TEMPLATE(EraseRandom, AMCRelocType)->Arg(1000);
 
 BENCHMARK_TEMPLATE(LookUp, REFRelocType)->Arg(1000000);
 BENCHMARK_TEMPLATE(LookUp, AMCRelocType)->Arg(1000000);
@@ -199,8 +201,8 @@ BENCHMARK_TEMPLATE(LookUp, AMCRelocType)->Arg(1000000);
 BENCHMARK_TEMPLATE(InsertRandom, REFNonRelocType);
 BENCHMARK_TEMPLATE(InsertRandom, AMCNonRelocType);
 
-BENCHMARK_TEMPLATE(EraseRandom, REFNonRelocType, 1000);
-BENCHMARK_TEMPLATE(EraseRandom, AMCNonRelocType, 1000);
+BENCHMARK_TEMPLATE(EraseRandom, REFNonRelocType)->Arg(1000);
+BENCHMARK_TEMPLATE(EraseRandom, AMCNonRelocType)->Arg(1000);
 
 BENCHMARK_TEMPLATE(LookUp, REFNonRelocType)->Arg(100000);
 BENCHMARK_TEMPLATE(LookUp, AMCNonRelocType)->Arg(100000);
@@ -209,9 +211,9 @@ BENCHMARK_TEMPLATE(InsertRandom, REFInt);
 BENCHMARK_TEMPLATE(InsertRandom, REFUnoInt);
 BENCHMARK_TEMPLATE(InsertRandom, AMCInt);
 
-BENCHMARK_TEMPLATE(EraseRandom, REFInt, 100000);
-BENCHMARK_TEMPLATE(EraseRandom, REFUnoInt, 100000);
-BENCHMARK_TEMPLATE(EraseRandom, AMCInt, 100000);
+BENCHMARK_TEMPLATE(EraseRandom, REFInt)->RangeMultiplier(10)->Range(100, 100000);
+BENCHMARK_TEMPLATE(EraseRandom, REFUnoInt)->RangeMultiplier(10)->Range(100, 100000);
+BENCHMARK_TEMPLATE(EraseRandom, AMCInt)->RangeMultiplier(10)->Range(100, 100000);
 
 // From sets fitting in L1 cache to sets much bigger than the L3 cache
 BENCHMARK_TEMPLATE(LookUp, REFInt)->RangeMultiplier(10)->Range(100, 10000000);
