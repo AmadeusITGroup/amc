@@ -414,25 +414,25 @@ class SmallSet {
 
   template <class I = const_iterator>
   iterator erase(const_iterator pos, typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
-    return isSmall() ? _vec.erase(pos) : _set.erase(pos);
+    return isSmall() ? _vec.erase(pos) : afterSetErase(_set.erase(pos));
   }
 
   template <class I = const_iterator>
   iterator erase(const_iterator pos, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
-    return isSmall() ? iterator(_vec.erase(pos.toVecIt())) : iterator(_set.erase(pos.toSetIt()));
+    return isSmall() ? iterator(_vec.erase(pos.toVecIt())) : afterSetErase(_set.erase(pos.toSetIt()));
   }
 
   template <class I = const_iterator>
   iterator erase(const_iterator first, const_iterator last,
                  typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
-    return isSmall() ? _vec.erase(first, last) : _set.erase(first, last);
+    return isSmall() ? _vec.erase(first, last) : afterSetErase(_set.erase(first, last));
   }
 
   template <class I = const_iterator>
   iterator erase(const_iterator first, const_iterator last,
                  typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
     return isSmall() ? iterator(_vec.erase(first.toVecIt(), last.toVecIt()))
-                     : iterator(_set.erase(first.toSetIt(), last.toSetIt()));
+                     : afterSetErase(_set.erase(first.toSetIt(), last.toSetIt()));
   }
 
   void swap(SmallSet &o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType &>())) &&
@@ -612,6 +612,10 @@ class SmallSet {
   static inline SetIt ToSetIt(I it, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
     return it.toSetIt();
   }
+
+  /// Converts the iterator returned by an erase in the set. If the set has become empty, 'this' is small again (see
+  /// 'isSmall'): the returned iterator is then the end of the vector, to stay comparable with 'end()'.
+  iterator afterSetErase(SetIt it) const noexcept { return _set.empty() ? end() : iterator(it); }
 
   template <class V>
   std::pair<iterator, bool> insert_small(V &&v) {
