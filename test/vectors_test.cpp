@@ -642,6 +642,64 @@ TYPED_TEST(VectorTest, TryAppendRangeUpToCapacity) {
   EXPECT_EQ(v, VectorType({3, 4}));
 }
 
+// append_range, assign_range and insert_range accept ranges that are not common (whose end is a sentinel of another
+// type than their iterator), forward or single pass input ones.
+template <class VectorType>
+void CheckRangesMethodsNonCommonRanges() {
+  using Type = typename VectorType::value_type;
+  const auto toType = std::views::transform([](int i) { return Type(i); });
+  auto upTo3 = std::views::iota(1) | std::views::take_while([](int i) { return i <= 3; }) | toType;
+  static_assert(std::ranges::forward_range<decltype(upTo3)> && !std::ranges::common_range<decltype(upTo3)>);
+  VectorType v;
+  v.append_range(upTo3);
+  EXPECT_EQ(v, VectorType({1, 2, 3}));
+  v.insert_range(v.begin() + 1, upTo3);
+  EXPECT_EQ(v, VectorType({1, 1, 2, 3, 2, 3}));
+  v.assign_range(upTo3);
+  EXPECT_EQ(v, VectorType({1, 2, 3}));
+
+  std::istringstream ss1("4 5");
+  v.append_range(std::views::istream<int>(ss1) | toType);
+  EXPECT_EQ(v, VectorType({1, 2, 3, 4, 5}));
+  std::istringstream ss2("6 7");
+  v.insert_range(v.begin() + 1, std::views::istream<int>(ss2) | toType);
+  EXPECT_EQ(v, VectorType({1, 6, 7, 2, 3, 4, 5}));
+  std::istringstream ss3("8 9");
+  v.assign_range(std::views::istream<int>(ss3) | toType);
+  EXPECT_EQ(v, VectorType({8, 9}));
+}
+
+TEST(VectorTest, RangesMethodsNonCommonRanges) {
+  CheckRangesMethodsNonCommonRanges<FixedCapacityVector<int, 10>>();
+  CheckRangesMethodsNonCommonRanges<SmallVector<int, 4>>();
+  CheckRangesMethodsNonCommonRanges<vector<ComplexNonTriviallyRelocatableType>>();
+}
+
+#ifdef __cpp_lib_ranges_as_rvalue
+// The elements of a range of rvalues are moved, not copied.
+TEST(VectorTest, RangesMethodsMoveRvalues) {
+  using VectorType = vector<std::unique_ptr<int>>;
+  auto makePtrs = [](int first) {
+    std::vector<std::unique_ptr<int>> ptrs;
+    ptrs.push_back(std::make_unique<int>(first));
+    ptrs.push_back(std::make_unique<int>(first + 1));
+    return ptrs;
+  };
+  VectorType v;
+  auto ptrs = makePtrs(1);
+  v.append_range(ptrs | std::views::as_rvalue);
+  EXPECT_FALSE(ptrs.front());
+  ptrs = makePtrs(3);
+  v.insert_range(v.begin() + 1, ptrs | std::views::as_rvalue);
+  ptrs = makePtrs(5);
+  v.assign_range(ptrs | std::views::as_rvalue);
+  ASSERT_EQ(v.size(), 2U);
+  EXPECT_EQ(*v[0], 5);
+  EXPECT_EQ(*v[1], 6);
+  EXPECT_FALSE(ptrs.back());
+}
+#endif
+
 #endif
 
 TEST(VectorTest, TryEmplacePushBack) {
@@ -1071,6 +1129,130 @@ TEST(VectorTest, GrowAllocationFailureKeepsElements) {
   CheckGrowAllocationFailureKeepsElements<vector<int, std::allocator<int>>>();
 }
 
+// When copying one of several inserted elements throws, the elements constructed past the end of the vector are
+// destroyed (no leak) and its size is unchanged. Trivially relocatable elements are even shifted back: the vector keeps
+// its elements. Same for assign of more copies of a value than the size of the vector.
+template <class VectorType>
+void CheckInsertSeveralCopiesThrowsDoesNotLeak() {
+  using Type = typename VectorType::value_type;
+  const Type value(5);
+  const std::vector<Type> values{5, 6, 7, 8, 9, 10};
+  TypeStats& stats = TypeStats::_stats;
+  for (int method = 0; method < 3; ++method) {
+    for (int pos = 0; pos <= 4; ++pos) {
+      for (int count : {1, 3, 6}) {  // fewer or more inserted elements than shifted ones
+        for (int nbCopies = 0; nbCopies < count; ++nbCopies) {
+          stats = TypeStats();
+          stats.start();
+          {
+            VectorType v{1, 2, 3, 4};
+            stats._nbCopiesBeforeThrow = nbCopies;
+            if (method == 0) {
+              EXPECT_THROW(v.insert(v.begin() + pos, static_cast<typename VectorType::size_type>(count), value),
+                           CopyException);
+            } else if (method == 1) {
+              EXPECT_THROW(v.insert(v.begin() + pos, values.begin(), values.begin() + count), CopyException);
+            } else if (count > 4) {
+              EXPECT_THROW(v.assign(static_cast<typename VectorType::size_type>(count), value), CopyException);
+            } else {
+              stats._nbCopiesBeforeThrow = -1;
+              continue;
+            }
+            stats._nbCopiesBeforeThrow = -1;
+            EXPECT_EQ(v.size(), 4U);
+            if (method != 2 && is_trivially_relocatable<Type>::value) {
+              EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
+            }
+          }
+          stats.end();
+          EXPECT_EQ(stats._nbConstructs + stats._nbCopyConstructs + stats._nbMoveConstructs, stats._nbDestructs);
+        }
+      }
+    }
+  }
+}
+
+TEST(VectorTest, InsertSeveralCopiesThrowsDoesNotLeak) {
+  CheckInsertSeveralCopiesThrowsDoesNotLeak<vector<ComplexTriviallyRelocatableType>>();
+  CheckInsertSeveralCopiesThrowsDoesNotLeak<vector<ComplexNonTriviallyRelocatableType>>();
+  CheckInsertSeveralCopiesThrowsDoesNotLeak<SmallVector<ComplexTriviallyRelocatableType, 2>>();
+  CheckInsertSeveralCopiesThrowsDoesNotLeak<SmallVector<ComplexNonTriviallyRelocatableType, 8>>();
+  CheckInsertSeveralCopiesThrowsDoesNotLeak<FixedCapacityVector<ComplexTriviallyRelocatableType, 10>>();
+  CheckInsertSeveralCopiesThrowsDoesNotLeak<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 10>>();
+}
+
+// When moving an element throws, the vector keeps its elements and its memory without any leak, whatever the operation
+// relocating them: growth from the inline storage, reallocation, shrink to the inline storage, swap of a large and a
+// small SmallVector (the inline storage shares its first bytes with the pointer to the dynamic storage), shift.
+TEST(VectorTest, ThrowingMoveDoesNotLeak) {
+  using Type = ThrowingMoveType;
+  using SV = SmallVector<Type, 2, BasicAllocatorWrapper<Type, CountingAllocator>>;
+  static_assert(SV::kInlineCapacity == 2U, "the first inline element shares its storage with the pointer");
+  int& nbMovesBeforeThrow = Type::NbMovesBeforeThrow();
+  const int nbLive = Type::NbLive();
+  const int64_t nbLiveAllocations = CountingAllocator::NbLiveAllocations();
+  {
+    SV v{1, 2};
+    nbMovesBeforeThrow = 0;
+    EXPECT_THROW(v.push_back(3), MoveForbiddenException);  // growth from the inline storage
+    nbMovesBeforeThrow = -1;
+    EXPECT_EQ(v, SV({1, 2}));
+    EXPECT_EQ(v.capacity(), 2U);
+    EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations);
+
+    v.reserve(4U);
+    v.push_back(3);
+    v.push_back(4);
+    nbMovesBeforeThrow = 1;
+    EXPECT_THROW(v.push_back(5), MoveForbiddenException);  // reallocation
+    nbMovesBeforeThrow = -1;
+    EXPECT_EQ(v, SV({1, 2, 3, 4}));
+    EXPECT_EQ(v.capacity(), 4U);
+    EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations + 1);
+
+    v.resize(2U);
+    nbMovesBeforeThrow = 1;
+    EXPECT_THROW(v.shrink_to_fit(), MoveForbiddenException);  // relocation to the inline storage
+    nbMovesBeforeThrow = -1;
+    EXPECT_EQ(v, SV({1, 2}));
+    EXPECT_EQ(v.capacity(), 4U);
+
+    SV small{Type(7)};
+    nbMovesBeforeThrow = 0;
+    EXPECT_THROW(v.swap(small), MoveForbiddenException);  // relocation of 'small' to the inline storage of 'v'
+    nbMovesBeforeThrow = -1;
+    EXPECT_EQ(v, SV({1, 2}));
+    EXPECT_EQ(small, SV{Type(7)});
+  }
+  {
+    // reallocation by the allocator itself, of elements which are not trivially relocatable
+    BasicAllocatorWrapper<Type, CountingAllocator> alloc;
+    Type* p = alloc.allocate(2U);
+    amc::construct_at(p, 1);
+    amc::construct_at(p + 1, 2);
+    nbMovesBeforeThrow = 1;
+    EXPECT_THROW(p = alloc.reallocate(p, 2U, 4U, 2U), MoveForbiddenException);
+    nbMovesBeforeThrow = -1;
+    EXPECT_EQ(static_cast<int32_t>(p[0]), 1);
+    EXPECT_EQ(static_cast<int32_t>(p[1]), 2);
+    amc::destroy_n(p, 2);
+    alloc.deallocate(p, 2U);
+  }
+  {
+    vector<Type> v{1, 2, 3};
+    v.reserve(10U);
+    nbMovesBeforeThrow = 1;  // move construction past the end succeeds, then a move assignment throws
+    EXPECT_THROW(v.insert(v.begin(), Type(0)), MoveForbiddenException);
+    EXPECT_EQ(v.size(), 3U);
+    nbMovesBeforeThrow = 2;
+    EXPECT_THROW(v.insert(v.begin(), 2U, Type(0)), MoveForbiddenException);
+    nbMovesBeforeThrow = -1;
+    EXPECT_EQ(v.size(), 3U);
+  }
+  EXPECT_EQ(Type::NbLive(), nbLive);
+  EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations);
+}
+
 // Same for the rvalue overload when moving the inserted element throws (elements are shifted with memmove here)
 TEST(VectorTest, InsertMoveThrowsKeepsElements) {
   using VectorType = vector<MoveForbidden<true>>;
@@ -1195,6 +1377,138 @@ TEST(VectorTest, BasicAllocatorWrapperOfStatelessAllocatorsAreEqual) {
   using CharAlloc = BasicAllocatorWrapper<char, SimpleAllocator>;
   EXPECT_TRUE(IntAlloc() == CharAlloc());
   EXPECT_FALSE(IntAlloc() != CharAlloc());
+}
+
+// Wrappers of basic allocators with a state compare them: an allocator is equal to itself and to its copies.
+TEST(VectorTest, BasicAllocatorWrapperOfStatefulAllocators) {
+  const ArenaAllocatorOf<int> alloc;
+  EXPECT_TRUE(alloc == alloc);
+  EXPECT_TRUE(alloc == ArenaAllocatorOf<int>(alloc));
+  EXPECT_TRUE(alloc == ArenaAllocatorOf<char>(alloc));
+  EXPECT_FALSE(alloc != ArenaAllocatorOf<char>(alloc));
+  EXPECT_FALSE(alloc == ArenaAllocatorOf<int>(ArenaAllocator(1)));
+  EXPECT_TRUE(alloc != ArenaAllocatorOf<char>(ArenaAllocator(1)));
+}
+
+// The number of bytes to allocate cannot wrap around: allocators throw beyond their max_size(), which also limits the
+// max_size() of the vectors, whose size type may count more elements than size_t can count bytes.
+TEST(VectorTest, AllocationSizeOverflow) {
+  amc::allocator<int> alloc;
+  EXPECT_THROW(alloc.allocate(alloc.max_size() + 1U), std::bad_alloc);
+  amc::allocator<OverAlignedType> overAlignedAlloc;
+  EXPECT_THROW(overAlignedAlloc.allocate(overAlignedAlloc.max_size() + 1U), std::bad_alloc);
+
+  using VectorType = vector<int, amc::allocator<int>, uint64_t>;
+  VectorType v{1, 2};
+  EXPECT_EQ(v.max_size(), alloc.max_size());
+  EXPECT_THROW(v.reserve(alloc.max_size() + 1U), std::overflow_error);
+  EXPECT_EQ(v, VectorType({1, 2}));
+}
+
+// Allocators with a state are handled like in the standard containers: memory is only deallocated by an allocator
+// equal to the one that allocated it, and allocators propagate according to their traits.
+template <class VectorType>
+void CheckStatefulAllocator() {
+  using Alloc = typename VectorType::allocator_type;
+  constexpr bool kPropagate = std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value;
+  const Alloc alloc1(ArenaAllocator(1));
+  const Alloc alloc2(ArenaAllocator(2));
+  const int64_t nbLiveAllocations = ArenaAllocator::NbLiveAllocations();
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  const std::vector<int> smallValues{1};
+  const std::vector<int> largeValues{1, 2, 3, 4, 5};
+  for (const std::vector<int>* values : {&smallValues, &largeValues}) {
+    const VectorType v(values->begin(), values->end(), alloc1);
+
+    VectorType copy(v);
+    EXPECT_EQ(copy.get_allocator(), alloc1);  // select_on_container_copy_construction: a copy by default
+    VectorType moved(std::move(copy));
+    EXPECT_EQ(moved.get_allocator(), alloc1);
+    EXPECT_EQ(moved, v);
+    VectorType movedWithAlloc(std::move(moved), alloc2);  // elements moved one by one to the memory of 'alloc2'
+    EXPECT_EQ(movedWithAlloc.get_allocator(), alloc2);
+    EXPECT_EQ(movedWithAlloc, v);
+    const int* data = movedWithAlloc.data();
+    VectorType movedWithEqualAlloc(std::move(movedWithAlloc), alloc2);  // equal allocators: memory is stolen
+    EXPECT_EQ(movedWithEqualAlloc, v);
+    if (values == &largeValues) {
+      EXPECT_EQ(movedWithEqualAlloc.data(), data);
+    }
+
+    for (const std::vector<int>* lhsValues : {&smallValues, &largeValues}) {
+      VectorType copyAssigned(lhsValues->begin(), lhsValues->end(), alloc2);
+      copyAssigned = v;
+      EXPECT_EQ(copyAssigned, v);
+      EXPECT_EQ(copyAssigned.get_allocator(), kPropagate ? alloc1 : alloc2);
+
+      VectorType moveAssigned(lhsValues->begin(), lhsValues->end(), alloc2);
+      VectorType rhs(v);
+      moveAssigned = std::move(rhs);
+      EXPECT_EQ(moveAssigned, v);
+      EXPECT_EQ(moveAssigned.get_allocator(), kPropagate ? alloc1 : alloc2);
+
+      VectorType moveAssignedEqualAlloc(lhsValues->begin(), lhsValues->end(), alloc1);
+      VectorType rhsEqualAlloc(v);
+      const int* rhsData = rhsEqualAlloc.data();
+      moveAssignedEqualAlloc = std::move(rhsEqualAlloc);  // equal allocators: memory is stolen
+      EXPECT_EQ(moveAssignedEqualAlloc, v);
+      if (values == &largeValues) {
+        EXPECT_EQ(moveAssignedEqualAlloc.data(), rhsData);
+      }
+
+      // swapping containers of unequal allocators which do not propagate is undefined behavior
+      const Alloc& lhsAlloc = kPropagate ? alloc2 : alloc1;
+      VectorType lhs(lhsValues->begin(), lhsValues->end(), lhsAlloc);
+      VectorType other(v);
+      lhs.swap(other);
+      EXPECT_EQ(lhs, v);
+      EXPECT_EQ(lhs.get_allocator(), alloc1);
+      EXPECT_EQ(other, VectorType(lhsValues->begin(), lhsValues->end()));
+      EXPECT_EQ(other.get_allocator(), lhsAlloc);
+    }
+  }
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
+  EXPECT_EQ(ArenaAllocator::NbLiveAllocations(), nbLiveAllocations);
+}
+
+TEST(VectorTest, StatefulAllocator) {
+  CheckStatefulAllocator<vector<int, ArenaAllocatorOf<int>>>();
+  CheckStatefulAllocator<vector<int, PropagatingArenaAllocator<int>>>();
+  CheckStatefulAllocator<SmallVector<int, 2, ArenaAllocatorOf<int>>>();
+  CheckStatefulAllocator<SmallVector<int, 2, PropagatingArenaAllocator<int>>>();
+}
+
+// Vectors only exchange their dynamic storages if their allocators are equal.
+TEST(VectorTest, StatefulAllocatorDynamicStorageExchange) {
+  using Alloc = ArenaAllocatorOf<int>;
+  const Alloc alloc1(ArenaAllocator(1));
+  const int64_t nbLiveAllocations = ArenaAllocator::NbLiveAllocations();
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  {
+    // SmallVector stealing the dynamic storage of a vector takes its allocator
+    vector<int, Alloc> v({1, 2, 3}, alloc1);
+    SmallVector<int, 2, Alloc> sv(std::move(v));
+    EXPECT_EQ(sv.get_allocator(), alloc1);
+    EXPECT_EQ(sv, (SmallVector<int, 2, Alloc>{1, 2, 3}));
+#ifdef AMC_NONSTD_FEATURES
+    // deep swaps, between all the flavors of vectors with a dynamic storage
+    vector<int, Alloc> other({4, 5, 6, 7}, Alloc(ArenaAllocator(2)));
+    other.swap2(sv);
+    EXPECT_EQ(other, (vector<int, Alloc>{1, 2, 3}));
+    EXPECT_EQ(sv, (SmallVector<int, 2, Alloc>{4, 5, 6, 7}));
+    EXPECT_EQ(sv.get_allocator(), alloc1);
+    sv.swap2(other);
+    EXPECT_EQ(other, (vector<int, Alloc>{4, 5, 6, 7}));
+    EXPECT_EQ(sv, (SmallVector<int, 2, Alloc>{1, 2, 3}));
+    SmallVector<int, 3, Alloc> otherSmallVector({8, 9, 10, 11}, Alloc(ArenaAllocator(2)));
+    sv.swap2(otherSmallVector);
+    EXPECT_EQ(otherSmallVector, (SmallVector<int, 3, Alloc>{1, 2, 3}));
+    EXPECT_EQ(sv, (SmallVector<int, 2, Alloc>{8, 9, 10, 11}));
+    EXPECT_EQ(sv.get_allocator(), alloc1);
+#endif
+  }
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
+  EXPECT_EQ(ArenaAllocator::NbLiveAllocations(), nbLiveAllocations);
 }
 
 TEST(VectorTest, RelocatabilityAgainstRefVector) {

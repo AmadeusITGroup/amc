@@ -10,7 +10,11 @@
 #ifdef AMC_SMALLSET
 #include <amc/smallset.hpp>
 #endif
+#ifdef AMC_CXX23
+#include <ranges>
+#endif
 
+#include "testmallocfailure.hpp"
 #include "testtypes.hpp"
 
 namespace amc {
@@ -331,6 +335,13 @@ TYPED_TEST(SetListTest, InsertRange) {
   EXPECT_TRUE(s.contains(2));
   EXPECT_TRUE(s.contains(6));
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
+
+  // ranges that are not common (whose end is a sentinel of another type than their iterator), forward or input ones
+  s.insert_range(std::views::iota(17) | std::views::take_while([](int i) { return i < 20; }));
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 17, 18, 19}));
+  std::istringstream ss("5 20 1");
+  s.insert_range(std::views::istream<int>(ss));
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 5, 6, 17, 18, 19, 20}));
 }
 
 #endif
@@ -425,6 +436,43 @@ TEST(SetTest, SmallSetSizeTest) {
   EXPECT_TRUE(s.contains(11));
 }
 #endif
+
+#ifdef AMC_SMALLSET
+// If moving the elements of a SmallSet to its set fails when it grows, it keeps all its elements, and they do not
+// reappear once its set becomes empty again.
+TEST(SetTest, SmallSetGrowAllocationFailureKeepsElements) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  using SetType = SmallSet<int, 4>;
+  for (int nbSuccessfulAllocations = 0; nbSuccessfulAllocations < 4; ++nbSuccessfulAllocations) {
+    SetType s{1, 2, 3, 4};
+    EXPECT_THROW(CallWithFailingMalloc([&] { s.insert(5); }, nbSuccessfulAllocations), std::bad_alloc);
+    EXPECT_EQ(s, SetType({1, 2, 3, 4}));
+    s.insert(5);
+    EXPECT_EQ(s, SetType({1, 2, 3, 4, 5}));
+    for (int i = 1; i <= 5; ++i) {
+      s.erase(i);
+    }
+    EXPECT_TRUE(s.empty());
+  }
+}
+#endif
+
+// If appending elements to the vector of a FlatSet fails, the appended ones are erased: it stays sorted.
+TEST(SetTest, FlatSetInsertAllocationFailureKeepsElements) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  using SetType = FlatSet<int>;
+  SetType s{1, 2, 3, 4, 5};
+  s.erase(4);
+  s.erase(5);  // room for two more elements before a reallocation
+  std::istringstream ss("0 10 7");
+  EXPECT_THROW(CallWithFailingMalloc([&] { s.insert(std::istream_iterator<int>(ss), std::istream_iterator<int>()); }),
+               std::bad_alloc);
+  EXPECT_EQ(s, SetType({1, 2, 3}));
+}
 
 TEST(SetTest, Relocatibility) {
   using TrivialType = int;

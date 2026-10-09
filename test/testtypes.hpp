@@ -1,5 +1,6 @@
 #pragma once
 
+#include <amc/allocator.hpp>
 #include <amc/type_traits.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -7,6 +8,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <type_traits>
 #include <utility>
 
 #ifdef AMC_CXX20
@@ -396,6 +398,48 @@ struct MoveForbidden {
       typename std::conditional<IsTriviallyRelocatable, std::true_type, std::false_type>::type;
 };
 
+/// Non trivially relocatable type with a value, whose moves throw MoveForbiddenException once 'NbMovesBeforeThrow()'
+/// moves have been done (never if negative). A throwing move has already written its value: relocating elements to
+/// the inline storage of a SmallVector, which shares its first bytes with the pointer to its dynamic storage, then
+/// overwrites this pointer. Counts its live objects, to detect leaks.
+struct ThrowingMoveType {
+  static int &NbMovesBeforeThrow() {
+    static int nbMovesBeforeThrow = -1;
+    return nbMovesBeforeThrow;
+  }
+  static int &NbLive() {
+    static int nbLive = 0;
+    return nbLive;
+  }
+
+  ThrowingMoveType(int32_t i = 0) : _i(i) { ++NbLive(); }
+  ThrowingMoveType(const ThrowingMoveType &o) : _i(o._i) { ++NbLive(); }
+  ThrowingMoveType(ThrowingMoveType &&o) : _i(o._i) {
+    Move();
+    ++NbLive();
+  }
+  ThrowingMoveType &operator=(const ThrowingMoveType &o) = default;
+  ThrowingMoveType &operator=(ThrowingMoveType &&o) {
+    _i = o._i;
+    Move();
+    return *this;
+  }
+  ~ThrowingMoveType() { --NbLive(); }
+
+  operator int32_t() const { return _i; }
+
+  static void Move() {
+    int &nbMovesBeforeThrow = NbMovesBeforeThrow();
+    if (nbMovesBeforeThrow >= 0 && nbMovesBeforeThrow-- == 0) {
+      throw MoveForbiddenException();
+    }
+  }
+
+  int32_t _i;
+};
+
+static_assert(!amc::is_trivially_relocatable<ThrowingMoveType>::value, "");
+
 template <unsigned int Size>
 struct UnalignedToPtr {
   static constexpr size_t kIntSize = Size < sizeof(uint32_t) ? Size : sizeof(uint32_t);
@@ -476,6 +520,96 @@ class CountingAllocator {
     }
     free(p);
   }
+};
+
+/// Basic allocator with a state, its arena: allocators of the same arena are equal. Each allocated block records the
+/// arena of its allocator, to count the blocks deallocated by an allocator of another arena, which must never happen.
+class ArenaAllocator {
+ public:
+  static int64_t &NbLiveAllocations() {
+    static int64_t nbLiveAllocations = 0;
+    return nbLiveAllocations;
+  }
+  static int64_t &NbArenaMismatches() {
+    static int64_t nbArenaMismatches = 0;
+    return nbArenaMismatches;
+  }
+
+  explicit ArenaAllocator(int arena = 0) noexcept : _arena(arena) {}
+
+  void *allocate(size_t n) {
+    char *block = static_cast<char *>(malloc(n + kHeaderSize));
+    if (!block) {
+      throw std::bad_alloc();
+    }
+    std::memcpy(block, &_arena, sizeof(_arena));
+    ++NbLiveAllocations();
+    return block + kHeaderSize;
+  }
+
+  void *reallocate(void *p, size_t, size_t newSz) {
+    if (!p) {
+      return allocate(newSz);
+    }
+    char *block = checkArena(p);
+    block = static_cast<char *>(realloc(block, newSz + kHeaderSize));
+    if (!block) {
+      throw std::bad_alloc();
+    }
+    return block + kHeaderSize;
+  }
+
+  void deallocate(void *p, size_t) {
+    if (p) {
+      free(checkArena(p));
+      --NbLiveAllocations();
+    }
+  }
+
+  bool operator==(const ArenaAllocator &o) const { return _arena == o._arena; }
+
+ private:
+  static constexpr size_t kHeaderSize = alignof(std::max_align_t);
+
+  char *checkArena(void *p) const {
+    char *block = static_cast<char *>(p) - kHeaderSize;
+    int arena;
+    std::memcpy(&arena, block, sizeof(arena));
+    if (arena != _arena) {
+      ++NbArenaMismatches();
+    }
+    return block;
+  }
+
+  int _arena;
+};
+
+/// Standard allocator of an arena, which does not propagate (default of std::allocator_traits).
+template <class T>
+using ArenaAllocatorOf = BasicAllocatorWrapper<T, ArenaAllocator>;
+
+/// Standard allocator of an arena, propagating on container copy assignment, move assignment and swap.
+template <class T>
+class PropagatingArenaAllocator : public BasicAllocatorWrapper<T, ArenaAllocator> {
+ public:
+  using propagate_on_container_copy_assignment = std::true_type;
+  using propagate_on_container_move_assignment = std::true_type;
+  using propagate_on_container_swap = std::true_type;
+
+  template <class U>
+  struct rebind {
+    using other = PropagatingArenaAllocator<U>;
+  };
+
+  PropagatingArenaAllocator() = default;
+
+  // ::amc::ArenaAllocator, as MSVC would find the inaccessible name of the private base of BasicAllocatorWrapper
+  explicit PropagatingArenaAllocator(const ::amc::ArenaAllocator &arenaAllocator)
+      : BasicAllocatorWrapper<T, ::amc::ArenaAllocator>(arenaAllocator) {}
+
+  template <class U>
+  PropagatingArenaAllocator(const PropagatingArenaAllocator<U> &o)
+      : BasicAllocatorWrapper<T, ::amc::ArenaAllocator>(o) {}
 };
 
 struct BiggerAllocateException {};

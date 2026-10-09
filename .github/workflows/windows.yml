@@ -17,7 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: cmake
-        run: cmake -S . -B build -A ${{ matrix.architecture }}
+        # warnings are only treated as errors in Debug
+        run: cmake -S . -B build -A ${{ matrix.architecture }} -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
       - name: test
@@ -32,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: cmake
-        run: cmake -S . -B build -A ${{ matrix.architecture }} -T ClangCL
+        run: cmake -S . -B build -A ${{ matrix.architecture }} -T ClangCL -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
         run: cmake --build build --config Debug --parallel 2
       - name: test

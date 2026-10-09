@@ -89,7 +89,7 @@ void InsertFromForwardItRandom(benchmark::State &state) {
     TypeStats::_stats.start();
     typename std::set<ValueType>::const_iterator first = std::next(kSet.begin(), hashs % kSet.size());
     auto nElemsToInsert = std::distance(first, kSet.end());
-    uint64_t insertPos = hashs % v.size();
+    const auto insertPos = static_cast<std::ptrdiff_t>(hashs % v.size());
     v.insert(v.begin() + insertPos, first, kSet.end());
     typename VecType::iterator vpos = v.begin() + insertPos;
     v.erase(vpos, vpos + nElemsToInsert);
@@ -196,7 +196,7 @@ void CommonUsage(benchmark::State &state) {
       uint64_t value = HashValue64(++seed);
       switch (value % 5) {
         case 0:
-          v.insert(v.end(), i, static_cast<ValueType>(value % kMaxValue));
+          v.insert(v.end(), static_cast<typename VecType::size_type>(i), static_cast<ValueType>(value % kMaxValue));
           break;
         case 1:
           if (v.size() > 1) {

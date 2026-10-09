@@ -18,6 +18,15 @@ if (NOT GTest_FOUND)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
   FetchContent_MakeAvailable(googletest)
+
+  # Include GoogleTest headers as system headers, like those of an installed GoogleTest (imported targets): their
+  # warnings are not ours (AMC_WARNINGS_AS_ERRORS)
+  foreach(gtest_target gtest gmock)
+    get_target_property(gtest_include_dirs ${gtest_target} INTERFACE_INCLUDE_DIRECTORIES)
+    if (gtest_include_dirs)
+      set_target_properties(${gtest_target} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${gtest_include_dirs}")
+    endif()
+  endforeach()
 endif()
 
 enable_testing()
@@ -61,13 +70,13 @@ function(add_unit_test name)
      set_target_properties(${name} PROPERTIES CXX_STANDARD ${MY_CXX_STANDARD} CXX_STANDARD_REQUIRED ON)
    endif()
    target_include_directories(${name} PRIVATE ../include)
+   AmcSetProjectProperties(${name})
 
    add_test(NAME ${name} COMMAND ${name})
    if (AMC_ENABLE_ASAN AND NOT MSVC)
      set_tests_properties(${name} PROPERTIES
                           ENVIRONMENT "UBSAN_OPTIONS=halt_on_error=1 abort_on_error=1 print_stacktrace=1; LSAN_OPTIONS=detect_leaks=1 malloc_context_size=2 print_suppressions=0"
                           WORKING_DIRECTORY ${CMAKE_HOME_DIRECTORY})
-     target_link_options(${name} PRIVATE -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero)
    endif()
    if (AMC_ENABLE_COVERAGE)
      # Only the tests are instrumented, not GoogleTest. NDEBUG, otherwise each assert counts as a branch never taken.
@@ -103,8 +112,9 @@ add_unit_test(
   CXX_STANDARD 11
 )
 if (NOT MSVC)
-  # A missing return statement is undefined behavior, make it a compilation error (it is an error by default for MSVC)
-  target_compile_options(cxx11_test PRIVATE -Werror=return-type)
+  # A missing return statement is undefined behavior, make it a compilation error (it is an error by default for MSVC).
+  # Number of inline elements of SmallVector in the size of a pointer: GCC must not warn about the division of sizes.
+  target_compile_options(cxx11_test PRIVATE -Werror=return-type -Werror=sizeof-pointer-div)
 endif()
 
 if (AMC_ENABLE_COVERAGE)

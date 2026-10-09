@@ -301,7 +301,7 @@ class SmallSet {
   void insert(InputIt first, InputIt last) {
     // Insert elements in vector as long as we stay small
     while (isSmall() && first != last) {
-      insert_small(*first);
+      insert_small(vec::AsValueType<T>(*first));
       ++first;
     }
     // Insert remaining elements (if any) in the standard set if we became large
@@ -350,9 +350,17 @@ class SmallSet {
   }
 
 #ifdef AMC_CXX23
+  /// 'rg' may not be common (its end may be a sentinel of another type than its iterator).
   template <class R>
   void insert_range(R &&rg) {
-    insert(std::ranges::begin(rg), std::ranges::end(rg));
+    if constexpr (std::ranges::common_range<R> && std::ranges::forward_range<R>) {
+      insert(std::ranges::begin(rg), std::ranges::end(rg));
+    } else {
+      const auto last = std::ranges::end(rg);
+      for (auto first = std::ranges::begin(rg); first != last; ++first) {
+        emplace(*first);
+      }
+    }
   }
 #endif
 
@@ -665,8 +673,23 @@ class SmallSet {
     return std::find_if(_vec.begin(), _vec.end(), FindFunctor<K>(key_comp(), k));
   }
 
+  /// Moves the elements of the vector to the set.
+  /// If an insertion throws, the elements already moved to the set are moved back to the vector, which then keeps all
+  /// the elements (strong guarantee if moving T does not throw), and the set is cleared: otherwise, the moved from
+  /// elements left in the vector would reappear once the set becomes empty again.
   void grow() {
-    _set.insert(std::make_move_iterator(_vec.begin()), std::make_move_iterator(_vec.end()));
+    try {
+      _set.insert(std::make_move_iterator(_vec.begin()), std::make_move_iterator(_vec.end()));
+    } catch (...) {
+      // The set contains exactly the elements of the vector inserted before the exception (they are all unique), which
+      // are moved from in the vector. As the vector is unordered, they can be moved back in any order.
+      miterator vecIt = _vec.begin();
+      for (auto setIt = _set.begin(); setIt != _set.end(); ++setIt, (void)++vecIt) {
+        *vecIt = std::move(const_cast<T &>(*setIt));  // the set is cleared just after, it does not need to stay sorted
+      }
+      _set.clear();
+      throw;
+    }
     _vec.clear();
   }
 
