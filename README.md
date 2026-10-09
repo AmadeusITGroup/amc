@@ -82,6 +82,42 @@ For sets, time axis is in logarithmic scale.
 ![Alt text](./docs/set_bench_reloctype.svg)
 ![Alt text](./docs/set_bench_int.svg)
 
+##### Lookup time by set size
+
+The `LookUp` bars of the `uint32_t` chart above were measured by an earlier version of the benchmark, with 100 000 consecutive values. This flatters `std::unordered_set`: consecutive integers never collide with the identity hash of libstdc++, and its whole table (4 MB) fits in the L3 cache. The `uint32_t` lookups are now benchmarked from 100 to 10 000 000 pseudo random values, to see each set inside and outside of each cache level. Per element, `amc::FlatSet<uint32_t>` takes 4 bytes, `std::set` and `std::unordered_set` about 40 to 50 bytes (node, allocation overhead and buckets).
+
+Each cell gives the time per lookup in ns of:
+
+ - **independent** lookups (`LookUp`): the CPU overlaps the cache misses of successive lookups, so this is a throughput, which can be shorter than a memory access,
+ - **chained** lookups (`LookUpChained`): each looked up value depends on the element found by the previous lookup, so this is the latency of a single lookup.
+
+Measured on an AMD Ryzen AI 9 HX PRO 370 (48 KiB L1d and 1 MiB L2 per core, 16 MiB L3) with libstdc++ 13, median of 5 repetitions. Beyond the L3 cache, results vary by about 15 % between runs.
+
+Clang 23:
+
+| Elements   |   std::set | std::unordered_set | amc::FlatSet |
+| ---------- | ---------: | -----------------: | -----------: |
+| 100        |    14 / 23 |           7.6 / 14 |      11 / 18 |
+| 1 000      |    22 / 31 |           8.3 / 15 |      12 / 22 |
+| 10 000     |    33 / 52 |           9.9 / 21 |      21 / 29 |
+| 100 000    |   59 / 108 |           9.8 / 42 |      30 / 42 |
+| 1 000 000  |  254 / 620 |           58 / 348 |      46 / 91 |
+| 10 000 000 | 625 / 1280 |           78 / 475 |    258 / 483 |
+
+GCC 13:
+
+| Elements   |    std::set | std::unordered_set | amc::FlatSet |
+| ---------- | ----------: | -----------------: | -----------: |
+| 100        |     23 / 24 |           7.1 / 14 |      24 / 27 |
+| 1 000      |     33 / 34 |           7.8 / 15 |      37 / 40 |
+| 10 000     |     58 / 58 |           9.2 / 21 |      50 / 51 |
+| 100 000    |   111 / 122 |           9.4 / 42 |      65 / 66 |
+| 1 000 000  |   541 / 684 |           60 / 365 |      95 / 97 |
+| 10 000 000 | 1259 / 1448 |           76 / 476 |    209 / 305 |
+
+ - With 1 000 000 elements, `amc::FlatSet` (4 MB) still fits in the L3 cache while the node based sets do not: its lookup latency is about 4 times lower than the one of `std::unordered_set`.
+ - Clang compiles the binary searches of `amc::FlatSet` (`std::lower_bound`) and `std::set` with conditional moves, GCC with branches. Mispredicted branches serialize the lookups, so with GCC independent lookups are barely faster than chained ones. Beyond the L3 cache however, the speculative execution of the predicted branch prefetches the next levels of the search, and GCC is faster than Clang.
+
 ### Other benefits
 
  - All 3 vector flavors share the same code / algorithms for vector operations.
