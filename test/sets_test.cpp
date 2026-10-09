@@ -193,6 +193,43 @@ TYPED_TEST(SetListTest, EraseRange) {
   EXPECT_TRUE(s.empty());
 }
 
+// Erasing all elements of a large SmallSet makes it small again: the returned iterators must still compare equal to
+// end(), so that the usual erase loops terminate.
+TYPED_TEST(SetListTest, EraseAllElementsReturnsEnd) {
+  using value_type = typename TypeParam::value_type;
+  constexpr int kNbElems = 20;  // larger than the inline capacity of all tested SmallSets
+  TypeParam s;
+  for (int i = 1; i <= kNbElems; ++i) {
+    s.insert(value_type(i));
+  }
+
+  TypeParam s1 = s;
+  typename TypeParam::iterator it = s1.begin();
+  for (int i = 0; i < kNbElems; ++i) {
+    it = s1.erase(it);
+  }
+  EXPECT_TRUE(s1.empty());
+  EXPECT_EQ(it, s1.end());
+
+  TypeParam s2 = s;
+  it = s2.erase(s2.begin(), s2.end());
+  EXPECT_TRUE(s2.empty());
+  EXPECT_EQ(it, s2.end());
+
+  TypeParam s3 = s;
+  s3.erase(std::next(s3.begin()), s3.end());
+  EXPECT_EQ(s3.size(), 1U);
+  it = s3.erase(s3.begin());
+  EXPECT_TRUE(s3.empty());
+  EXPECT_EQ(it, s3.end());
+
+#ifdef AMC_CXX20
+  TypeParam s4 = s;
+  EXPECT_EQ(erase_if(s4, [](const value_type&) { return true; }), static_cast<typename TypeParam::size_type>(kNbElems));
+  EXPECT_TRUE(s4.empty());
+#endif
+}
+
 TYPED_TEST(SetListTest, InsertHint1) {
   TypeParam s{1, 3, 4, 6};
   s.insert(std::next(s.begin()), 2);  // good hint
