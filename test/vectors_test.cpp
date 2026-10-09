@@ -344,6 +344,33 @@ TEST(VectorTest, Operators) {
 #endif
 }
 
+template <typename T>
+class VectorLessComparableTest : public ::testing::Test {};
+
+using VectorsOfLessComparableTypes = ::testing::Types<vector<LessComparableType>, SmallVector<LessComparableType, 2>,
+                                                      FixedCapacityVector<LessComparableType, 4>>;
+TYPED_TEST_SUITE(VectorLessComparableTest, VectorsOfLessComparableTypes, );
+
+// Vectors of elements only providing operator< are comparable (from C++20, with an ordering synthesized from it)
+TYPED_TEST(VectorLessComparableTest, ComparisonOperators) {
+  using VectorType = TypeParam;
+  const VectorType v1{1, 2, 3};
+  const VectorType v2{1, 3};
+  const VectorType v3{1, 2};
+  EXPECT_EQ(v1, VectorType({1, 2, 3}));
+  EXPECT_NE(v1, v2);
+  EXPECT_LT(v1, v2);
+  EXPECT_LE(v3, v1);
+  EXPECT_GT(v2, v3);
+  EXPECT_GE(v1, v1);
+#ifdef AMC_CXX20
+  static_assert(std::is_same_v<decltype(v1 <=> v2), std::weak_ordering>, "ordering synthesized from operator<");
+  EXPECT_EQ(v1 <=> v2, std::weak_ordering::less);
+  EXPECT_EQ(v1 <=> v1, std::weak_ordering::equivalent);
+  EXPECT_EQ(v2 <=> v3, std::weak_ordering::greater);
+#endif
+}
+
 #ifdef AMC_CXX20
 TEST(VectorTest, Erase) {
   using VectorType = vector<int>;
