@@ -1241,6 +1241,9 @@ TEST(VectorTest, ThrowingMoveDoesNotLeak) {
   {
     vector<Type> v{1, 2, 3};
     v.reserve(10U);
+    nbMovesBeforeThrow = 3;  // the shift succeeds, then moving the new element into place throws: the shift is undone
+    EXPECT_THROW(v.emplace(v.begin(), 0), MoveForbiddenException);
+    EXPECT_EQ(v, vector<Type>({1, 2, 3}));
     nbMovesBeforeThrow = 1;  // move construction past the end succeeds, then a move assignment throws
     EXPECT_THROW(v.insert(v.begin(), Type(0)), MoveForbiddenException);
     EXPECT_EQ(v.size(), 3U);

@@ -98,7 +98,8 @@ struct UncheckedGrowingPolicy {
  */
 template <class T, uintmax_t N, class GrowingPolicy = vec::ExceptionGrowingPolicy,
           class SizeType = typename vec::SmallestSizeType<N>::type>
-using FixedCapacityVector = Vector<T, vec::EmptyAlloc, SizeType, GrowingPolicy, vec::SanitizeInlineSize<N, SizeType>()>;
+using FixedCapacityVector =
+    Vector<T, vec::EmptyAlloc, SizeType, GrowingPolicy, vec::SanitizeInlineSize<N, SizeType>::value>;
 
 /// Compatibility with std::inplace_vector (C++26)
 template <class T, uintmax_t N>

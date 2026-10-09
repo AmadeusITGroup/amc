@@ -160,5 +160,5 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
  *   If Object movement can throw, only 'push_back' and 'emplace_back' modifiers provide strong exception warranty
  */
 template <class T, uintmax_t N, class Alloc = amc::allocator<T>, class SizeType = uint32_t>
-using SmallVector = Vector<T, Alloc, SizeType, vec::DynamicGrowingPolicy, vec::SanitizeInlineSize<N, SizeType>()>;
+using SmallVector = Vector<T, Alloc, SizeType, vec::DynamicGrowingPolicy, vec::SanitizeInlineSize<N, SizeType>::value>;
 }  // namespace amc

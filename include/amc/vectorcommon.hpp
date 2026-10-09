@@ -148,9 +148,11 @@ inline void fill_after_shift(T* first, SizeType, SizeType count, const T& v) {
 }
 
 /// copy from a range to available location divided in two parts: one on initialized memory, other one on raw memory
+/// Requirements: d_n < count
 template <class ForwardIt, class SizeType, class T,
           typename std::enable_if<!std::is_trivially_copyable<T>::value, bool>::type = true>
 inline void assign_n(ForwardIt first, SizeType count, T* d_first, SizeType d_n) {
+  assert(d_n < count);
   if (d_n > 0) {
     *d_first++ = AsValueType<T>(*first);  // rewrite copy_n to avoid double iteration on the input elements
     for (SizeType i = 1; i < d_n; ++i) {
@@ -158,9 +160,7 @@ inline void assign_n(ForwardIt first, SizeType count, T* d_first, SizeType d_n) 
     }
     (void)++first;
   }
-  if (d_n < count) {
-    amc::uninitialized_copy_n(first, count - d_n, d_first);
-  }
+  amc::uninitialized_copy_n(first, count - d_n, d_first);
 }
 
 template <class ForwardIt, class SizeType, class T,
@@ -171,17 +171,17 @@ inline void assign_n(ForwardIt first, SizeType count, T* d_first, SizeType) {
 
 /// Copy 'count' elements starting at 'first' to 'pos' location
 /// To be used in conjunction with 'shift_right'
+/// Requirements: n > 0 ('shift_right' shifted elements)
 template <class ForwardIt, class SizeType, class T,
           typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
 inline void copy_after_shift(ForwardIt first, SizeType n, SizeType count, T* pos) {
+  assert(n > 0);
   if (n < count) {
-    if (n > 0) {
-      *pos++ = AsValueType<T>(*first);  // rewrite copy_n to avoid double iteration on the input elements
-      for (SizeType i = 1; i < n; ++i) {
-        *pos++ = AsValueType<T>(*++first);
-      }
-      (void)++first;
+    *pos++ = AsValueType<T>(*first);  // rewrite copy_n to avoid double iteration on the input elements
+    for (SizeType i = 1; i < n; ++i) {
+      *pos++ = AsValueType<T>(*++first);
     }
+    (void)++first;
     amc::uninitialized_copy_n(first, count - n, pos);
   } else {
     std::copy_n(first, count, pos);
@@ -259,28 +259,21 @@ void swap_deep(T* first1, SizeType1 count1, T* first2, SizeType2 count2) noexcep
   }
 }
 
+/// Tells whether two vectors of given capacities (and of potentially different size types) can exchange their dynamic
+/// storages, which is possible only if each capacity (and thus size) fits in the size type of the other vector.
 template <class SizeType1, class SizeType2>
-inline void swap_sizetype(SizeType1& lhs, SizeType2& rhs) {
-  // Simple swap for different SizeType
-  // We need to check if their values can exchange in each other size type
-#ifdef AMC_CXX17
-  if constexpr (sizeof(SizeType1) < sizeof(SizeType2)) {
-    if (AMC_UNLIKELY(static_cast<SizeType2>(std::numeric_limits<SizeType1>::max()) < rhs)) {
-      throw std::overflow_error("Cannot cast size to each other");
-    }
-  } else if constexpr (sizeof(SizeType2) < sizeof(SizeType1)) {
-    if (AMC_UNLIKELY(static_cast<SizeType1>(std::numeric_limits<SizeType2>::max()) < lhs)) {
-      throw std::overflow_error("Cannot cast size to each other");
-    }
-  }
-#else
-  if (AMC_UNLIKELY((sizeof(SizeType1) < sizeof(SizeType2) &&
-                    static_cast<SizeType2>(std::numeric_limits<SizeType1>::max()) < rhs) ||
-                   (sizeof(SizeType2) < sizeof(SizeType1) &&
-                    static_cast<SizeType1>(std::numeric_limits<SizeType2>::max()) < lhs))) {
-    throw std::overflow_error("Cannot cast size to each other");
-  }
-#endif
+inline bool CapacitiesFitEachOther(SizeType1 capacity1, SizeType2 capacity2) noexcept {
+  return static_cast<uintmax_t>(capacity1) <= static_cast<uintmax_t>(std::numeric_limits<SizeType2>::max()) &&
+         static_cast<uintmax_t>(capacity2) <= static_cast<uintmax_t>(std::numeric_limits<SizeType1>::max());
+}
+
+/// Swap of sizes (or capacities) of different size types.
+/// Requirements: each value fits in the size type of the other one. Callers ensure it: swap2 grows each vector to the
+/// size of the other one first (which throws if it does not fit), and only exchanges dynamic storages whose capacities
+/// fit in the size type of each other.
+template <class SizeType1, class SizeType2>
+inline void swap_sizetype(SizeType1& lhs, SizeType2& rhs) noexcept {
+  assert(CapacitiesFitEachOther(lhs, rhs));
   SizeType1 tmp = lhs;
   lhs = static_cast<SizeType1>(rhs);
   rhs = static_cast<SizeType2>(tmp);
@@ -289,14 +282,6 @@ inline void swap_sizetype(SizeType1& lhs, SizeType2& rhs) {
 template <class SizeType>
 inline void swap_sizetype(SizeType& lhs, SizeType& rhs) noexcept {
   std::swap(lhs, rhs);
-}
-
-/// Tells whether two vectors of given capacities (and of potentially different size types) can exchange their dynamic
-/// storages, which is possible only if each capacity (and thus size) fits in the size type of the other vector.
-template <class SizeType1, class SizeType2>
-inline bool CapacitiesFitEachOther(SizeType1 capacity1, SizeType2 capacity2) noexcept {
-  return static_cast<uintmax_t>(capacity1) <= static_cast<uintmax_t>(std::numeric_limits<SizeType2>::max()) &&
-         static_cast<uintmax_t>(capacity2) <= static_cast<uintmax_t>(std::numeric_limits<SizeType1>::max());
 }
 
 /// Move 'n' objects starting at 'first' to a range starting at 'd_first' containing already 'd_n' instantiated objects
@@ -1830,12 +1815,12 @@ class VectorWithInplaceStorage<T, Alloc, SizeType, GrowingPolicy, N,
       : VectorImpl<T, Alloc, SizeType, (N != 0), GrowingPolicy>(std::forward<Args&&>(args)...) {}
 };
 
+/// Number of inline elements 'N' as a SizeType, checked to fit in it.
 template <uintmax_t N, class SizeType>
-constexpr SizeType SanitizeInlineSize() {
+struct SanitizeInlineSize : std::integral_constant<SizeType, static_cast<SizeType>(N)> {
   static_assert(N <= static_cast<uintmax_t>(std::numeric_limits<SizeType>::max()),
                 "Inline storage too large for SizeType");
-  return static_cast<SizeType>(N);
-}
+};
 }  // namespace vec
 
 /// Allocators are handled like in the standard containers: copy construction calls
