@@ -28,7 +28,7 @@ struct do_is_nothrow_swappable_impl {
   static std::integral_constant<bool, noexcept(swap(std::declval<T &>(), std::declval<T &>()))> test(int);
 
   template <typename>
-  static std::false_type __test(...);
+  static std::false_type test(...);
 };
 }  // namespace typetraits_details
 

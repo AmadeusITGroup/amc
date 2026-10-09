@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -8,7 +9,7 @@
 #include "type_traits.hpp"
 
 #ifndef AMC_CXX17
-#include <iterator>
+#include <algorithm>
 
 #include "utility.hpp"
 #endif
@@ -192,10 +193,13 @@ ForwardIt uninitialized_default_construct_n(
 }
 template <class ForwardIt, class Size>
 ForwardIt uninitialized_default_construct_n(
-    ForwardIt, Size,
+    ForwardIt first, Size n,
     typename std::enable_if<
         std::is_trivially_default_constructible<typename std::iterator_traits<ForwardIt>::value_type>::value>::type* =
-        0) {}
+        0) {
+  // nothing to construct, but the end of the range is returned like the standard function
+  return std::next(first, static_cast<typename std::iterator_traits<ForwardIt>::difference_type>(n));
+}
 
 template <class ForwardIt>
 void uninitialized_value_construct(
