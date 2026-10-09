@@ -44,6 +44,9 @@ class BasicSingletonAllocatorAdaptor {
  *
  * Over-aligned types (with an alignment larger than 'alignof(std::max_align_t)', the only one guaranteed by malloc) are
  * supported: memory is then over-allocated to align the elements, and 'reallocate' does not call 'realloc' for them.
+ *
+ * Wrappers of an empty basic allocator are always equal. A basic allocator with a state must provide an 'operator=='
+ * telling whether the memory allocated by one of them can be deallocated by the other one (copies must be equal).
  */
 template <class T, class BasicAllocator>
 class BasicAllocatorWrapper : private BasicAllocator {
@@ -66,10 +69,17 @@ class BasicAllocatorWrapper : private BasicAllocator {
   template <class U>
   BasicAllocatorWrapper(const BasicAllocatorWrapper<U, BasicAllocator> &o) : BasicAllocator(o) {}
 
+  /// Wraps a copy of 'basicAllocator' (useful for basic allocators with a state).
+  explicit BasicAllocatorWrapper(const BasicAllocator &basicAllocator) : BasicAllocator(basicAllocator) {}
+
   pointer address(reference r) const noexcept { return std::addressof(r); }
   const_pointer address(const_reference r) const noexcept { return std::addressof(r); }
 
-  pointer allocate(size_type n, const_pointer = 0) { return Allocate(n, IsOverAligned<>()); }
+  /// Throws std::bad_array_new_length (like std::allocator) if the number of bytes for 'n' elements exceeds size_t.
+  pointer allocate(size_type n, const_pointer = 0) {
+    CheckSize(n);
+    return Allocate(n, IsOverAligned<>());
+  }
 
   pointer reallocate(pointer p, size_type oldCapacity, size_type newCapacity, size_type nConstructedElems) {
     return Reallocate(p, oldCapacity, newCapacity, nConstructedElems, CanUseBasicReallocate<>());
@@ -77,7 +87,10 @@ class BasicAllocatorWrapper : private BasicAllocator {
 
   void deallocate(pointer p, size_type s) { Deallocate(p, s, IsOverAligned<>()); }
 
-  constexpr size_type max_size() const { return static_cast<size_type>(-1) / sizeof(value_type); }
+  /// Largest number of elements whose number of bytes (including the extra ones of over-aligned types) fits in size_t.
+  constexpr size_type max_size() const noexcept {
+    return (static_cast<size_type>(-1) - (IsOverAligned<>::value ? OverAlignedExtraBytes() : 0U)) / sizeof(value_type);
+  }
 
   template <class U, class... Args>
   void construct(U *p, Args &&...args) {
@@ -95,8 +108,8 @@ class BasicAllocatorWrapper : private BasicAllocator {
   };
 
   template <typename U>
-  constexpr bool operator==(const BasicAllocatorWrapper<U, BasicAllocator> &) const {
-    return std::is_empty<BasicAllocator>::value;
+  constexpr bool operator==(const BasicAllocatorWrapper<U, BasicAllocator> &o) const {
+    return IsEqual(o, std::is_empty<BasicAllocator>());
   }
 
   template <typename U>
@@ -127,6 +140,22 @@ class BasicAllocatorWrapper : private BasicAllocator {
     return sizeof(size_t) + alignof(V) - 1U;
   }
 
+  template <class U>
+  constexpr bool IsEqual(const BasicAllocatorWrapper<U, BasicAllocator> &, std::true_type) const {
+    return true;
+  }
+
+  template <class U>
+  constexpr bool IsEqual(const BasicAllocatorWrapper<U, BasicAllocator> &o, std::false_type) const {
+    return static_cast<const BasicAllocator &>(*this) == static_cast<const BasicAllocator &>(o);
+  }
+
+  void CheckSize(size_type n) const {
+    if (AMC_UNLIKELY(max_size() < n)) {
+      throw std::bad_array_new_length();
+    }
+  }
+
   pointer Allocate(size_type n, std::false_type) {
     return static_cast<pointer>(BasicAllocator::allocate(n * sizeof(T)));
   }
@@ -153,15 +182,22 @@ class BasicAllocatorWrapper : private BasicAllocator {
     }
   }
 
+  /// If a move throws, the new memory is deallocated and the elements stay in 'p'.
   pointer Reallocate(pointer p, size_type oldCapacity, size_type newCapacity, size_type nConstructedElems,
                      std::false_type) {
     pointer newPtr = allocate(newCapacity);
-    amc::uninitialized_relocate_n(p, nConstructedElems, newPtr);
+    try {
+      amc::uninitialized_relocate_n(p, nConstructedElems, newPtr);
+    } catch (...) {
+      deallocate(newPtr, newCapacity);
+      throw;
+    }
     deallocate(p, oldCapacity);
     return newPtr;
   }
 
   pointer Reallocate(pointer p, size_type oldCapacity, size_type newCapacity, size_type, std::true_type) {
+    CheckSize(newCapacity);
     return static_cast<pointer>(BasicAllocator::reallocate(p, oldCapacity * sizeof(T), newCapacity * sizeof(T)));
   }
 };

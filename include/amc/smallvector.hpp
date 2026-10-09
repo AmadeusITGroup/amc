@@ -11,21 +11,20 @@
 namespace amc {
 namespace vec {
 
+/// New capacity for at least 'newSize' elements, not exceeding 'maxCapa' (see MaxCapacity).
+/// 'exact' is only set by 'reserve', which allocates exactly the requested capacity.
 template <class SizeType>
-inline SizeType SafeNextCapacity(SizeType oldCapa, uintmax_t newSize, bool exact) {
+inline SizeType SafeNextCapacity(SizeType oldCapa, uintmax_t newSize, uintmax_t maxCapa, bool exact) {
+  if (AMC_UNLIKELY(maxCapa < newSize)) {
+    throw std::overflow_error(
+        "Attempt to use more elements than max_size(). Use a larger size_type if it is the limit");
+  }
   if (exact) {
-    // Only for reserve method. It takes a SizeType as input parameter, so it can obviously fit into a SizeType.
     return static_cast<SizeType>(newSize);
   }
   // Realloc * 1.5 except if minimum requested size is larger (choose it in this case).
-  // Also make sure the new capacity can fit in SizeType
-  const uintmax_t newCapa =
-      std::min(std::max(static_cast<uintmax_t>((3U * static_cast<uintmax_t>(oldCapa) + 1U) / 2U), newSize),
-               static_cast<uintmax_t>(std::numeric_limits<SizeType>::max()));
-  if (AMC_UNLIKELY(newCapa < newSize)) {
-    throw std::overflow_error("Attempt to use more elements that size_type can support. Use a larger size_type");
-  }
-  return static_cast<SizeType>(newCapa);
+  return static_cast<SizeType>(
+      std::min(std::max(static_cast<uintmax_t>((3U * static_cast<uintmax_t>(oldCapa) + 1U) / 2U), newSize), maxCapa));
 }
 
 template <class Alloc>
@@ -35,14 +34,24 @@ struct CanReallocate
 
 template <class Alloc, class T, class SizeType, typename std::enable_if<CanReallocate<Alloc>::value, bool>::type = true>
 inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, SizeType size) {
-  return alloc.reallocate(p, oldCapa, newCapa, size);
+  // capacities do not exceed the max_size() of the allocator (see MaxCapacity)
+  using AllocSizeType = typename Alloc::size_type;
+  return alloc.reallocate(p, static_cast<AllocSizeType>(oldCapa), static_cast<AllocSizeType>(newCapa),
+                          static_cast<AllocSizeType>(size));
 }
 
+/// Relocates the 'size' elements of 'p' to a newly allocated memory, then deallocates 'p'.
+/// If a move throws, the new memory is deallocated and the elements stay in 'p'.
 template <class Alloc, class T, class SizeType,
           typename std::enable_if<!CanReallocate<Alloc>::value, bool>::type = true>
 inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, SizeType size) {
   T* newPtr = alloc.allocate(static_cast<size_t>(newCapa));
-  (void)amc::uninitialized_relocate_n(p, size, newPtr);
+  try {
+    (void)amc::uninitialized_relocate_n(p, size, newPtr);
+  } catch (...) {
+    alloc.deallocate(newPtr, static_cast<size_t>(newCapa));
+    throw;
+  }
   alloc.deallocate(p, static_cast<size_t>(oldCapa));
   return newPtr;
 }
@@ -50,15 +59,21 @@ inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, Siz
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
   SizeType newCapa;
+  const uintmax_t maxCapa = MaxCapacity<SizeType>(static_cast<const Alloc&>(*this));
   if (isSmall()) {
     SizeType oldCapa = _size == std::numeric_limits<SizeType>::max() ? _capa : _size;
-    newCapa = SafeNextCapacity(oldCapa, minSize, exact);
+    newCapa = SafeNextCapacity(oldCapa, minSize, maxCapa, exact);
     T* dynStorage = this->allocate(static_cast<size_t>(newCapa));
-    (void)amc::uninitialized_relocate_n(_storage.ptr(), _capa, dynStorage);
+    try {
+      (void)amc::uninitialized_relocate_n(_storage.ptr(), _capa, dynStorage);
+    } catch (...) {
+      this->deallocate(dynStorage, static_cast<size_t>(newCapa));
+      throw;
+    }
     _storage.setDyn(dynStorage);
     _size = _capa;
   } else {
-    newCapa = SafeNextCapacity(_capa, minSize, exact);
+    newCapa = SafeNextCapacity(_capa, minSize, maxCapa, exact);
     _storage.setDyn(vec::Reallocate(static_cast<Alloc&>(*this), _storage.dyn(), _capa, newCapa, _size));
   }
   _capa = newCapa;
@@ -66,7 +81,7 @@ void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
 
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
-  SizeType newCapa = SafeNextCapacity(_capa, minSize, exact);
+  SizeType newCapa = SafeNextCapacity(_capa, minSize, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)), exact);
   _storage = vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, newCapa, _size);
   _capa = newCapa;
 }
@@ -96,7 +111,13 @@ void StdVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::resetToSmall(SizeType inplaceCapa) {
   T* dynStorage = _storage.dyn();
-  (void)amc::uninitialized_relocate_n(dynStorage, _size, _storage.ptr());
+  try {
+    (void)amc::uninitialized_relocate_n(dynStorage, _size, _storage.ptr());
+  } catch (...) {
+    // the inline storage shares its first bytes with the pointer to the dynamic storage
+    _storage.setDyn(dynStorage);
+    throw;
+  }
   this->deallocate(dynStorage, static_cast<size_t>(_capa));
   _capa = _size;
   _size = _size == inplaceCapa ? std::numeric_limits<SizeType>::max() : inplaceCapa;
@@ -131,11 +152,11 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
  * (for amc::allocator, it will use 'realloc').
  *
  * Exception safety:
- *   It provides at least Basic exception safety.
+ *   It provides at least Basic exception safety (no leak, the vector stays valid).
  *   If Object movement is noexcept, most operations provide strong exception safety, excepted:
  *     - assign
  *     - insert from InputIt
- *     - insert from count elements
+ *     - insert from count elements (if T is not trivially relocatable)
  *   If Object movement can throw, only 'push_back' and 'emplace_back' modifiers provide strong exception warranty
  */
 template <class T, uintmax_t N, class Alloc = amc::allocator<T>, class SizeType = uint32_t>

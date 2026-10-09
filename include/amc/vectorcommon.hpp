@@ -4,9 +4,11 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 
 #include "config.hpp"
@@ -14,11 +16,12 @@
 #include "type_traits.hpp"
 #include "utility.hpp"
 
-#ifdef AMC_CXX14
-#include <functional>
+#ifndef AMC_CXX17
+#include "isdetected.hpp"
+#endif
+
 #ifdef AMC_CXX23
 #include <ranges>
-#endif
 #endif
 
 #ifdef AMC_CXX20
@@ -38,14 +41,43 @@ template <class T>
 struct is_move_construct_nothrow : std::integral_constant<bool, amc::is_trivially_relocatable<T>::value ||
                                                                     std::is_nothrow_move_constructible<T>::value> {};
 
+/// Tells whether 'p' points to one of the 'n' elements starting at 'first'.
+/// 'p' may point to an object unrelated to this range: the result of the built-in relational operators is then
+/// unspecified, whereas std::less provides a strict total order over pointers.
+template <class T, class SizeType>
+inline bool IsInRange(const T* p, const T* first, SizeType n) noexcept {
+  return !std::less<const T*>()(p, first) && std::less<const T*>()(p, first + n);
+}
+
+/// Returns 'v' as is if it is a T, otherwise explicitly converted to a T: elements of a range of another type are
+/// converted once and explicitly, instead of implicitly (MSVC warns about the narrowing ones).
+template <class T, class U,
+          typename std::enable_if<std::is_same<typename std::decay<U>::type, T>::value, bool>::type = true>
+inline U&& AsValueType(U&& v) noexcept {
+  return std::forward<U>(v);
+}
+
+template <class T, class U,
+          typename std::enable_if<!std::is_same<typename std::decay<U>::type, T>::value, bool>::type = true>
+inline T AsValueType(U&& v) {
+  return static_cast<T>(std::forward<U>(v));
+}
+
 /// Shift 'n' elements starting at 'first' one slot to the right
 /// Requirements: n != 0, with uninitialized memory starting at 'first + n'
 /// Warning: no destroy is called for elements which has been moved from.
+/// If a move throws, the element constructed in the uninitialized memory is destroyed.
+/// (not declared noexcept(is_shift_nothrow<T>::value), as GCC warns about the rethrow when it is true)
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void shift_right(T* first, SizeType n) noexcept(is_shift_nothrow<T>::value) {
+inline void shift_right(T* first, SizeType n) {
   T* last = first + n;
   amc::construct_at(last, std::move(*(last - 1)));
-  std::move_backward(first, last - 1, last);
+  try {
+    std::move_backward(first, last - 1, last);
+  } catch (...) {
+    amc::destroy_at(last);
+    throw;
+  }
 }
 
 /// Specialization for trivially relocatable types. Just use memmove here.
@@ -57,12 +89,18 @@ inline void shift_right(T* first, SizeType n) noexcept {
 /// Shift 'n' elements starting at 'first' 'count' slots to the right
 /// Requirements: uninitialized memory starting at 'first + n'
 /// Warning: no destroy is called for elements which has been moved from.
+/// If a move throws, the elements constructed in the uninitialized memory are destroyed.
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void shift_right(T* first, SizeType n, SizeType count) noexcept(is_shift_nothrow<T>::value) {
+void shift_right(T* first, SizeType n, SizeType count) {
   if (count < n) {
     T* last = first + n;
     amc::uninitialized_move_n(last - count, count, last);  // move last 'count' elems to uninitialized storage
-    std::move_backward(first, last - count, last);         // move remaining 'n - count' elems to initialized storage
+    try {
+      std::move_backward(first, last - count, last);  // move remaining 'n - count' elems to initialized storage
+    } catch (...) {
+      amc::destroy_n(last, count);
+      throw;
+    }
   } else {
     // no overlap, we shift all elements to uninitialized memory
     amc::uninitialized_move_n(first, n, first + count);
@@ -74,13 +112,30 @@ inline void shift_right(T* first, SizeType n, SizeType count) noexcept {
   (void)amc::uninitialized_relocate_n(first, n, first + count);
 }
 
+/// Undo a 'shift_right(first, n, count)' when copying the elements to insert to the 'count' slots starting at 'first'
+/// throws, the copy having destroyed the elements it constructed in uninitialized memory.
+/// For non trivially relocatable types, the shifted elements constructed past the old end ('first + n') are destroyed,
+/// the elements before it keep valid but unspecified values (basic guarantee).
+template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
+inline void undo_shift_right(T* first, SizeType n, SizeType count) noexcept {
+  amc::destroy_n(first + std::max(n, count), std::min(n, count));
+}
+
+/// For trivially relocatable types, the slots of the elements to insert only contain uninitialized memory: the shifted
+/// elements are relocated back to their original location (strong guarantee).
+template <class T, class SizeType, typename std::enable_if<amc::is_trivially_relocatable<T>::value, bool>::type = true>
+inline void undo_shift_right(T* first, SizeType n, SizeType count) noexcept {
+  (void)amc::uninitialized_relocate_n(first + count, n, first);
+}
+
 /// Fill 'count' 'v' values at memory starting at 'first', with first 'n' slots on initialized memory,
-/// and next 'count - n' slots on uninitialized memory if there is overlap
+/// and next 'count - n' slots on uninitialized memory if there is overlap.
+/// Initialized memory is filled first: if a copy throws, there is no element constructed in uninitialized memory.
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
 inline void fill_after_shift(T* first, SizeType n, SizeType count, const T& v) {
   if (n < count) {
-    std::uninitialized_fill_n(first + n, count - n, v);
     std::fill_n(first, n, v);
+    std::uninitialized_fill_n(first + n, count - n, v);
   } else {
     std::fill_n(first, count, v);
   }
@@ -97,9 +152,9 @@ template <class ForwardIt, class SizeType, class T,
           typename std::enable_if<!std::is_trivially_copyable<T>::value, bool>::type = true>
 inline void assign_n(ForwardIt first, SizeType count, T* d_first, SizeType d_n) {
   if (d_n > 0) {
-    *d_first++ = *first;  // rewrite copy_n to avoid double iteration on the input elements
+    *d_first++ = AsValueType<T>(*first);  // rewrite copy_n to avoid double iteration on the input elements
     for (SizeType i = 1; i < d_n; ++i) {
-      *d_first++ = *++first;
+      *d_first++ = AsValueType<T>(*++first);
     }
     (void)++first;
   }
@@ -121,9 +176,9 @@ template <class ForwardIt, class SizeType, class T,
 inline void copy_after_shift(ForwardIt first, SizeType n, SizeType count, T* pos) {
   if (n < count) {
     if (n > 0) {
-      *pos++ = *first;  // rewrite copy_n to avoid double iteration on the input elements
+      *pos++ = AsValueType<T>(*first);  // rewrite copy_n to avoid double iteration on the input elements
       for (SizeType i = 1; i < n; ++i) {
-        *pos++ = *++first;
+        *pos++ = AsValueType<T>(*++first);
       }
       (void)++first;
     }
@@ -180,9 +235,9 @@ inline void erase_at(T* first, SizeType count) {
 /// Requirements: n < count
 template <class T, class SizeType, typename std::enable_if<!std::is_trivially_copyable<T>::value, bool>::type = true>
 inline void fill(T* first, SizeType n, SizeType count, const T& v) {
-  // uninitialized fill first for slightly better exception safety
-  std::uninitialized_fill_n(first + n, count - n, v);
+  // initialized memory first: if a copy throws, there is no element constructed in uninitialized memory to destroy
   std::fill_n(first, n, v);
+  std::uninitialized_fill_n(first + n, count - n, v);
 }
 
 template <class T, class SizeType, typename std::enable_if<std::is_trivially_copyable<T>::value, bool>::type = true>
@@ -291,7 +346,7 @@ inline void insert_n(T* pos, SizeType n, const T& v) {
     // If 'v' aliases one of the elements about to be shifted, 'shift_right' relocates it one slot to the right.
     // Bind the source to its post-shift location so the correct value is read once the shift has been performed.
     const T* pv = std::addressof(v);
-    const T& src = (pv >= pos && pv < pos + n) ? *(pv + 1) : v;
+    const T& src = IsInRange(pv, pos, n) ? *(pv + 1) : v;
     shift_right(pos, n);
     try {
       assign_after_shift(pos, src);
@@ -406,6 +461,12 @@ inline void emplace_n(T* pos, SizeType n, Args&&... args) {
   }
 }
 
+/// Number of elements of 'ElemSize' bytes fitting in 'NbBytes' bytes, at least 1.
+/// Template parameters, as GCC warns that 'sizeof(pointer) / sizeof(T)' does not compute the number of elements of an
+/// array (-Wsizeof-pointer-div).
+template <std::size_t NbBytes, std::size_t ElemSize>
+struct NbSlots : std::integral_constant<std::size_t, (ElemSize < NbBytes ? NbBytes / ElemSize : 1U)> {};
+
 /// This class represents a merge of a pointer and some inline storage elements.
 /// Thanks to this optimization, SmallVector behaves like a string type with SSO
 /// Example : for a system with pointer size of 8 bytes,
@@ -417,17 +478,7 @@ class ElemWithPtrStorage {
   using pointer = T*;
   using const_pointer = const T*;
 
-#ifdef AMC_CXX14
-  // Use std::divides instead of '/' to avoid potential harmless warning occurring for instance in GCC:
-  // warning: division 'sizeof (...) / sizeof (...)' does not compute the number of array elements
-  // [-Wsizeof-pointer-div]
-  // Activated only in C++14 as we need it to be constexpr
-  static constexpr auto kNbSlots =
-      std::max(std::divides<std::size_t>()(sizeof(pointer), sizeof(T)), static_cast<std::size_t>(1));
-#else
-  static constexpr auto kNbSlots =
-      sizeof(pointer) < sizeof(T) ? static_cast<std::size_t>(1) : (sizeof(pointer) / sizeof(T));
-#endif
+  static constexpr std::size_t kNbSlots = NbSlots<sizeof(pointer), sizeof(T)>::value;
 
   // Get a pointer to its underlying storage
   pointer ptr() noexcept { return reinterpret_cast<pointer>(this); }
@@ -484,6 +535,69 @@ void SwapDynStorage(T*& lhs, T*& rhs) {
 
 struct EmptyAlloc {};
 
+#ifndef AMC_CXX17
+template <class Alloc>
+using alloc_is_always_equal_t = typename Alloc::is_always_equal;
+#endif
+
+/// Allocator traits used by the vectors, also defined for the EmptyAlloc of FixedCapacityVector (which never
+/// allocates). Operations depending on the equality of the allocators are dispatched at compile time on
+/// 'is_always_equal', so that the containers of always equal allocators (the most common ones) do not instantiate the
+/// code for unequal ones.
+template <class Alloc>
+struct AllocTraits {
+#ifdef AMC_CXX17
+  using is_always_equal = typename std::allocator_traits<Alloc>::is_always_equal;
+#else
+  // std::allocator_traits<Alloc>::is_always_equal is only standard from C++17
+  using is_always_equal = detected_or_t<typename std::is_empty<Alloc>::type, alloc_is_always_equal_t, Alloc>;
+#endif
+  using propagate_on_copy_assignment = typename std::allocator_traits<Alloc>::propagate_on_container_copy_assignment;
+  using propagate_on_move_assignment = typename std::allocator_traits<Alloc>::propagate_on_container_move_assignment;
+  using propagate_on_swap = typename std::allocator_traits<Alloc>::propagate_on_container_swap;
+
+  static Alloc SelectOnCopy(const Alloc& alloc) {
+    return std::allocator_traits<Alloc>::select_on_container_copy_construction(alloc);
+  }
+
+  /// Tells whether the memory allocated by one of the allocators can be deallocated by the other one.
+  static bool Equal(const Alloc& lhs, const Alloc& rhs) noexcept { return Equal(lhs, rhs, is_always_equal()); }
+
+ private:
+  static bool Equal(const Alloc&, const Alloc&, std::true_type) noexcept { return true; }
+  static bool Equal(const Alloc& lhs, const Alloc& rhs, std::false_type) noexcept { return lhs == rhs; }
+};
+
+template <>
+struct AllocTraits<EmptyAlloc> {
+  using is_always_equal = std::true_type;
+  using propagate_on_copy_assignment = std::false_type;
+  using propagate_on_move_assignment = std::false_type;
+  using propagate_on_swap = std::false_type;
+
+  static EmptyAlloc SelectOnCopy(const EmptyAlloc&) noexcept { return EmptyAlloc(); }
+};
+
+/// Tells whether two vectors may exchange their dynamic storages, as far as their allocators are concerned: they need
+/// to be of the same type and equal.
+template <class Alloc, class OAlloc>
+inline bool AllocatorsAreEqual(const Alloc&, const OAlloc&) noexcept {
+  return false;
+}
+
+template <class Alloc>
+inline bool AllocatorsAreEqual(const Alloc& lhs, const Alloc& rhs) noexcept {
+  return AllocTraits<Alloc>::Equal(lhs, rhs);
+}
+
+/// Maximum capacity of a vector: its size type and its allocator (whose number of bytes to allocate must fit in a
+/// size_t) both limit it.
+template <class SizeType, class Alloc>
+inline uintmax_t MaxCapacity(const Alloc& alloc) noexcept {
+  return std::min(static_cast<uintmax_t>(std::numeric_limits<SizeType>::max()),
+                  static_cast<uintmax_t>(std::allocator_traits<Alloc>::max_size(alloc)));
+}
+
 template <class T, class SizeType>
 class StaticVectorBase {
  public:
@@ -515,12 +629,12 @@ class StaticVectorBase {
 
   void move_construct(StaticVectorBase& o, SizeType) noexcept(is_move_construct_nothrow<T>::value) {
     amc::uninitialized_relocate_n(o.begin(), o._size, begin());
-    _size = amc::exchange(o._size, 0);
+    _size = amc::exchange(o._size, SizeType{0});
   }
 
   void move_assign(StaticVectorBase& o, SizeType) noexcept(is_shift_nothrow<T>::value) {
     move_n(o.begin(), o._size, begin(), _size);
-    _size = amc::exchange(o._size, 0);
+    _size = amc::exchange(o._size, SizeType{0});
   }
 
   void shrink_impl(SizeType) noexcept {}
@@ -603,6 +717,12 @@ class StdVectorBase : private Alloc {
     }
   }
 
+  void setAllocator(const Alloc& alloc) noexcept { static_cast<Alloc&>(*this) = alloc; }
+  void swapAllocator(StdVectorBase& o) noexcept {
+    using std::swap;
+    swap(static_cast<Alloc&>(*this), static_cast<Alloc&>(o));
+  }
+
   template <class, class, class>
   friend class SmallVectorBase;
 
@@ -618,7 +738,7 @@ class StdVectorBase : private Alloc {
 
   template <class OSizeType, class OAlloc>
   bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value && CapacitiesFitEachOther(_capa, o._capa);
+    return AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
   }
 
   template <class VectorType>
@@ -725,7 +845,7 @@ class SmallVectorBase : private Alloc {
     } else {
       _storage.setDyn(o._storage.dyn());
     }
-    _capa = amc::exchange(o._capa, 0);
+    _capa = amc::exchange(o._capa, SizeType{0});
     _size = amc::exchange(o._size, inplaceCapa);
   }
 
@@ -734,8 +854,8 @@ class SmallVectorBase : private Alloc {
       // Always steal dynamic buffer in this case, to make move construct faster
       _storage.setDyn(o._storage);
       o._storage = nullptr;
-      _capa = amc::exchange(o._capa, 0);
-      _size = amc::exchange(o._size, 0);
+      _capa = amc::exchange(o._capa, SizeType{0});
+      _size = amc::exchange(o._size, SizeType{0});
     }
   }
 
@@ -754,7 +874,7 @@ class SmallVectorBase : private Alloc {
       // Clear our stuff before stealing o's guts
       destroyFreeStorage();
       _storage.setDyn(o._storage.dyn());
-      _capa = amc::exchange(o._capa, 0);
+      _capa = amc::exchange(o._capa, SizeType{0});
       _size = amc::exchange(o._size, inplaceCapa);
     }
   }
@@ -771,6 +891,12 @@ class SmallVectorBase : private Alloc {
     }
   }
 
+  void setAllocator(const Alloc& alloc) noexcept { static_cast<Alloc&>(*this) = alloc; }
+  void swapAllocator(SmallVectorBase& o) noexcept {
+    using std::swap;
+    swap(static_cast<Alloc&>(*this), static_cast<Alloc&>(o));
+  }
+
   template <class, class, class>
   friend class SmallVectorBase;
 
@@ -779,7 +905,8 @@ class SmallVectorBase : private Alloc {
 
   template <class OAlloc, class OSizeType>
   bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value && !isSmall() && CapacitiesFitEachOther(_capa, o._capa);
+    return !isSmall() && AllocatorsAreEqual(get_allocator(), o.get_allocator()) &&
+           CapacitiesFitEachOther(_capa, o._capa);
   }
   template <class OSizeType>
   bool canSwapDynStorage(StaticVectorBase<T, OSizeType>&) const noexcept {
@@ -787,7 +914,8 @@ class SmallVectorBase : private Alloc {
   }
   template <class OSizeType, class OAlloc>
   bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value && !isSmall() && !o.isSmall() && CapacitiesFitEachOther(_capa, o._capa);
+    return !isSmall() && !o.isSmall() && AllocatorsAreEqual(get_allocator(), o.get_allocator()) &&
+           CapacitiesFitEachOther(_capa, o._capa);
   }
 
   template <class VectorType>
@@ -842,10 +970,17 @@ class SmallVectorBase : private Alloc {
   iterator dynStorage() const noexcept { return _storage.dyn(); }
 
  private:
-  static inline void SwapDynamicBuffer(SmallVectorBase& vDynBuf,
-                                       SmallVectorBase& vSmall) noexcept(is_swap_noexcept<T>::value) {
+  /// The inline elements of 'vSmall' are relocated to the inline storage of 'vDynBuf', which shares its first bytes
+  /// with the pointer to its dynamic storage: if a move throws, this pointer is restored.
+  /// (not declared noexcept(is_swap_noexcept<T>::value), as GCC warns about the rethrow when it is true)
+  static inline void SwapDynamicBuffer(SmallVectorBase& vDynBuf, SmallVectorBase& vSmall) {
     T* oDynStorage = vDynBuf._storage.dyn();
-    (void)amc::uninitialized_relocate_n(vSmall._storage.ptr(), vSmall._capa, vDynBuf._storage.ptr());
+    try {
+      (void)amc::uninitialized_relocate_n(vSmall._storage.ptr(), vSmall._capa, vDynBuf._storage.ptr());
+    } catch (...) {
+      vDynBuf._storage.setDyn(oDynStorage);
+      throw;
+    }
     vSmall._storage.setDyn(oDynStorage);
   }
 
@@ -860,7 +995,8 @@ class SmallVectorBase : private Alloc {
 template <class T, class Alloc, class SizeType>
 template <class OSizeType, class OAlloc>
 bool StdVectorBase<T, Alloc, SizeType>::canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-  return std::is_same<OAlloc, Alloc>::value && !o.isSmall() && CapacitiesFitEachOther(_capa, o._capa);
+  return !o.isSmall() && AllocatorsAreEqual(get_allocator(), o.get_allocator()) &&
+         CapacitiesFitEachOther(_capa, o._capa);
 }
 
 template <class T, class SizeType, class GrowingPolicy>
@@ -1004,7 +1140,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   using size_type = SizeType;
   using allocator_type = Alloc;
 
-  size_type max_size() const noexcept { return std::numeric_limits<size_type>::max(); }
+  size_type max_size() const noexcept { return static_cast<size_type>(MaxCapacity<SizeType>(this->get_allocator())); }
 
   void reserve(size_type capacity) {
     if (this->capacity() < capacity) {
@@ -1099,7 +1235,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   inline const T& adjustCapacity(uintmax_t neededCapacity, const T& v) {
     if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
       const T* ptr = std::addressof(v);
-      ptrdiff_t idx = ptr >= this->begin() && ptr < this->begin() + this->size() ? ptr - this->begin() : -1;
+      ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
       this->grow(neededCapacity);
       if (idx != -1) {
         return this->begin()[idx];
@@ -1111,7 +1247,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   inline const T& adjustCapacity(uintmax_t neededCapacity, const T& v, const T** position) {
     if (static_cast<uintmax_t>(this->capacity()) < neededCapacity) {
       const T* ptr = std::addressof(v);
-      ptrdiff_t idx = ptr >= this->begin() && ptr < this->begin() + this->size() ? ptr - this->begin() : -1;
+      ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
       SizeType itIdx = static_cast<SizeType>(*position - this->begin());  // pos will be invalidated
       this->grow(neededCapacity);
       *position = this->begin() + itIdx;
@@ -1315,9 +1451,15 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   void assign(std::initializer_list<T> ilist) { assign(ilist.begin(), ilist.end()); }
 
 #ifdef AMC_CXX23
+  /// Replaces the contents of the container with the elements of 'rg', which may not be common (its end may be a
+  /// sentinel of another type than its iterator). 'rg' must not overlap the container.
   template <class R>
   void assign_range(R&& rg) {
-    assign(std::ranges::cbegin(rg), std::ranges::cend(rg));
+    if constexpr (std::ranges::forward_range<R>) {
+      assignN(std::ranges::begin(rg), static_cast<uintmax_t>(std::ranges::distance(rg)));
+    } else {
+      assignInput(std::ranges::begin(rg), std::ranges::end(rg));
+    }
   }
 #endif
 
@@ -1352,9 +1494,14 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
         // located at or after 'pos'). 'shift_right' relocates that element 'count' slots to the right, so bind the
         // source to its post-shift location to keep reading the intended value - same rationale as 'insert_n'.
         const T* pv = std::addressof(newV);
-        const_reference src = (pv >= pos && pv < pos + nElemsToShift) ? *(pv + count) : newV;
+        const_reference src = IsInRange(pv, pos, nElemsToShift) ? *(pv + count) : newV;
         shift_right(pos, nElemsToShift, count);
-        fill_after_shift(pos, nElemsToShift, count, src);
+        try {
+          fill_after_shift(pos, nElemsToShift, count, src);
+        } catch (...) {
+          undo_shift_right(pos, nElemsToShift, count);
+          throw;
+        }
       }
       this->setSize(this->size() + count);
     } else {
@@ -1374,9 +1521,15 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   iterator insert(const_iterator pos, std::initializer_list<T> list) { return insert(pos, list.begin(), list.end()); }
 
 #ifdef AMC_CXX23
+  /// Inserts the elements of 'rg' before 'pos'. 'rg' may not be common, and must not overlap the container.
   template <class R>
   iterator insert_range(const_iterator pos, R&& rg) {
-    return insert(pos, std::ranges::cbegin(rg), std::ranges::cend(rg));
+    assert(pos >= this->cbegin() && pos <= cend());
+    if constexpr (std::ranges::forward_range<R>) {
+      return insertN(pos, std::ranges::begin(rg), static_cast<uintmax_t>(std::ranges::distance(rg)));
+    } else {
+      return insertInput(pos, std::ranges::begin(rg), std::ranges::end(rg));
+    }
   }
 #endif
 
@@ -1483,9 +1636,14 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
 #ifdef AMC_CXX23
  public:
+  /// Appends the elements of 'rg', which may not be common. 'rg' must not overlap the container.
   template <class R>
   void append_range(R&& rg) {
-    append(std::ranges::cbegin(rg), std::ranges::cend(rg));
+    if constexpr (std::ranges::forward_range<R>) {
+      appendN(std::ranges::begin(rg), static_cast<uintmax_t>(std::ranges::distance(rg)));
+    } else {
+      appendInput(std::ranges::begin(rg), std::ranges::end(rg));
+    }
   }
 
   /// Appends elements of 'rg' until the vector is full.
@@ -1516,48 +1674,84 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   // Range methods implementations, dispatched on the iterator category.
   // Forward iterators can be traversed several times: we compute the number of elements first to reserve once.
   // Single pass input iterators can be traversed only once, so we cannot know their number of elements in advance.
+  // The ranges methods call the same implementations: the '*N' ones take a forward iterator and the number of elements,
+  // the '*Input' ones an input iterator and a sentinel, which may be of another type.
 
   template <class ForwardIt>
   void assignImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
-    const uintmax_t count = static_cast<uintmax_t>(std::distance(first, last));
+    assignN(first, static_cast<uintmax_t>(std::distance(first, last)));
+  }
+
+  template <class InputIt>
+  void assignImpl(InputIt first, InputIt last, std::input_iterator_tag) {
+    assignInput(first, last);
+  }
+
+  template <class ForwardIt>
+  iterator insertImpl(const_iterator position, ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
+    return insertN(position, first, static_cast<uintmax_t>(std::distance(first, last)));
+  }
+
+  template <class InputIt>
+  iterator insertImpl(const_iterator position, InputIt first, InputIt last, std::input_iterator_tag) {
+    return insertInput(position, first, last);
+  }
+
+  template <class ForwardIt>
+  void appendImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
+    appendN(first, static_cast<uintmax_t>(std::distance(first, last)));
+  }
+
+  template <class InputIt>
+  void appendImpl(InputIt first, InputIt last, std::input_iterator_tag) {
+    appendInput(first, last);
+  }
+
+  template <class ForwardIt>
+  void assignN(ForwardIt first, uintmax_t count) {
     if (static_cast<uintmax_t>(this->size()) < count) {
       this->adjustCapacity(count);
       assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
     } else {
       // copy to already existing elements and destroy remaining ones
-      amc::destroy(std::copy(first, last, this->begin()), end());
+      amc::destroy(std::copy_n(first, static_cast<SizeType>(count), this->begin()), end());
     }
     this->setSize(static_cast<SizeType>(count));
   }
 
-  template <class InputIt>
-  void assignImpl(InputIt first, InputIt last, std::input_iterator_tag) {
+  template <class InputIt, class Sentinel>
+  void assignInput(InputIt first, Sentinel last) {
     // copy to already existing elements, then destroy remaining ones or append remaining input elements
     const iterator endIt = end();
     iterator it = this->begin();
     for (; it != endIt && first != last; ++it, (void)++first) {
-      *it = *first;
+      *it = AsValueType<T>(*first);
     }
     if (it != endIt) {
       amc::destroy(it, endIt);
       this->setSize(static_cast<SizeType>(it - this->begin()));
     } else {
-      appendImpl(first, last, std::input_iterator_tag());
+      appendInput(std::move(first), last);
     }
   }
 
   template <class ForwardIt>
-  iterator insertImpl(const_iterator position, ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
-    const auto count = static_cast<uintmax_t>(std::distance(first, last));
+  iterator insertN(const_iterator position, ForwardIt first, uintmax_t count) {
     iterator pos;
     if (count > 0) {
       pos = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count, position);
-      SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
+      const SizeType n = static_cast<SizeType>(count);
+      const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
       if (nElemsToShift == 0) {
-        amc::uninitialized_copy_n(first, count, pos);
+        amc::uninitialized_copy_n(first, n, pos);
       } else {
-        shift_right(pos, nElemsToShift, static_cast<SizeType>(count));
-        copy_after_shift(first, nElemsToShift, static_cast<SizeType>(count), pos);
+        shift_right(pos, nElemsToShift, n);
+        try {
+          copy_after_shift(first, nElemsToShift, n, pos);
+        } catch (...) {
+          undo_shift_right(pos, nElemsToShift, n);
+          throw;
+        }
       }
       this->setSize(static_cast<SizeType>(this->size() + count));
     } else {
@@ -1566,25 +1760,26 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     return pos;
   }
 
-  template <class InputIt>
-  iterator insertImpl(const_iterator position, InputIt first, InputIt last, std::input_iterator_tag) {
+  template <class InputIt, class Sentinel>
+  iterator insertInput(const_iterator position, InputIt first, Sentinel last) {
     // append new elements at the end, then rotate them to their final position
     const auto idx = position - this->cbegin();  // position may be invalidated by append
     const auto oldSize = this->size();
-    appendImpl(first, last, std::input_iterator_tag());
+    appendInput(std::move(first), last);
     const iterator pos = this->begin() + idx;
     std::rotate(pos, this->begin() + oldSize, end());
     return pos;
   }
 
   template <class ForwardIt>
-  void appendImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
-    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + static_cast<uintmax_t>(std::distance(first, last)));
-    this->setSize(static_cast<SizeType>(amc::uninitialized_copy(first, last, end()) - this->begin()));
+  void appendN(ForwardIt first, uintmax_t count) {
+    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count);
+    amc::uninitialized_copy_n(first, static_cast<SizeType>(count), end());
+    this->setSize(static_cast<SizeType>(this->size() + count));
   }
 
-  template <class InputIt>
-  void appendImpl(InputIt first, InputIt last, std::input_iterator_tag) {
+  template <class InputIt, class Sentinel>
+  void appendInput(InputIt first, Sentinel last) {
     for (; first != last; ++first) {
       this->emplace_back(*first);
     }
@@ -1643,10 +1838,19 @@ constexpr SizeType SanitizeInlineSize() {
 }
 }  // namespace vec
 
+/// Allocators are handled like in the standard containers: copy construction calls
+/// 'select_on_container_copy_construction', move construction moves the allocator, and assignments and swap propagate
+/// it according to the 'propagate_on_container_*' traits. Memory is only exchanged between containers of equal
+/// allocators, otherwise elements are moved one by one.
 template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N>
 class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingPolicy, N> {
  private:
   using Base = vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingPolicy, N>;
+  using AllocTraits = vec::AllocTraits<Alloc>;
+  using IsAlwaysEqual = typename AllocTraits::is_always_equal;
+  using PropagateOnMove = typename AllocTraits::propagate_on_move_assignment;
+  /// Whether the memory of a move assigned container can be stolen (after having propagated its allocator if needed).
+  using CanStealOnMoveAssign = std::integral_constant<bool, IsAlwaysEqual::value || PropagateOnMove::value>;
 
   /// Static checks to make sure of correct usage of this class
   static_assert(!std::is_same<GrowingPolicy, vec::DynamicGrowingPolicy>::value ||
@@ -1677,11 +1881,11 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   Vector(size_type count, const_reference v, const Alloc& alloc = Alloc()) : Base(N, alloc) { this->append(count, v); }
 
-  Vector(const Vector& o) : Base(N) { this->append(o.begin(), o.end()); }
+  Vector(const Vector& o) : Base(N, AllocTraits::SelectOnCopy(o.get_allocator())) { this->append(o.begin(), o.end()); }
 
   Vector(const Vector& o, const Alloc& alloc) : Base(N, alloc) { this->append(o.begin(), o.end()); }
 
-  Vector(Vector&& o) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) : Base(N) {
+  Vector(Vector&& o) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) : Base(N, o.get_allocator()) {
     this->move_construct(o, N);
   }
 
@@ -1689,12 +1893,15 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   template <SizeType ON = N, class OGrowingPolicy = GrowingPolicy>
   Vector(Vector<T, Alloc, SizeType, OGrowingPolicy, 0>&& o,
          typename std::enable_if<std::is_same<OGrowingPolicy, vec::DynamicGrowingPolicy>::value && (ON > 0)>::type* = 0)
-      : Base(N) {
+      : Base(N, o.get_allocator()) {
     this->move_construct(o);
   }
 
-  Vector(Vector&& o, const Alloc& alloc) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) : Base(N, alloc) {
-    this->move_construct(o, N);
+  /// If 'alloc' is not equal to the allocator of 'o', its elements are moved one by one.
+  Vector(Vector&& o,
+         const Alloc& alloc) noexcept((N == 0 || vec::is_move_construct_nothrow<T>::value) && IsAlwaysEqual::value)
+      : Base(N, alloc) {
+    moveConstruct(o, IsAlwaysEqual());
   }
 
   Vector(std::initializer_list<T> init, const Alloc& alloc = Alloc()) : Base(N, alloc) {
@@ -1703,21 +1910,25 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   Vector& operator=(const Vector& o) {
     if (AMC_LIKELY(this != &o)) {
+      propagateAllocator(o, typename AllocTraits::propagate_on_copy_assignment());
       this->assign(o.begin(), o.end());
     }
     return *this;
   }
 
   // Move assignment operator only defined here as it requires same N
-  Vector& operator=(Vector&& o) noexcept(N == 0 || vec::is_shift_nothrow<T>::value) {
+  Vector& operator=(Vector&& o) noexcept((N == 0 || vec::is_shift_nothrow<T>::value) && CanStealOnMoveAssign::value) {
     if (AMC_LIKELY(this != &o)) {
-      this->move_assign(o, N);
+      moveAssign(o, CanStealOnMoveAssign());
     }
     return *this;
   }
 
   // Define swap here instead of VectorImpl as noexcept swap is possible only for same inplace capacity
-  void swap(Vector& o) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) { this->swap_impl(o); }
+  void swap(Vector& o) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) {
+    this->swap_impl(o);
+    swapAllocators(o, typename AllocTraits::propagate_on_swap());
+  }
 
   void shrink_to_fit() { this->shrink_impl(N); }
 
@@ -1738,6 +1949,57 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
     return static_cast<size_type>(r);
   }
 #endif
+
+ private:
+  void moveConstruct(Vector& o, std::true_type) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) {
+    this->move_construct(o, N);
+  }
+
+  void moveConstruct(Vector& o, std::false_type) {
+    if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
+      this->move_construct(o, N);
+    } else {
+      this->append(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
+    }
+  }
+
+  /// Replaces our allocator by the one of 'o', after having released our memory if it cannot deallocate it.
+  void propagateAllocator(const Vector& o, std::true_type) noexcept {
+    if (!AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
+      this->clear();
+      this->shrink_to_fit();  // no element to relocate: cannot throw
+    }
+    this->setAllocator(o.get_allocator());
+  }
+
+  void propagateAllocator(const Vector&, std::false_type) noexcept {}
+
+  void swapAllocators(Vector& o, std::true_type) noexcept { this->swapAllocator(o); }
+
+  void swapAllocators(Vector& o, std::false_type) noexcept { checkEqualAllocators(o, IsAlwaysEqual()); }
+
+  void checkEqualAllocators(Vector&, std::true_type) noexcept {}
+
+  /// Like for the standard containers, swapping containers with unequal allocators that do not propagate is undefined
+  void checkEqualAllocators(Vector& o, std::false_type) noexcept {
+    assert(this->get_allocator() == o.get_allocator());
+    (void)o;
+  }
+
+  /// Our allocator is equal to the one of 'o', or it propagates: we can steal the memory of 'o'.
+  void moveAssign(Vector& o, std::true_type) noexcept(N == 0 || vec::is_shift_nothrow<T>::value) {
+    propagateAllocator(o, PropagateOnMove());
+    this->move_assign(o, N);
+  }
+
+  /// Our allocator does not propagate: we can steal the memory of 'o' only if our allocators are equal.
+  void moveAssign(Vector& o, std::false_type) {
+    if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
+      this->move_assign(o, N);
+    } else {
+      this->assign(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
+    }
+  }
 };
 
 template <class T, class A, class S, class G, S N>

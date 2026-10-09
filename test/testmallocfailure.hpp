@@ -30,23 +30,33 @@ constexpr bool kMallocFailureInjection = true;
 constexpr bool kMallocFailureInjection = false;
 #endif
 
-inline std::atomic<bool>& MallocFails() {
-  static std::atomic<bool> mallocFails(false);
-  return mallocFails;
+/// Number of allocations that still succeed before all the next ones fail, negative if allocations never fail.
+inline std::atomic<int>& NbAllocationsBeforeFailure() {
+  static std::atomic<int> nbAllocationsBeforeFailure(-1);
+  return nbAllocationsBeforeFailure;
 }
 
-/// Calls 'func' with all the allocations of the C allocator (malloc, calloc and realloc) failing.
-/// Allocations succeed again before this function returns or throws.
+/// Tells whether the current allocation fails, counting it.
+inline bool MallocFails() {
+  std::atomic<int>& nbAllocationsBeforeFailure = NbAllocationsBeforeFailure();
+  int nb = nbAllocationsBeforeFailure.load(std::memory_order_relaxed);
+  while (nb > 0 && !nbAllocationsBeforeFailure.compare_exchange_weak(nb, nb - 1, std::memory_order_relaxed)) {
+  }
+  return nb == 0;
+}
+
+/// Calls 'func' with the allocations of the C allocator (malloc, calloc and realloc) failing, after the first
+/// 'nbSuccessfulAllocations' ones. Allocations succeed again before this function returns or throws.
 template <class Func>
-void CallWithFailingMalloc(Func&& func) {
-  MallocFails().store(true, std::memory_order_relaxed);
+void CallWithFailingMalloc(Func&& func, int nbSuccessfulAllocations = 0) {
+  NbAllocationsBeforeFailure().store(nbSuccessfulAllocations, std::memory_order_relaxed);
   try {
     func();
   } catch (...) {
-    MallocFails().store(false, std::memory_order_relaxed);
+    NbAllocationsBeforeFailure().store(-1, std::memory_order_relaxed);
     throw;
   }
-  MallocFails().store(false, std::memory_order_relaxed);
+  NbAllocationsBeforeFailure().store(-1, std::memory_order_relaxed);
 }
 
 }  // namespace amc
@@ -60,7 +70,7 @@ void* __libc_realloc(void* ptr, size_t size) noexcept;
 // calloc is replaced as well, as compilers may merge malloc and memset into a call to calloc.
 // free does not need to be replaced: the memory always comes from glibc.
 void* malloc(size_t size) noexcept {
-  if (amc::MallocFails().load(std::memory_order_relaxed)) {
+  if (amc::MallocFails()) {
     errno = ENOMEM;
     return nullptr;
   }
@@ -68,7 +78,7 @@ void* malloc(size_t size) noexcept {
 }
 
 void* calloc(size_t nmemb, size_t size) noexcept {
-  if (amc::MallocFails().load(std::memory_order_relaxed)) {
+  if (amc::MallocFails()) {
     errno = ENOMEM;
     return nullptr;
   }
@@ -77,7 +87,7 @@ void* calloc(size_t nmemb, size_t size) noexcept {
 
 // On failure, the memory block 'ptr' is left untouched, as specified.
 void* realloc(void* ptr, size_t size) noexcept {
-  if (amc::MallocFails().load(std::memory_order_relaxed)) {
+  if (amc::MallocFails()) {
     errno = ENOMEM;
     return nullptr;
   }

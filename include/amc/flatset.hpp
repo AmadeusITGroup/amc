@@ -217,11 +217,7 @@ class FlatSet : private Compare {
 
   template <class InputIt>
   void insert(InputIt first, InputIt last) {
-    miterator insertIt = _sortedVector.insert(_sortedVector.end(), first, last);
-    // sort appended elements only (beginning is already sorted)
-    std::sort(insertIt, mend(), compRef());
-    std::inplace_merge(mbegin(), insertIt, mend(), compRef());
-    eraseDuplicates();
+    appendAndMerge([&] { _sortedVector.insert(_sortedVector.end(), first, last); });
   }
 
   void insert(std::initializer_list<value_type> ilist) { insert(ilist.begin(), ilist.end()); }
@@ -256,9 +252,19 @@ class FlatSet : private Compare {
 #endif
 
 #ifdef AMC_CXX23
+  /// 'rg' may not be common (its end may be a sentinel of another type than its iterator).
   template <class R>
   void insert_range(R &&rg) {
-    insert(std::ranges::begin(rg), std::ranges::end(rg));
+    if constexpr (std::ranges::common_range<R> && std::ranges::forward_range<R>) {
+      insert(std::ranges::begin(rg), std::ranges::end(rg));
+    } else {
+      appendAndMerge([&] {
+        const auto last = std::ranges::end(rg);
+        for (auto first = std::ranges::begin(rg); first != last; ++first) {
+          _sortedVector.emplace_back(*first);
+        }
+      });
+    }
   }
 #endif
 
@@ -463,7 +469,8 @@ class FlatSet : private Compare {
     const_iterator e = end();
     assert(hint >= b && hint <= e);
     if (hint == e || !compRef()(*hint, v)) {  // [v, right side) is sorted
-      const_iterator prevIt = b == e ? e : std::next(hint, -1);
+      // only used if hint != b: there is no iterator before b
+      const_iterator prevIt = hint == b ? b : std::prev(hint);
       if (hint == b || !compRef()(v, *prevIt)) {  // (left side, v] is sorted
         // hint is correct, but we need to check if equal
         if (hint != e && !compRef()(v, *hint)) {
@@ -494,6 +501,24 @@ class FlatSet : private Compare {
     }
     // hint does not bring any valuable information, use standard insert
     return insert(std::forward<V>(v)).first;
+  }
+
+  /// Appends elements to the sorted vector with 'append', then sorts them and merges them with the previous ones.
+  /// If 'append' throws, the elements it already appended are erased, to keep the vector sorted.
+  template <class Append>
+  void appendAndMerge(Append append) {
+    const difference_type oldSize = static_cast<difference_type>(size());
+    try {
+      append();
+    } catch (...) {
+      _sortedVector.erase(mbegin() + oldSize, mend());
+      throw;
+    }
+    const miterator first = mbegin() + oldSize;
+    // sort appended elements only (beginning is already sorted)
+    std::sort(first, mend(), compRef());
+    std::inplace_merge(mbegin(), first, mend(), compRef());
+    eraseDuplicates();
   }
 
   Compare &compRef() { return static_cast<Compare &>(*this); }

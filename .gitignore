@@ -11,6 +11,7 @@
 *.files
 *.includes
 *.cmake
+!/cmake/*.cmake
 *.code-workspace
 *.orig
 *.tmp

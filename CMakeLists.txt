@@ -1,15 +1,15 @@
 cmake_minimum_required (VERSION 3.14)
 
+# No MSVC warning flag (/W3) in the default CMAKE_CXX_FLAGS: the warning level is set on our targets only
+if (POLICY CMP0092)
+  cmake_policy(SET CMP0092 NEW)
+endif()
+
 project(amc 
   VERSION 2.6.1
   DESCRIPTION "Header base library of C++ containers"
   LANGUAGES CXX
 )
-
-# This library needs C++11, except for SmallSet which requires std::variant from C++17.
-# Emulations of newer C++ functions is provided for non C++14 / C++17 compilers.
-set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard")
-set(CMAKE_CXX_EXTENSIONS OFF CACHE STRING "Deactivate C++ extensions for maximum portability")
 
 ##
 ## MAIN_PROJECT CHECK
@@ -18,6 +18,14 @@ set(CMAKE_CXX_EXTENSIONS OFF CACHE STRING "Deactivate C++ extensions for maximum
 set(MAIN_PROJECT OFF)
 if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   set(MAIN_PROJECT ON)
+endif()
+
+# This library needs C++11, except for SmallSet which requires std::variant from C++17.
+# Emulations of newer C++ functions is provided for non C++14 / C++17 compilers.
+# Default standard of the unit tests and benchmarks, not set for a project including amc.
+if (MAIN_PROJECT)
+  set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard")
+  set(CMAKE_CXX_EXTENSIONS OFF CACHE STRING "Deactivate C++ extensions for maximum portability")
 endif()
 
 # By default, build benchmarks only if not Debug and main project (benchs do not make sense in Debug)
@@ -31,27 +39,16 @@ option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${BENCH_BUILD})
 option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" OFF)
 option(AMC_ENABLE_COVERAGE "Instrument the unit tests for LLVM source-based code coverage and add a 'coverage' target (Clang only)" OFF)
 option(AMC_PEDANTIC "If set, only standard API (in respect to STL) will be defined. Additional features are enabled when OFF" OFF)
-
-# Activate all warnings, in all build modes
-if(MAIN_PROJECT)
-  if (MSVC)
-    # Replace CMake's default /W3 with /W4 to avoid D9025 warning
-    string(REGEX REPLACE "/W[0-3]" "/W4" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  else()
-    add_compile_options(-Wall -Wextra -pedantic)
-  endif()
-endif()
-
-if(AMC_ENABLE_ASAN AND NOT MSVC)
-  add_compile_options(-g -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fno-sanitize-recover=all)
-endif()
+option(AMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors in Debug builds of the unit tests and benchmarks" OFF)
 
 if (AMC_PEDANTIC)
   message(STATUS "AMC - Compile without non standard features")
 else()
   message(STATUS "AMC - Compile with non standard features")
-  add_compile_definitions(AMC_NONSTD_FEATURES)
 endif()
+
+# Compilation options of the unit tests and benchmarks (AmcSetProjectProperties), never set globally
+include(cmake/SetProjectProperties.cmake)
 
 # Create interface library for header files
 include(GNUInstallDirs)
@@ -68,10 +65,6 @@ target_include_directories(
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
 
 if (AMC_ENABLE_TESTS)
-  if (MSVC)
-    add_definitions(/bigobj)
-  endif()
-
   enable_testing()
   
   add_subdirectory(test)

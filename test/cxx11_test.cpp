@@ -1,9 +1,14 @@
-// Tests of the emulations of standard library features that amc provides before C++17.
+// Tests of the emulations of standard library features that amc provides before C++17, and of the containers available
+// in C++11 (instantiating their templates in C++11).
 // GoogleTest requires C++17, so this test is a plain executable compiled in C++11 (C++14 for MSVC), reporting failures
 // with its exit code. Its checks hold for the standard library features as well, from C++17.
 
+#include <amc/fixedcapacityvector.hpp>
+#include <amc/flatset.hpp>
 #include <amc/memory.hpp>
+#include <amc/smallvector.hpp>
 #include <amc/type_traits.hpp>
+#include <amc/vector.hpp>
 #include <cstdio>
 #include <type_traits>
 
@@ -69,6 +74,21 @@ void CheckConstructionThrows(ConstructN constructN, const char* description) {
   Check(thrown && ThrowingDefaultConstructor::sNbLive == 0, description);
 }
 
+/// Basic operations of a vector, growing it beyond its inline storage if it has one
+template <class VectorType>
+void CheckVector(const char* description) {
+  using Type = typename VectorType::value_type;
+  VectorType v;
+  for (int i = 0; i < 10; ++i) {
+    v.push_back(static_cast<Type>(i));
+  }
+  v.insert(v.begin() + 2, 3U, static_cast<Type>(42));
+  v.erase(v.begin());
+  VectorType copy(v);
+  VectorType moved(std::move(copy));
+  Check(moved == v && v.size() == 12U && v[1] == 42 && v[4] == 2 && v.back() == 9, description);
+}
+
 }  // namespace
 
 static_assert(amc::is_nothrow_swappable<int>::value, "");
@@ -115,6 +135,17 @@ int main() {
   CheckConstructionThrows(
       [](ThrowingDefaultConstructor* first, int n) { amc::uninitialized_value_construct_n(first, n); },
       "uninitialized_value_construct_n throwing construction");
+
+  // inline elements smaller than a pointer share its storage
+  CheckVector<amc::SmallVector<char, 8>>("SmallVector<char, 8>");
+  CheckVector<amc::SmallVector<int, 4>>("SmallVector<int, 4>");
+  CheckVector<amc::vector<int>>("vector<int>");
+  CheckVector<amc::FixedCapacityVector<int, 16>>("FixedCapacityVector<int, 16>");
+  {
+    amc::FlatSet<int> s{4, 1, 3, 1};
+    s.insert(2);
+    Check(s == amc::FlatSet<int>{1, 2, 3, 4}, "FlatSet<int>");
+  }
 
   if (gNbFailures != 0) {
     std::fprintf(stderr, "%d failure(s)\n", gNbFailures);
