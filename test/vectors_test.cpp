@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/smallvector.hpp>
 #include <amc/vector.hpp>
@@ -12,6 +13,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#ifdef AMC_CXX23
+#include <ranges>
+#endif
 
 #include "testhelpers.hpp"
 #include "testtypes.hpp"
@@ -482,6 +487,40 @@ TEST(VectorTest, TryAppendRangeInputIteratorConstructElements) {
   EXPECT_EQ(stats._nbMoveAssignments, 0U);
   EXPECT_EQ(stats._nbCopyConstructs, 2U);
   EXPECT_EQ(v, VectorType({0, 1, 2}));
+}
+
+// try_append_range appends elements up to the capacity, even if the size of the range does not fit in size_type, or if
+// the range is not sized, not common or a non borrowed rvalue.
+TYPED_TEST(VectorTest, TryAppendRangeUpToCapacity) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  using SizeType = typename VectorType::size_type;
+  VectorType v;
+  v.push_back(Type(1));
+  v.reserve(10U);
+  const std::size_t capacity = static_cast<std::size_t>(v.capacity());
+
+  // 256 elements do not fit in an 8 bits size_type
+  const std::vector<int> rg(256, 7);
+  std::vector<int>::const_iterator it = v.try_append_range(rg);
+  EXPECT_EQ(static_cast<std::size_t>(it - rg.begin()), capacity - 1U);
+  EXPECT_EQ(static_cast<std::size_t>(v.size()), capacity);
+  EXPECT_TRUE(std::all_of(v.begin() + 1, v.end(), [](const Type& e) { return e == Type(7); }));
+
+  // unbounded, hence not sized and not common, random access range
+  v.clear();
+  auto iotaIt = v.try_append_range(std::views::iota(0));
+  EXPECT_EQ(static_cast<std::size_t>(*iotaIt), capacity);
+  EXPECT_EQ(static_cast<std::size_t>(v.size()), capacity);
+  for (std::size_t i = 0; i < capacity; ++i) {
+    EXPECT_EQ(v[static_cast<SizeType>(i)], Type(static_cast<int>(i)));
+  }
+
+  // non borrowed rvalue range: returns std::ranges::dangling
+  v.clear();
+  std::ranges::dangling dangling = v.try_append_range(std::vector<int>{3, 4});
+  (void)dangling;
+  EXPECT_EQ(v, VectorType({3, 4}));
 }
 
 #endif
