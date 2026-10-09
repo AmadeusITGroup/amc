@@ -1,6 +1,7 @@
 #pragma once
 
 #include <amc/type_traits.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -115,9 +116,25 @@ struct NonTrivialType {
   uint32_t _i;
 };
 
+/// Over-aligned type: its alignment is larger than the one guaranteed by malloc (alignof(std::max_align_t)).
+struct alignas(64) OverAlignedType {
+  OverAlignedType(int32_t i = 0) : _i(i) {}
+
+  operator int32_t() const { return _i; }
+
+#ifdef AMC_CXX20
+  auto operator<=>(const OverAlignedType &o) const = default;
+#endif
+
+  int32_t _i;
+  char _padding[60]{};  // explicit padding to its alignment, as MSVC warns about implicit padding (C4324)
+};
+
 static_assert(!std::is_trivial<NonTrivialType>::value, "");
 static_assert(std::is_trivially_copyable<NonTrivialType>::value, "");
 static_assert(!std::is_trivially_copyable<SimpleNonTriviallyCopyableType>::value, "");
+static_assert(alignof(OverAlignedType) > alignof(std::max_align_t), "");
+static_assert(sizeof(OverAlignedType) == alignof(OverAlignedType), "");
 
 /// Type whose move assignment does not preserve its value when self move assigned, which is allowed by the standard
 /// (Cpp17MoveAssignable specifies the value of the assigned object only when it is not the moved-from object).

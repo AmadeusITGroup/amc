@@ -46,7 +46,7 @@ typedef ::testing::Types<
     vector<ComplexNonTriviallyRelocatableType>, vector<ComplexTriviallyRelocatableType>,
     vector<ComplexNonTriviallyRelocatableType, std::allocator<ComplexNonTriviallyRelocatableType>>,
     vector<ComplexTriviallyRelocatableType, std::allocator<ComplexTriviallyRelocatableType>>,
-    vector<NonTriviallyRelocatableType>>
+    vector<NonTriviallyRelocatableType>, SmallVector<OverAlignedType, 3>, vector<OverAlignedType>>
     MyTypes;
 TYPED_TEST_SUITE(VectorTest, MyTypes, );
 
@@ -184,6 +184,27 @@ TYPED_TEST(VectorTest, Main) {
 }
 
 // Single pass input iterators (here, reading from a stream) can be traversed only once.
+// Elements must be aligned according to their type, even when its alignment is larger than the one of malloc.
+TYPED_TEST(VectorTest, ElementsAlignment) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  const auto isAligned = [](const VectorType& v) {
+    return reinterpret_cast<std::uintptr_t>(v.data()) % alignof(Type) == 0U;
+  };
+  VectorType v;
+  for (int i = 0; i < 16; ++i) {  // several reallocations
+    v.push_back(Type(i));
+    EXPECT_TRUE(isAligned(v));
+  }
+  v.erase(v.begin() + 2, v.end());
+  v.shrink_to_fit();
+  EXPECT_TRUE(isAligned(v));
+  v.reserve(13U);
+  EXPECT_TRUE(isAligned(v));
+  VectorType copy(v);
+  EXPECT_TRUE(isAligned(copy));
+}
+
 TYPED_TEST(VectorTest, InputIterators) {
   using VectorType = TypeParam;
   using InputIt = std::istream_iterator<int>;
