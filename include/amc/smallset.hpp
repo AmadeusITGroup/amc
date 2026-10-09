@@ -536,9 +536,9 @@ class SmallSet {
 #ifdef AMC_CXX20
   auto operator<=>(const SmallSet &o) const {
     struct Comp {
-      auto operator()(const_pointer pLhs, const_pointer pRhs) const { return *pLhs <=> *pRhs; }
-      auto operator()(const_pointer pLhs, const_reference rhs) const { return *pLhs <=> rhs; }
-      auto operator()(const_reference lhs, const_pointer pRhs) const { return lhs <=> *pRhs; }
+      auto operator()(const_pointer pLhs, const_pointer pRhs) const { return amc::synth_three_way()(*pLhs, *pRhs); }
+      auto operator()(const_pointer pLhs, const_reference rhs) const { return amc::synth_three_way()(*pLhs, rhs); }
+      auto operator()(const_reference lhs, const_pointer pRhs) const { return amc::synth_three_way()(lhs, *pRhs); }
     };
 
     if (isSmall()) {
@@ -546,17 +546,17 @@ class SmallSet {
       if (o.isSmall()) {
         // We are both small, we need to sort both containers
         auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
-        return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
+        return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
                                                       oSortedPtrs.end(), Comp());
       }
       // we are small: as we do not order elements in the small container, we need to sort them.
-      return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
+      return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
                                                     Comp());
     }
     if (o.isSmall()) {
       // other is small: as we do not order elements in the small container, we need to sort them.
       auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
-      return std::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
+      return amc::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
                                                     Comp());
     }
     return _set <=> o._set;

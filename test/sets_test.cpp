@@ -572,6 +572,45 @@ TYPED_TEST(SetStatefulCompareTest, UseComparatorObject) {
 }
 
 template <typename T>
+class SetLessComparableTest : public ::testing::Test {};
+
+// clang-format off
+typedef ::testing::Types<FlatSet<LessComparableType>
+#ifdef AMC_SMALLSET
+                        ,SmallSet<LessComparableType, 2>,
+                         SmallSet<LessComparableType, 2, std::less<LessComparableType>,
+                                  amc::allocator<LessComparableType>, FlatSet<LessComparableType>>
+#endif
+                        >
+    SetsOfLessComparableTypes;
+// clang-format on
+
+TYPED_TEST_SUITE(SetLessComparableTest, SetsOfLessComparableTypes, );
+
+// Sets of elements only providing operator< are comparable (from C++20, with an ordering synthesized from it), in the
+// small and large states of SmallSets
+TYPED_TEST(SetLessComparableTest, ComparisonOperators) {
+  using SetType = TypeParam;
+  const SetType s{4, 1, 3};
+  SetType large;  // large state for all tested SmallSets
+  for (int32_t i = 1; i <= 10; ++i) {
+    large.insert(i);
+  }
+  EXPECT_EQ(s, SetType({1, 3, 4}));
+  EXPECT_LT(s, SetType({1, 4}));
+  EXPECT_GT(s, SetType({1, 2, 3, 4}));
+  EXPECT_GT(s, large);
+  EXPECT_LT(large, s);
+#ifdef AMC_CXX20
+  static_assert(std::is_same_v<decltype(s <=> s), std::weak_ordering>, "ordering synthesized from operator<");
+  EXPECT_EQ(s <=> SetType({1, 4}), std::weak_ordering::less);
+  EXPECT_EQ(s <=> SetType({3, 4, 1}), std::weak_ordering::equivalent);
+  EXPECT_EQ(s <=> large, std::weak_ordering::greater);
+  EXPECT_EQ(large <=> s, std::weak_ordering::less);
+#endif
+}
+
+template <typename T>
 class SetListMergeTest : public ::testing::Test {
  public:
   using List = typename std::list<T>;

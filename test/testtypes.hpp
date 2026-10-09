@@ -172,6 +172,17 @@ struct ModuloCompare {
   int32_t _modulo = std::numeric_limits<int32_t>::max();
 };
 
+/// Type only providing operator== and operator< (no operator<=>, no conversion to an arithmetic type): from C++20,
+/// containers of this type should still be comparable, like the standard ones which use 'synth-three-way'.
+struct LessComparableType {
+  LessComparableType(int32_t i = 0) : _i(i) {}
+
+  bool operator==(const LessComparableType &o) const { return _i == o._i; }
+  bool operator<(const LessComparableType &o) const { return _i < o._i; }
+
+  int32_t _i;
+};
+
 struct CopyException {};
 
 struct TypeStats {

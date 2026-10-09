@@ -1263,7 +1263,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
 #ifdef AMC_CXX20
   auto operator<=>(const VectorImpl& o) const {
-    return amc::lexicographical_compare_three_way(this->begin(), end(), o.begin(), o.end());
+    return amc::lexicographical_compare_three_way(this->begin(), end(), o.begin(), o.end(), amc::synth_three_way());
   }
 #else
   bool operator<(const VectorImpl& o) const {

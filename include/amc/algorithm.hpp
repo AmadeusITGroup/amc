@@ -44,6 +44,31 @@ constexpr auto lexicographical_compare_three_way(I1 f1, I1 l1, I2 f2, I2 l2) {
   return lexicographical_compare_three_way(f1, l1, f2, l2, amc::compare_three_way());
 }
 #endif
+
+namespace algorithm_details {
+#if defined(__cpp_lib_three_way_comparison) && __cpp_lib_three_way_comparison >= 201907L
+template <class T, class U>
+concept ThreeWayComparableWith = std::three_way_comparable_with<T, U>;
+#else
+template <class T, class U>
+concept ThreeWayComparableWith = requires(const T& t, const U& u) { t <=> u; };
+#endif
+}  // namespace algorithm_details
+
+/// Emulation of the exposition only 'synth-three-way' used by the comparison operators of the standard containers:
+/// elements are compared with operator<=> if they can, otherwise with operator< (giving a std::weak_ordering).
+struct synth_three_way {
+  template <class T, class U>
+  constexpr auto operator()(const T& t, const U& u) const {
+    if constexpr (algorithm_details::ThreeWayComparableWith<T, U>) {
+      return t <=> u;
+    } else {
+      if (t < u) return std::weak_ordering::less;
+      if (u < t) return std::weak_ordering::greater;
+      return std::weak_ordering::equivalent;
+    }
+  }
+};
 #endif
 
 }  // namespace amc
