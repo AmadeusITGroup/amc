@@ -233,6 +233,14 @@ inline void swap_sizetype(SizeType& lhs, SizeType& rhs) noexcept {
   std::swap(lhs, rhs);
 }
 
+/// Tells whether two vectors of given capacities (and of potentially different size types) can exchange their dynamic
+/// storages, which is possible only if each capacity (and thus size) fits in the size type of the other vector.
+template <class SizeType1, class SizeType2>
+inline bool CapacitiesFitEachOther(SizeType1 capacity1, SizeType2 capacity2) noexcept {
+  return static_cast<uintmax_t>(capacity1) <= static_cast<uintmax_t>(std::numeric_limits<SizeType2>::max()) &&
+         static_cast<uintmax_t>(capacity2) <= static_cast<uintmax_t>(std::numeric_limits<SizeType1>::max());
+}
+
 /// Move 'n' objects starting at 'first' to a range starting at 'd_first' containing already 'd_n' instantiated objects
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
 inline void move_n(T* first, SizeType n, T* d_first, SizeType d_n) {
@@ -343,7 +351,9 @@ class TemporaryElem {
   }
 
   TemporaryElem(const TemporaryElem&) = delete;
+  TemporaryElem(TemporaryElem&& other) noexcept = delete;
   TemporaryElem& operator=(const TemporaryElem&) = delete;
+  TemporaryElem& operator=(TemporaryElem&&) noexcept = delete;
 
   ~TemporaryElem() {
     if (_owned) {
@@ -604,8 +614,8 @@ class StdVectorBase : private Alloc {
   bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept;
 
   template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>&) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value;
+  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
+    return std::is_same<OAlloc, Alloc>::value && CapacitiesFitEachOther(_capa, o._capa);
   }
 
   template <class VectorType>
@@ -765,8 +775,8 @@ class SmallVectorBase : private Alloc {
   friend class StdVectorBase;
 
   template <class OAlloc, class OSizeType>
-  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>&) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value && !isSmall();
+  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
+    return std::is_same<OAlloc, Alloc>::value && !isSmall() && CapacitiesFitEachOther(_capa, o._capa);
   }
   template <class OSizeType>
   bool canSwapDynStorage(StaticVectorBase<T, OSizeType>&) const noexcept {
@@ -774,7 +784,7 @@ class SmallVectorBase : private Alloc {
   }
   template <class OSizeType, class OAlloc>
   bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-    return std::is_same<OAlloc, Alloc>::value && !isSmall() && !o.isSmall();
+    return std::is_same<OAlloc, Alloc>::value && !isSmall() && !o.isSmall() && CapacitiesFitEachOther(_capa, o._capa);
   }
 
   template <class VectorType>
@@ -847,7 +857,7 @@ class SmallVectorBase : private Alloc {
 template <class T, class Alloc, class SizeType>
 template <class OSizeType, class OAlloc>
 bool StdVectorBase<T, Alloc, SizeType>::canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-  return std::is_same<OAlloc, Alloc>::value && !o.isSmall();
+  return std::is_same<OAlloc, Alloc>::value && !o.isSmall() && CapacitiesFitEachOther(_capa, o._capa);
 }
 
 template <class T, class SizeType, class GrowingPolicy>
