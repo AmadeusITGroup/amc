@@ -44,15 +44,22 @@ if (AMC_ENABLE_COVERAGE)
   message(STATUS "AMC - Code coverage with ${AMC_LLVM_COV}, run target 'coverage' for a report in ${AMC_COVERAGE_DIR}")
 endif()
 
-# Create a unit test with google test
+# Create a unit test with google test.
+# NO_GTEST: plain executable reporting failures with its exit code, for tests compiled with a standard older than C++17
+#           (that google test requires), set with CXX_STANDARD.
 function(add_unit_test name)
-   set(options)
-   set(oneValueArgs)
+   set(options NO_GTEST)
+   set(oneValueArgs CXX_STANDARD)
    set(multiValueArgs)
    cmake_parse_arguments(PARSE_ARGV 1 MY "${options}" "${oneValueArgs}" "${multiValueArgs}")
 
    add_executable(${name} ${MY_UNPARSED_ARGUMENTS})
-   target_link_libraries(${name} PRIVATE GTest::gtest GTest::gmock GTest::gmock_main)
+   if (NOT MY_NO_GTEST)
+     target_link_libraries(${name} PRIVATE GTest::gtest GTest::gmock GTest::gmock_main)
+   endif()
+   if (MY_CXX_STANDARD)
+     set_target_properties(${name} PROPERTIES CXX_STANDARD ${MY_CXX_STANDARD} CXX_STANDARD_REQUIRED ON)
+   endif()
    target_include_directories(${name} PRIVATE ../include)
 
    add_test(NAME ${name} COMMAND ${name})
@@ -87,6 +94,18 @@ add_unit_test(
   sets_test
   sets_test.cpp
 )
+
+# amc emulations of standard library features, only used before C++17 (C++14 is the oldest standard of MSVC)
+add_unit_test(
+  cxx11_test
+  cxx11_test.cpp
+  NO_GTEST
+  CXX_STANDARD 11
+)
+if (NOT MSVC)
+  # A missing return statement is undefined behavior, make it a compilation error (it is an error by default for MSVC)
+  target_compile_options(cxx11_test PRIVATE -Werror=return-type)
+endif()
 
 if (AMC_ENABLE_COVERAGE)
   # 'coverage' target: run all the tests from scratch, then report the coverage of the headers of include/ only.
