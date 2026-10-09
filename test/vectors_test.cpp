@@ -611,6 +611,61 @@ TEST(VectorTest, CustomSwap) {
   bar6.swap2(barvec2);
   barvec2.swap2(bar6);
 }
+
+// swap2 of vectors with different size types: dynamic storages can be exchanged only if each capacity fits in the size
+// type of the other vector. Otherwise, elements are swapped one by one if sizes fit, or swap2 throws.
+template <class SmallSizeTypeVec, class LargeSizeTypeVec>
+void CheckSwap2DifferentSizeTypes() {
+  static_assert(std::is_same<typename SmallSizeTypeVec::size_type, uint8_t>::value, "");
+  std::vector<int> values(10);
+  std::iota(values.begin(), values.end(), 0);
+  {
+    // capacity of 'large' does not fit in the size type of 'small'
+    SmallSizeTypeVec small;
+    LargeSizeTypeVec large(values.begin(), values.end());
+    large.reserve(1000);
+    small.swap2(large);
+    EXPECT_EQ(small, SmallSizeTypeVec(values.begin(), values.end()));
+    EXPECT_TRUE(large.empty());
+    EXPECT_EQ(large.capacity(), 1000U);
+    large.swap2(small);
+    EXPECT_EQ(large, LargeSizeTypeVec(values.begin(), values.end()));
+    EXPECT_TRUE(small.empty());
+  }
+  {
+    // size of 'large' does not fit in the size type of 'small': vectors should not be modified
+    SmallSizeTypeVec small(values.begin(), values.end());
+    LargeSizeTypeVec large(300, 42);
+    EXPECT_THROW(small.swap2(large), std::overflow_error);
+    EXPECT_THROW(large.swap2(small), std::overflow_error);
+    EXPECT_EQ(small, SmallSizeTypeVec(values.begin(), values.end()));
+    EXPECT_EQ(large, LargeSizeTypeVec(300, 42));
+  }
+  {
+    // capacities fit in the size type of each other: dynamic storages are exchanged
+    SmallSizeTypeVec small(values.begin(), values.end());
+    small.reserve(100);
+    LargeSizeTypeVec large(5, 42);
+    large.reserve(50);
+    const int* smallData = small.data();
+    const int* largeData = large.data();
+    small.swap2(large);
+    EXPECT_EQ(small.data(), largeData);
+    EXPECT_EQ(large.data(), smallData);
+    EXPECT_EQ(small, SmallSizeTypeVec(5, 42));
+    EXPECT_EQ(large, LargeSizeTypeVec(values.begin(), values.end()));
+    EXPECT_EQ(small.capacity(), 50U);
+    EXPECT_EQ(large.capacity(), 100U);
+  }
+}
+
+TEST(VectorTest, Swap2DifferentSizeTypes) {
+  using Alloc = amc::allocator<int>;
+  CheckSwap2DifferentSizeTypes<vector<int, Alloc, uint8_t>, vector<int, Alloc, uint32_t>>();
+  CheckSwap2DifferentSizeTypes<SmallVector<int, 4, Alloc, uint8_t>, vector<int, Alloc, uint32_t>>();
+  CheckSwap2DifferentSizeTypes<vector<int, Alloc, uint8_t>, SmallVector<int, 4, Alloc, uint32_t>>();
+  CheckSwap2DifferentSizeTypes<SmallVector<int, 4, Alloc, uint8_t>, SmallVector<int, 8, Alloc, uint32_t>>();
+}
 #endif
 
 TEST(VectorTest, TrickyEmplace) {
