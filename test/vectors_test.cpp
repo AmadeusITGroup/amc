@@ -745,6 +745,35 @@ TEST(VectorTest, EmplaceFromPointerToShiftedElement) {
   CheckEmplaceFromPointerToShiftedElement<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 4>>();
 }
 
+// When the vector is full, emplace methods construct the new element in a temporary storage before growing (as
+// arguments may reference elements of the vector). This element must be destroyed if the growth throws.
+template <class VectorType>
+void CheckEmplaceGrowFailureDoesNotLeak() {
+  static_assert(std::is_same<typename VectorType::size_type, uint8_t>::value, "growing beyond 255 elements throws");
+  VectorType v(255);
+  EXPECT_EQ(v.capacity(), 255U);
+
+  TypeStats& stats = TypeStats::_stats;
+  stats = TypeStats();
+  stats.start();
+  EXPECT_THROW(v.emplace_back(42), std::overflow_error);
+  EXPECT_THROW(v.emplace(v.begin() + 1, 42), std::overflow_error);
+  EXPECT_THROW(v.emplace(v.end(), 42), std::overflow_error);
+  stats.end();
+
+  EXPECT_EQ(stats._nbConstructs + stats._nbCopyConstructs + stats._nbMoveConstructs, stats._nbDestructs);
+  EXPECT_EQ(v.size(), 255U);
+}
+
+TEST(VectorTest, EmplaceGrowFailureDoesNotLeak) {
+  using NonTrivRelocType = ComplexNonTriviallyRelocatableType;
+  using TrivRelocType = ComplexTriviallyRelocatableType;
+  CheckEmplaceGrowFailureDoesNotLeak<vector<NonTrivRelocType, std::allocator<NonTrivRelocType>, uint8_t>>();
+  CheckEmplaceGrowFailureDoesNotLeak<vector<TrivRelocType, std::allocator<TrivRelocType>, uint8_t>>();
+  CheckEmplaceGrowFailureDoesNotLeak<SmallVector<NonTrivRelocType, 4, std::allocator<NonTrivRelocType>, uint8_t>>();
+  CheckEmplaceGrowFailureDoesNotLeak<SmallVector<TrivRelocType, 4, std::allocator<TrivRelocType>, uint8_t>>();
+}
+
 // Exact reproduction of the first scenario reported in GitHub issue #63.
 TEST(VectorTest, InsertSelfReferenceString) {
   for (bool inplace : {true, false}) {
