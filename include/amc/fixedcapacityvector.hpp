@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <new>
@@ -10,33 +11,37 @@
 #include "config.hpp"
 #include "vectorcommon.hpp"
 
+#ifdef AMC_CXX14
+#include <functional>
+#endif
+
 namespace amc {
 namespace vec {
 
 /// Wrapper to get the smallest needed type for holding a maximum number of N elements
-template <uintmax_t N>
+template <std::uintmax_t N>
 struct SmallestSizeType {
   // clang-format off
 #ifdef AMC_CXX14
 // this is to avoid potential harmless warning occurring for instance in GCC:
 // warning: comparison is always false due to limited range of data type [-Wtype-limits]
 // Activated only in C++14 as we need it to be constexpr
-  using type = typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<uint8_t>::max()), uint8_t,
-               typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<uint16_t>::max()), uint16_t,
-               typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<uint32_t>::max()), uint32_t,
-          uint64_t>::type>::type>::type;
+  using type = typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<std::uint8_t>::max()), std::uint8_t,
+               typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<std::uint16_t>::max()), std::uint16_t,
+               typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<std::uint32_t>::max()), std::uint32_t,
+          std::uint64_t>::type>::type>::type;
 #else
-  using type = typename std::conditional<N <= std::numeric_limits<uint8_t>::max(), uint8_t,
-               typename std::conditional<N <= std::numeric_limits<uint16_t>::max(), uint16_t,
-               typename std::conditional<N <= std::numeric_limits<uint32_t>::max(), uint32_t,
-          uint64_t>::type>::type>::type;
+  using type = typename std::conditional<N <= std::numeric_limits<std::uint8_t>::max(), std::uint8_t,
+               typename std::conditional<N <= std::numeric_limits<std::uint16_t>::max(), std::uint16_t,
+               typename std::conditional<N <= std::numeric_limits<std::uint32_t>::max(), std::uint32_t,
+          std::uint64_t>::type>::type>::type;
 #endif
   // clang-format on
 };
 
 /// Throw exception in the case we attempt to exceed inplace capacity (default mode)
 struct ExceptionGrowingPolicy {
-  static inline void Check(uintmax_t capacity, uintmax_t maxCapacity) {
+  static inline void Check(std::uintmax_t capacity, std::uintmax_t maxCapacity) {
     if (AMC_UNLIKELY(maxCapacity < capacity)) {
       throw std::out_of_range("Growing is not possible");
     }
@@ -45,7 +50,7 @@ struct ExceptionGrowingPolicy {
 
 /// Throw std::bad_alloc in the case we attempt to exceed inplace capacity (same as std::inplace_vector)
 struct BadAllocGrowingPolicy {
-  static inline void Check(uintmax_t capacity, uintmax_t maxCapacity) {
+  static inline void Check(std::uintmax_t capacity, std::uintmax_t maxCapacity) {
     if (AMC_UNLIKELY(maxCapacity < capacity)) {
       throw std::bad_alloc();
     }
@@ -54,7 +59,7 @@ struct BadAllocGrowingPolicy {
 
 /// Abort the program in the case we attempt to exceed inplace capacity if assertions are enable only
 struct UncheckedGrowingPolicy {
-  static inline void Check(uintmax_t capacity, uintmax_t maxCapacity) {
+  static inline void Check(std::uintmax_t capacity, std::uintmax_t maxCapacity) {
     (void)capacity;
     (void)maxCapacity;
     assert(capacity <= maxCapacity);
@@ -96,13 +101,13 @@ struct UncheckedGrowingPolicy {
  *     - insert from count elements
  *   If Object movement can throw, only 'push_back' and 'emplace_back' modifiers provide strong exception warranty
  */
-template <class T, uintmax_t N, class GrowingPolicy = vec::ExceptionGrowingPolicy,
+template <class T, std::uintmax_t N, class GrowingPolicy = vec::ExceptionGrowingPolicy,
           class SizeType = typename vec::SmallestSizeType<N>::type>
 using FixedCapacityVector =
     Vector<T, vec::EmptyAlloc, SizeType, GrowingPolicy, vec::SanitizeInlineSize<N, SizeType>::value>;
 
 /// Compatibility with std::inplace_vector (C++26)
-template <class T, uintmax_t N>
+template <class T, std::uintmax_t N>
 using inplace_vector = FixedCapacityVector<T, N, vec::BadAllocGrowingPolicy, std::size_t>;
 
 }  // namespace amc

@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <type_traits>
 #include <utility>
 
 #include "config.hpp"
@@ -10,8 +12,10 @@
 
 #ifndef AMC_CXX17
 #include <algorithm>
+#endif
 
-#include "utility.hpp"
+#ifndef AMC_CXX20
+#include <new>
 #endif
 
 namespace amc {

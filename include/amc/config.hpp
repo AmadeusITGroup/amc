@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstddef>
-
 #if defined(__clang__) && defined(__clang_minor__)
 #define AMC_CLANG (__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
 #elif defined(__GNUC__) && defined(__GNUC_MINOR__) && defined(__GNUC_PATCHLEVEL__)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "allocator.hpp"
 #include "smallvector.hpp"
 
@@ -32,6 +34,6 @@ namespace amc {
  *     - insert from count elements
  *   If Object movement can throw, only 'push_back' and 'emplace_back' modifiers provide strong exception warranty
  */
-template <class T, class Alloc = amc::allocator<T>, class SizeType = uint32_t>
+template <class T, class Alloc = amc::allocator<T>, class SizeType = std::uint32_t>
 using vector = SmallVector<T, 0U, Alloc, SizeType>;
 }  // namespace amc

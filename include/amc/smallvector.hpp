@@ -1,11 +1,17 @@
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 
 #include "allocator.hpp"
+#include "config.hpp"
 #include "hasreallocate.hpp"
+#include "memory.hpp"
+#include "type_traits.hpp"
 #include "vectorcommon.hpp"
 
 namespace amc {
@@ -14,7 +20,7 @@ namespace vec {
 /// New capacity for at least 'newSize' elements, not exceeding 'maxCapa' (see MaxCapacity).
 /// 'exact' is only set by 'reserve', which allocates exactly the requested capacity.
 template <class SizeType>
-inline SizeType SafeNextCapacity(SizeType oldCapa, uintmax_t newSize, uintmax_t maxCapa, bool exact) {
+inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::uintmax_t maxCapa, bool exact) {
   if (AMC_UNLIKELY(maxCapa < newSize)) {
     throw std::overflow_error(
         "Attempt to use more elements than max_size(). Use a larger size_type if it is the limit");
@@ -23,8 +29,8 @@ inline SizeType SafeNextCapacity(SizeType oldCapa, uintmax_t newSize, uintmax_t 
     return static_cast<SizeType>(newSize);
   }
   // Realloc * 1.5 except if minimum requested size is larger (choose it in this case).
-  return static_cast<SizeType>(
-      std::min(std::max(static_cast<uintmax_t>((3U * static_cast<uintmax_t>(oldCapa) + 1U) / 2U), newSize), maxCapa));
+  return static_cast<SizeType>(std::min(
+      std::max(static_cast<std::uintmax_t>((3U * static_cast<std::uintmax_t>(oldCapa) + 1U) / 2U), newSize), maxCapa));
 }
 
 template <class Alloc>
@@ -45,29 +51,29 @@ inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, Siz
 template <class Alloc, class T, class SizeType,
           typename std::enable_if<!CanReallocate<Alloc>::value, bool>::type = true>
 inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, SizeType size) {
-  T* newPtr = alloc.allocate(static_cast<size_t>(newCapa));
+  T* newPtr = alloc.allocate(static_cast<std::size_t>(newCapa));
   try {
     (void)amc::uninitialized_relocate_n(p, size, newPtr);
   } catch (...) {
-    alloc.deallocate(newPtr, static_cast<size_t>(newCapa));
+    alloc.deallocate(newPtr, static_cast<std::size_t>(newCapa));
     throw;
   }
-  alloc.deallocate(p, static_cast<size_t>(oldCapa));
+  alloc.deallocate(p, static_cast<std::size_t>(oldCapa));
   return newPtr;
 }
 
 template <class T, class Alloc, class SizeType>
-void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
+void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
   SizeType newCapa;
-  const uintmax_t maxCapa = MaxCapacity<SizeType>(static_cast<const Alloc&>(*this));
+  const std::uintmax_t maxCapa = MaxCapacity<SizeType>(static_cast<const Alloc&>(*this));
   if (isSmall()) {
     SizeType oldCapa = _size == std::numeric_limits<SizeType>::max() ? _capa : _size;
     newCapa = SafeNextCapacity(oldCapa, minSize, maxCapa, exact);
-    T* dynStorage = this->allocate(static_cast<size_t>(newCapa));
+    T* dynStorage = this->allocate(static_cast<std::size_t>(newCapa));
     try {
       (void)amc::uninitialized_relocate_n(_storage.ptr(), _capa, dynStorage);
     } catch (...) {
-      this->deallocate(dynStorage, static_cast<size_t>(newCapa));
+      this->deallocate(dynStorage, static_cast<std::size_t>(newCapa));
       throw;
     }
     _storage.setDyn(dynStorage);
@@ -80,7 +86,7 @@ void SmallVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
 }
 
 template <class T, class Alloc, class SizeType>
-void StdVectorBase<T, Alloc, SizeType>::grow(uintmax_t minSize, bool exact) {
+void StdVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
   SizeType newCapa = SafeNextCapacity(_capa, minSize, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)), exact);
   _storage = vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, newCapa, _size);
   _capa = newCapa;
@@ -95,7 +101,7 @@ void SmallVectorBase<T, Alloc, SizeType>::shrink() {
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::shrink() {
   if (_size == 0U) {
-    this->deallocate(_storage, static_cast<size_t>(_capa));
+    this->deallocate(_storage, static_cast<std::size_t>(_capa));
     _storage = nullptr;
   } else {
     _storage = vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, _size, _size);
@@ -105,7 +111,7 @@ void StdVectorBase<T, Alloc, SizeType>::shrink() {
 
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
-  this->deallocate(_storage, static_cast<size_t>(_capa));
+  this->deallocate(_storage, static_cast<std::size_t>(_capa));
 }
 
 template <class T, class Alloc, class SizeType>
@@ -118,14 +124,14 @@ void SmallVectorBase<T, Alloc, SizeType>::resetToSmall(SizeType inplaceCapa) {
     _storage.setDyn(dynStorage);
     throw;
   }
-  this->deallocate(dynStorage, static_cast<size_t>(_capa));
+  this->deallocate(dynStorage, static_cast<std::size_t>(_capa));
   _capa = _size;
   _size = _size == inplaceCapa ? std::numeric_limits<SizeType>::max() : inplaceCapa;
 }
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
-  this->deallocate(_storage.dyn(), static_cast<size_t>(_capa));
+  this->deallocate(_storage.dyn(), static_cast<std::size_t>(_capa));
 }
 }  // namespace vec
 
@@ -159,6 +165,6 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
  *     - insert from count elements (if T is not trivially relocatable)
  *   If Object movement can throw, only 'push_back' and 'emplace_back' modifiers provide strong exception warranty
  */
-template <class T, uintmax_t N, class Alloc = amc::allocator<T>, class SizeType = uint32_t>
+template <class T, std::uintmax_t N, class Alloc = amc::allocator<T>, class SizeType = std::uint32_t>
 using SmallVector = Vector<T, Alloc, SizeType, vec::DynamicGrowingPolicy, vec::SanitizeInlineSize<N, SizeType>::value>;
 }  // namespace amc

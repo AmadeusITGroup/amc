@@ -6,6 +6,7 @@
 #include <memory>
 #include <new>
 #include <type_traits>
+#include <utility>
 
 #include "config.hpp"
 #include "memory.hpp"
@@ -26,9 +27,11 @@ namespace amc {
 template <typename Alloc>
 class BasicSingletonAllocatorAdaptor {
  public:
-  void *allocate(size_t n) { return Alloc::instance().allocate(n); }
-  void *reallocate(void *p, size_t oldSz, size_t newSz) { return Alloc::instance().reallocate(p, oldSz, newSz); }
-  void deallocate(void *p, size_t n) { Alloc::instance().deallocate(p, n); }
+  void *allocate(std::size_t n) { return Alloc::instance().allocate(n); }
+  void *reallocate(void *p, std::size_t oldSz, std::size_t newSz) {
+    return Alloc::instance().reallocate(p, oldSz, newSz);
+  }
+  void deallocate(void *p, std::size_t n) { Alloc::instance().deallocate(p, n); }
 };
 
 /**
@@ -52,8 +55,8 @@ template <class T, class BasicAllocator>
 class BasicAllocatorWrapper : private BasicAllocator {
  public:
   using value_type = T;
-  using size_type = size_t;
-  using difference_type = ptrdiff_t;
+  using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
   using pointer = T *;
   using const_pointer = const T *;
   using reference = T &;
@@ -136,8 +139,8 @@ class BasicAllocatorWrapper : private BasicAllocator {
   /// Over-aligned allocations have extra bytes to align the elements, with room before them to store their offset to
   /// the start of the allocated block.
   template <class V = T>
-  static constexpr size_t OverAlignedExtraBytes() {
-    return sizeof(size_t) + alignof(V) - 1U;
+  static constexpr std::size_t OverAlignedExtraBytes() {
+    return sizeof(std::size_t) + alignof(V) - 1U;
   }
 
   template <class U>
@@ -161,13 +164,13 @@ class BasicAllocatorWrapper : private BasicAllocator {
   }
 
   pointer Allocate(size_type n, std::true_type) {
-    const size_t nbBytes = n * sizeof(T);
+    const std::size_t nbBytes = n * sizeof(T);
     char *block = static_cast<char *>(BasicAllocator::allocate(nbBytes + OverAlignedExtraBytes()));
-    void *elems = block + sizeof(size_t);
-    size_t space = nbBytes + alignof(T) - 1U;
+    void *elems = block + sizeof(std::size_t);
+    std::size_t space = nbBytes + alignof(T) - 1U;
     std::align(alignof(T), nbBytes, elems, space);  // cannot fail thanks to the extra bytes
-    const size_t offset = static_cast<size_t>(static_cast<char *>(elems) - block);
-    std::memcpy(static_cast<char *>(elems) - sizeof(size_t), &offset, sizeof(size_t));
+    const std::size_t offset = static_cast<std::size_t>(static_cast<char *>(elems) - block);
+    std::memcpy(static_cast<char *>(elems) - sizeof(std::size_t), &offset, sizeof(std::size_t));
     return static_cast<pointer>(elems);
   }
 
@@ -176,8 +179,8 @@ class BasicAllocatorWrapper : private BasicAllocator {
   void Deallocate(pointer p, size_type n, std::true_type) {
     if (p != nullptr) {
       char *elems = reinterpret_cast<char *>(p);
-      size_t offset;
-      std::memcpy(&offset, elems - sizeof(size_t), sizeof(size_t));
+      std::size_t offset;
+      std::memcpy(&offset, elems - sizeof(std::size_t), sizeof(std::size_t));
       BasicAllocator::deallocate(elems - offset, n * sizeof(T) + OverAlignedExtraBytes());
     }
   }
@@ -205,8 +208,8 @@ class BasicAllocatorWrapper : private BasicAllocator {
 template <class BasicAllocator>
 struct BasicAllocatorWrapper<void, BasicAllocator> {
   using value_type = void;
-  using size_type = size_t;
-  using difference_type = ptrdiff_t;
+  using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
   using pointer = void *;
   using const_pointer = const void *;
 
@@ -224,23 +227,23 @@ struct BasicAllocatorWrapper<void, BasicAllocator> {
  * void deallocate(void *p, size_t n)
  */
 struct SimpleAllocator {
-  void *allocate(size_t n) {
-    void *ptr = malloc(n);
+  void *allocate(std::size_t n) {
+    void *ptr = std::malloc(n);
     if (AMC_UNLIKELY(!ptr)) {
       throw std::bad_alloc();
     }
     return ptr;
   }
 
-  void *reallocate(void *p, size_t, size_t newSz) {
-    p = realloc(p, newSz);
+  void *reallocate(void *p, std::size_t, std::size_t newSz) {
+    p = std::realloc(p, newSz);
     if (AMC_UNLIKELY(!p)) {
       throw std::bad_alloc();
     }
     return p;
   }
 
-  void deallocate(void *p, size_t) { free(p); }
+  void deallocate(void *p, std::size_t) { std::free(p); }
 };
 
 /**

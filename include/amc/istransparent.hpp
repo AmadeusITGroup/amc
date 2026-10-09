@@ -1,7 +1,5 @@
 #pragma once
 
-#include <utility>
-
 #include "isdetected.hpp"
 
 namespace amc {
