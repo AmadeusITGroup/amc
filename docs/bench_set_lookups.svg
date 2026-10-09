@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="682" viewBox="0 0 880 682" role="img" aria-labelledby="title desc">
+<title id="title">uint32_t set lookups by number of elements</title>
+<desc id="desc">Lookup time of std::set, std::unordered_set and amc::FlatSet of uint32_t from 100 to 10 million elements.</desc>
+<style>
+:root { --bg: #f6f8fa; --ink: #1f2328; --ink2: #59636e; --grid: #e1e4e8; --axis: #c8d1da;
+        --s-ref: #eb6834; --s-uno: #1baf7a; --s-amc: #2a78d6; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161b22; --ink: #f0f6fc; --ink2: #9198a1; --grid: #262c36; --axis: #3d444d;
+          --s-ref: #d95926; --s-uno: #199e70; --s-amc: #3987e5; }
+}
+text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: var(--ink); }
+.bg { fill: var(--bg); }
+.title { font-size: 18px; font-weight: 600; }
+.subtitle { font-size: 13px; fill: var(--ink2); }
+.panel { font-size: 13px; font-weight: 600; }
+.label { font-size: 13px; }
+.tick { font-size: 11px; fill: var(--ink2); font-variant-numeric: tabular-nums; }
+.ratio { font-size: 13px; font-variant-numeric: tabular-nums; }
+.ratio tspan.word { fill: var(--ink2); }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--axis); stroke-width: 1; }
+.link { stroke: var(--axis); stroke-width: 2; stroke-linecap: round; }
+.dot { stroke: var(--bg); stroke-width: 1.5; }
+.ring { fill: var(--bg); stroke-width: 2.5; }
+.ring.ref { stroke: var(--s-ref); } .ring.uno { stroke: var(--s-uno); }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dot.amc { fill: var(--s-amc); } .dot.amcv { fill: var(--s-uno); }
+.line.ref { stroke: var(--s-ref); fill: none; } .line.uno { stroke: var(--s-uno); fill: none; }
+.line.amc { stroke: var(--s-amc); fill: none; }
+</style>
+<rect class="bg" width="880" height="682" rx="12"/>
+<text x="28.0" y="44.0" class="title" text-anchor="start">uint32_t set lookups by number of elements</text>
+<text x="28.0" y="66.0" class="subtitle" text-anchor="start">Time per lookup, log-log scale - lower is better · AMD Ryzen AI 9 HX PRO 370 (L2 1 MiB, L3 16 MiB)</text>
+<line x1="28.0" y1="92.0" x2="50.0" y2="92.0" class="line ref"/>
+<circle cx="39.0" cy="92.0" r="5.5" class="ring ref"/>
+<text x="58.0" y="96.0" class="label" text-anchor="start">std::set</text>
+<line x1="147.6" y1="92.0" x2="169.6" y2="92.0" class="line uno"/>
+<circle cx="158.6" cy="92.0" r="5.5" class="ring uno"/>
+<text x="177.6" y="96.0" class="label" text-anchor="start">std::unordered_set</text>
+<line x1="349.2" y1="92.0" x2="371.2" y2="92.0" class="line amc"/>
+<circle cx="360.2" cy="92.0" r="4.5" class="dot amc"/>
+<text x="379.2" y="96.0" class="label" text-anchor="start">amc::FlatSet</text>
+<text x="28.0" y="134.0" class="panel" text-anchor="start">GCC 13 · independent lookups</text>
+<line x1="74.0" y1="308.7" x2="422.0" y2="308.7" class="grid"/>
+<text x="68.0" y="312.7" class="tick" text-anchor="end">10 ns</text>
+<line x1="74.0" y1="238.0" x2="422.0" y2="238.0" class="grid"/>
+<text x="68.0" y="242.0" class="tick" text-anchor="end">100 ns</text>
+<line x1="74.0" y1="167.3" x2="422.0" y2="167.3" class="grid"/>
+<text x="68.0" y="171.3" class="tick" text-anchor="end">1 µs</text>
+<text x="84.0" y="354.0" class="tick" text-anchor="middle">100</text>
+<text x="149.6" y="354.0" class="tick" text-anchor="middle">1k</text>
+<text x="215.2" y="354.0" class="tick" text-anchor="middle">10k</text>
+<text x="280.8" y="354.0" class="tick" text-anchor="middle">100k</text>
+<text x="346.4" y="354.0" class="tick" text-anchor="middle">1M</text>
+<text x="412.0" y="354.0" class="tick" text-anchor="middle">10M</text>
+<line x1="74.0" y1="336.0" x2="422.0" y2="336.0" class="axis"/>
+<path d="M84.0,283.3 L149.6,270.8 L215.2,254.3 L280.8,234.6 L346.4,186.4 L412.0,161.6" class="line ref"/>
+<circle cx="84.0" cy="283.3" r="5.5" class="ring ref"/>
+<circle cx="149.6" cy="270.8" r="5.5" class="ring ref"/>
+<circle cx="215.2" cy="254.3" r="5.5" class="ring ref"/>
+<circle cx="280.8" cy="234.6" r="5.5" class="ring ref"/>
+<circle cx="346.4" cy="186.4" r="5.5" class="ring ref"/>
+<circle cx="412.0" cy="161.6" r="5.5" class="ring ref"/>
+<path d="M84.0,319.5 L149.6,316.6 L215.2,311.0 L280.8,311.2 L346.4,255.6 L412.0,246.6" class="line uno"/>
+<circle cx="84.0" cy="319.5" r="5.5" class="ring uno"/>
+<circle cx="149.6" cy="316.6" r="5.5" class="ring uno"/>
+<circle cx="215.2" cy="311.0" r="5.5" class="ring uno"/>
+<circle cx="280.8" cy="311.2" r="5.5" class="ring uno"/>
+<circle cx="346.4" cy="255.6" r="5.5" class="ring uno"/>
+<circle cx="412.0" cy="246.6" r="5.5" class="ring uno"/>
+<path d="M84.0,281.8 L149.6,268.6 L215.2,260.0 L280.8,251.7 L346.4,239.6 L412.0,215.7" class="line amc"/>
+<circle cx="84.0" cy="281.8" r="4.5" class="dot amc"/>
+<circle cx="149.6" cy="268.6" r="4.5" class="dot amc"/>
+<circle cx="215.2" cy="260.0" r="4.5" class="dot amc"/>
+<circle cx="280.8" cy="251.7" r="4.5" class="dot amc"/>
+<circle cx="346.4" cy="239.6" r="4.5" class="dot amc"/>
+<circle cx="412.0" cy="215.7" r="4.5" class="dot amc"/>
+<text x="458.0" y="134.0" class="panel" text-anchor="start">Clang 23 · independent lookups</text>
+<line x1="504.0" y1="308.7" x2="852.0" y2="308.7" class="grid"/>
+<text x="498.0" y="312.7" class="tick" text-anchor="end">10 ns</text>
+<line x1="504.0" y1="238.0" x2="852.0" y2="238.0" class="grid"/>
+<text x="498.0" y="242.0" class="tick" text-anchor="end">100 ns</text>
+<line x1="504.0" y1="167.3" x2="852.0" y2="167.3" class="grid"/>
+<text x="498.0" y="171.3" class="tick" text-anchor="end">1 µs</text>
+<text x="514.0" y="354.0" class="tick" text-anchor="middle">100</text>
+<text x="579.6" y="354.0" class="tick" text-anchor="middle">1k</text>
+<text x="645.2" y="354.0" class="tick" text-anchor="middle">10k</text>
+<text x="710.8" y="354.0" class="tick" text-anchor="middle">100k</text>
+<text x="776.4" y="354.0" class="tick" text-anchor="middle">1M</text>
+<text x="842.0" y="354.0" class="tick" text-anchor="middle">10M</text>
+<line x1="504.0" y1="336.0" x2="852.0" y2="336.0" class="axis"/>
+<path d="M514.0,298.9 L579.6,284.6 L645.2,271.8 L710.8,254.6 L776.4,210.2 L842.0,182.7" class="line ref"/>
+<circle cx="514.0" cy="298.9" r="5.5" class="ring ref"/>
+<circle cx="579.6" cy="284.6" r="5.5" class="ring ref"/>
+<circle cx="645.2" cy="271.8" r="5.5" class="ring ref"/>
+<circle cx="710.8" cy="254.6" r="5.5" class="ring ref"/>
+<circle cx="776.4" cy="210.2" r="5.5" class="ring ref"/>
+<circle cx="842.0" cy="182.7" r="5.5" class="ring ref"/>
+<path d="M514.0,318.1 L579.6,315.7 L645.2,310.1 L710.8,310.3 L776.4,255.1 L842.0,246.2" class="line uno"/>
+<circle cx="514.0" cy="318.1" r="5.5" class="ring uno"/>
+<circle cx="579.6" cy="315.7" r="5.5" class="ring uno"/>
+<circle cx="645.2" cy="310.1" r="5.5" class="ring uno"/>
+<circle cx="710.8" cy="310.3" r="5.5" class="ring uno"/>
+<circle cx="776.4" cy="255.1" r="5.5" class="ring uno"/>
+<circle cx="842.0" cy="246.2" r="5.5" class="ring uno"/>
+<path d="M514.0,306.5 L579.6,303.9 L645.2,285.9 L710.8,275.3 L776.4,261.7 L842.0,208.7" class="line amc"/>
+<circle cx="514.0" cy="306.5" r="4.5" class="dot amc"/>
+<circle cx="579.6" cy="303.9" r="4.5" class="dot amc"/>
+<circle cx="645.2" cy="285.9" r="4.5" class="dot amc"/>
+<circle cx="710.8" cy="275.3" r="4.5" class="dot amc"/>
+<circle cx="776.4" cy="261.7" r="4.5" class="dot amc"/>
+<circle cx="842.0" cy="208.7" r="4.5" class="dot amc"/>
+<text x="28.0" y="404.0" class="panel" text-anchor="start">GCC 13 · chained lookups</text>
+<line x1="74.0" y1="578.7" x2="422.0" y2="578.7" class="grid"/>
+<text x="68.0" y="582.7" class="tick" text-anchor="end">10 ns</text>
+<line x1="74.0" y1="508.0" x2="422.0" y2="508.0" class="grid"/>
+<text x="68.0" y="512.0" class="tick" text-anchor="end">100 ns</text>
+<line x1="74.0" y1="437.3" x2="422.0" y2="437.3" class="grid"/>
+<text x="68.0" y="441.3" class="tick" text-anchor="end">1 µs</text>
+<text x="84.0" y="624.0" class="tick" text-anchor="middle">100</text>
+<text x="149.6" y="624.0" class="tick" text-anchor="middle">1k</text>
+<text x="215.2" y="624.0" class="tick" text-anchor="middle">10k</text>
+<text x="280.8" y="624.0" class="tick" text-anchor="middle">100k</text>
+<text x="346.4" y="624.0" class="tick" text-anchor="middle">1M</text>
+<text x="412.0" y="624.0" class="tick" text-anchor="middle">10M</text>
+<line x1="74.0" y1="606.0" x2="422.0" y2="606.0" class="axis"/>
+<path d="M84.0,551.5 L149.6,540.1 L215.2,523.8 L280.8,504.0 L346.4,454.7 L412.0,430.7" class="line ref"/>
+<circle cx="84.0" cy="551.5" r="5.5" class="ring ref"/>
+<circle cx="149.6" cy="540.1" r="5.5" class="ring ref"/>
+<circle cx="215.2" cy="523.8" r="5.5" class="ring ref"/>
+<circle cx="280.8" cy="504.0" r="5.5" class="ring ref"/>
+<circle cx="346.4" cy="454.7" r="5.5" class="ring ref"/>
+<circle cx="412.0" cy="430.7" r="5.5" class="ring ref"/>
+<path d="M84.0,568.3 L149.6,567.1 L215.2,556.4 L280.8,536.9 L346.4,472.4 L412.0,460.8" class="line uno"/>
+<circle cx="84.0" cy="568.3" r="5.5" class="ring uno"/>
+<circle cx="149.6" cy="567.1" r="5.5" class="ring uno"/>
+<circle cx="215.2" cy="556.4" r="5.5" class="ring uno"/>
+<circle cx="280.8" cy="536.9" r="5.5" class="ring uno"/>
+<circle cx="346.4" cy="472.4" r="5.5" class="ring uno"/>
+<circle cx="412.0" cy="460.8" r="5.5" class="ring uno"/>
+<path d="M84.0,549.0 L149.6,536.5 L215.2,529.0 L280.8,520.8 L346.4,509.3 L412.0,475.5" class="line amc"/>
+<circle cx="84.0" cy="549.0" r="4.5" class="dot amc"/>
+<circle cx="149.6" cy="536.5" r="4.5" class="dot amc"/>
+<circle cx="215.2" cy="529.0" r="4.5" class="dot amc"/>
+<circle cx="280.8" cy="520.8" r="4.5" class="dot amc"/>
+<circle cx="346.4" cy="509.3" r="4.5" class="dot amc"/>
+<circle cx="412.0" cy="475.5" r="4.5" class="dot amc"/>
+<text x="458.0" y="404.0" class="panel" text-anchor="start">Clang 23 · chained lookups</text>
+<line x1="504.0" y1="578.7" x2="852.0" y2="578.7" class="grid"/>
+<text x="498.0" y="582.7" class="tick" text-anchor="end">10 ns</text>
+<line x1="504.0" y1="508.0" x2="852.0" y2="508.0" class="grid"/>
+<text x="498.0" y="512.0" class="tick" text-anchor="end">100 ns</text>
+<line x1="504.0" y1="437.3" x2="852.0" y2="437.3" class="grid"/>
+<text x="498.0" y="441.3" class="tick" text-anchor="end">1 µs</text>
+<text x="514.0" y="624.0" class="tick" text-anchor="middle">100</text>
+<text x="579.6" y="624.0" class="tick" text-anchor="middle">1k</text>
+<text x="645.2" y="624.0" class="tick" text-anchor="middle">10k</text>
+<text x="710.8" y="624.0" class="tick" text-anchor="middle">100k</text>
+<text x="776.4" y="624.0" class="tick" text-anchor="middle">1M</text>
+<text x="842.0" y="624.0" class="tick" text-anchor="middle">10M</text>
+<line x1="504.0" y1="606.0" x2="852.0" y2="606.0" class="axis"/>
+<path d="M514.0,553.7 L579.6,543.7 L645.2,527.5 L710.8,505.7 L776.4,450.2 L842.0,430.2" class="line ref"/>
+<circle cx="514.0" cy="553.7" r="5.5" class="ring ref"/>
+<circle cx="579.6" cy="543.7" r="5.5" class="ring ref"/>
+<circle cx="645.2" cy="527.5" r="5.5" class="ring ref"/>
+<circle cx="710.8" cy="505.7" r="5.5" class="ring ref"/>
+<circle cx="776.4" cy="450.2" r="5.5" class="ring ref"/>
+<circle cx="842.0" cy="430.2" r="5.5" class="ring ref"/>
+<path d="M514.0,567.5 L579.6,566.9 L645.2,555.8 L710.8,536.6 L776.4,472.2 L842.0,460.7" class="line uno"/>
+<circle cx="514.0" cy="567.5" r="5.5" class="ring uno"/>
+<circle cx="579.6" cy="566.9" r="5.5" class="ring uno"/>
+<circle cx="645.2" cy="555.8" r="5.5" class="ring uno"/>
+<circle cx="710.8" cy="536.6" r="5.5" class="ring uno"/>
+<circle cx="776.4" cy="472.2" r="5.5" class="ring uno"/>
+<circle cx="842.0" cy="460.7" r="5.5" class="ring uno"/>
+<path d="M514.0,560.3 L579.6,554.7 L645.2,546.0 L710.8,534.2 L776.4,511.5 L842.0,455.8" class="line amc"/>
+<circle cx="514.0" cy="560.3" r="4.5" class="dot amc"/>
+<circle cx="579.6" cy="554.7" r="4.5" class="dot amc"/>
+<circle cx="645.2" cy="546.0" r="4.5" class="dot amc"/>
+<circle cx="710.8" cy="534.2" r="4.5" class="dot amc"/>
+<circle cx="776.4" cy="511.5" r="4.5" class="dot amc"/>
+<circle cx="842.0" cy="455.8" r="4.5" class="dot amc"/>
+<text x="28.0" y="660.0" class="subtitle" text-anchor="start">Number of elements in the set, log scale</text>
+</svg>

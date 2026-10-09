@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="670" viewBox="0 0 880 670" role="img" aria-labelledby="title desc">
+<title id="title">amc::FlatSet vs std::set and std::unordered_set</title>
+<desc id="desc">Benchmark times of std::set, std::unordered_set and amc::FlatSet for several operations.</desc>
+<style>
+:root { --bg: #f6f8fa; --ink: #1f2328; --ink2: #59636e; --grid: #e1e4e8; --axis: #c8d1da;
+        --s-ref: #eb6834; --s-uno: #1baf7a; --s-amc: #2a78d6; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161b22; --ink: #f0f6fc; --ink2: #9198a1; --grid: #262c36; --axis: #3d444d;
+          --s-ref: #d95926; --s-uno: #199e70; --s-amc: #3987e5; }
+}
+text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: var(--ink); }
+.bg { fill: var(--bg); }
+.title { font-size: 18px; font-weight: 600; }
+.subtitle { font-size: 13px; fill: var(--ink2); }
+.panel { font-size: 13px; font-weight: 600; }
+.label { font-size: 13px; }
+.tick { font-size: 11px; fill: var(--ink2); font-variant-numeric: tabular-nums; }
+.ratio { font-size: 13px; font-variant-numeric: tabular-nums; }
+.ratio tspan.word { fill: var(--ink2); }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--axis); stroke-width: 1; }
+.link { stroke: var(--axis); stroke-width: 2; stroke-linecap: round; }
+.dot { stroke: var(--bg); stroke-width: 1.5; }
+.ring { fill: var(--bg); stroke-width: 2.5; }
+.ring.ref { stroke: var(--s-ref); } .ring.uno { stroke: var(--s-uno); }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dot.amc { fill: var(--s-amc); } .dot.amcv { fill: var(--s-uno); }
+.line.ref { stroke: var(--s-ref); fill: none; } .line.uno { stroke: var(--s-uno); fill: none; }
+.line.amc { stroke: var(--s-amc); fill: none; }
+</style>
+<rect class="bg" width="880" height="670" rx="12"/>
+<text x="28.0" y="44.0" class="title" text-anchor="start">amc::FlatSet vs std::set and std::unordered_set</text>
+<text x="28.0" y="66.0" class="subtitle" text-anchor="start">Time per benchmark iteration, log scale - lower is better · GCC 13 · AMD Ryzen AI 9 HX PRO 370 (L2 1 MiB, L3 16 MiB)</text>
+<circle cx="34.0" cy="92.0" r="5.5" class="ring ref"/>
+<text x="46.0" y="96.0" class="label" text-anchor="start">std::set</text>
+<circle cx="141.6" cy="92.0" r="5.5" class="ring uno"/>
+<text x="153.6" y="96.0" class="label" text-anchor="start">std::unordered_set</text>
+<circle cx="331.2" cy="92.0" r="4.5" class="dot amc"/>
+<text x="343.2" y="96.0" class="label" text-anchor="start">amc::FlatSet</text>
+<text x="852.0" y="96.0" class="subtitle" text-anchor="end">amc vs std::set</text>
+<text x="28.0" y="136.0" class="panel" text-anchor="start">Complex trivially relocatable type</text>
+<line x1="266.0" y1="148.0" x2="266.0" y2="238.0" class="grid"/>
+<text x="266.0" y="255.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="342.3" y1="148.0" x2="342.3" y2="238.0" class="grid"/>
+<text x="342.3" y="255.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="418.7" y1="148.0" x2="418.7" y2="238.0" class="grid"/>
+<text x="418.7" y="255.0" class="tick" text-anchor="middle">10 µs</text>
+<line x1="495.0" y1="148.0" x2="495.0" y2="238.0" class="grid"/>
+<text x="495.0" y="255.0" class="tick" text-anchor="middle">100 µs</text>
+<line x1="571.3" y1="148.0" x2="571.3" y2="238.0" class="grid"/>
+<text x="571.3" y="255.0" class="tick" text-anchor="middle">1 ms</text>
+<line x1="647.7" y1="148.0" x2="647.7" y2="238.0" class="grid"/>
+<text x="647.7" y="255.0" class="tick" text-anchor="middle">10 ms</text>
+<line x1="724.0" y1="148.0" x2="724.0" y2="238.0" class="grid"/>
+<text x="724.0" y="255.0" class="tick" text-anchor="middle">100 ms</text>
+<line x1="258.0" y1="238.0" x2="732.0" y2="238.0" class="axis"/>
+<text x="28.0" y="167.5" class="label" text-anchor="start">Insert 200 random values</text>
+<line x1="380.9" y1="163.0" x2="391.7" y2="163.0" class="link"/>
+<circle cx="391.7" cy="163.0" r="5.5" class="ring ref"/>
+<circle cx="380.9" cy="163.0" r="4.5" class="dot amc"/>
+<text x="852" y="167.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.4×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="197.5" class="label" text-anchor="start">Copy, erase all of 1 000</text>
+<line x1="470.5" y1="193.0" x2="497.9" y2="193.0" class="link"/>
+<circle cx="497.9" cy="193.0" r="5.5" class="ring ref"/>
+<circle cx="470.5" cy="193.0" r="4.5" class="dot amc"/>
+<text x="852" y="197.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.3×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="227.5" class="label" text-anchor="start">Lookup in 1 000 000</text>
+<line x1="290.6" y1="223.0" x2="346.3" y2="223.0" class="link"/>
+<circle cx="346.3" cy="223.0" r="5.5" class="ring ref"/>
+<circle cx="290.6" cy="223.0" r="4.5" class="dot amc"/>
+<text x="852" y="227.5" class="ratio" text-anchor="end"><tspan font-weight="600">5.4×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="300.0" class="panel" text-anchor="start">uint32_t</text>
+<line x1="266.0" y1="312.0" x2="266.0" y2="462.0" class="grid"/>
+<text x="266.0" y="479.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="342.3" y1="312.0" x2="342.3" y2="462.0" class="grid"/>
+<text x="342.3" y="479.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="418.7" y1="312.0" x2="418.7" y2="462.0" class="grid"/>
+<text x="418.7" y="479.0" class="tick" text-anchor="middle">10 µs</text>
+<line x1="495.0" y1="312.0" x2="495.0" y2="462.0" class="grid"/>
+<text x="495.0" y="479.0" class="tick" text-anchor="middle">100 µs</text>
+<line x1="571.3" y1="312.0" x2="571.3" y2="462.0" class="grid"/>
+<text x="571.3" y="479.0" class="tick" text-anchor="middle">1 ms</text>
+<line x1="647.7" y1="312.0" x2="647.7" y2="462.0" class="grid"/>
+<text x="647.7" y="479.0" class="tick" text-anchor="middle">10 ms</text>
+<line x1="724.0" y1="312.0" x2="724.0" y2="462.0" class="grid"/>
+<text x="724.0" y="479.0" class="tick" text-anchor="middle">100 ms</text>
+<line x1="258.0" y1="462.0" x2="732.0" y2="462.0" class="axis"/>
+<text x="28.0" y="331.5" class="label" text-anchor="start">Insert 200 random values</text>
+<line x1="349.9" y1="327.0" x2="385.9" y2="327.0" class="link"/>
+<circle cx="375.9" cy="327.0" r="5.5" class="ring ref"/>
+<circle cx="385.9" cy="327.0" r="5.5" class="ring uno"/>
+<circle cx="349.9" cy="327.0" r="4.5" class="dot amc"/>
+<text x="852" y="331.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.2×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="361.5" class="label" text-anchor="start">Copy, erase all of 100</text>
+<line x1="314.3" y1="357.0" x2="351.8" y2="357.0" class="link"/>
+<circle cx="351.8" cy="357.0" r="5.5" class="ring ref"/>
+<circle cx="348.5" cy="357.0" r="5.5" class="ring uno"/>
+<circle cx="314.3" cy="357.0" r="4.5" class="dot amc"/>
+<text x="852" y="361.5" class="ratio" text-anchor="end"><tspan font-weight="600">3.1×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="391.5" class="label" text-anchor="start">Copy, erase all of 1 000</text>
+<line x1="417.9" y1="387.0" x2="448.3" y2="387.0" class="link"/>
+<circle cx="435.4" cy="387.0" r="5.5" class="ring ref"/>
+<circle cx="448.3" cy="387.0" r="5.5" class="ring uno"/>
+<circle cx="417.9" cy="387.0" r="4.5" class="dot amc"/>
+<text x="852" y="391.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.7×</tspan> <tspan class="word">faster</tspan></text>
+<text x="28.0" y="421.5" class="label" text-anchor="start">Copy, erase all of 10 000</text>
+<line x1="530.4" y1="417.0" x2="568.6" y2="417.0" class="link"/>
+<circle cx="563.8" cy="417.0" r="5.5" class="ring ref"/>
+<circle cx="530.4" cy="417.0" r="5.5" class="ring uno"/>
+<circle cx="568.6" cy="417.0" r="4.5" class="dot amc"/>
+<text x="852" y="421.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="451.5" class="label" text-anchor="start">Copy, erase all of 100 000</text>
+<line x1="621.9" y1="447.0" x2="712.1" y2="447.0" class="link"/>
+<circle cx="661.1" cy="447.0" r="5.5" class="ring ref"/>
+<circle cx="621.9" cy="447.0" r="5.5" class="ring uno"/>
+<circle cx="712.1" cy="447.0" r="4.5" class="dot amc"/>
+<text x="852" y="451.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.7×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="524.0" class="panel" text-anchor="start">Complex non trivially relocatable type</text>
+<line x1="266.0" y1="536.0" x2="266.0" y2="626.0" class="grid"/>
+<text x="266.0" y="643.0" class="tick" text-anchor="middle">100 ns</text>
+<line x1="342.3" y1="536.0" x2="342.3" y2="626.0" class="grid"/>
+<text x="342.3" y="643.0" class="tick" text-anchor="middle">1 µs</text>
+<line x1="418.7" y1="536.0" x2="418.7" y2="626.0" class="grid"/>
+<text x="418.7" y="643.0" class="tick" text-anchor="middle">10 µs</text>
+<line x1="495.0" y1="536.0" x2="495.0" y2="626.0" class="grid"/>
+<text x="495.0" y="643.0" class="tick" text-anchor="middle">100 µs</text>
+<line x1="571.3" y1="536.0" x2="571.3" y2="626.0" class="grid"/>
+<text x="571.3" y="643.0" class="tick" text-anchor="middle">1 ms</text>
+<line x1="647.7" y1="536.0" x2="647.7" y2="626.0" class="grid"/>
+<text x="647.7" y="643.0" class="tick" text-anchor="middle">10 ms</text>
+<line x1="724.0" y1="536.0" x2="724.0" y2="626.0" class="grid"/>
+<text x="724.0" y="643.0" class="tick" text-anchor="middle">100 ms</text>
+<line x1="258.0" y1="626.0" x2="732.0" y2="626.0" class="axis"/>
+<text x="28.0" y="555.5" class="label" text-anchor="start">Insert 200 random values</text>
+<line x1="391.8" y1="551.0" x2="439.7" y2="551.0" class="link"/>
+<circle cx="391.8" cy="551.0" r="5.5" class="ring ref"/>
+<circle cx="439.7" cy="551.0" r="4.5" class="dot amc"/>
+<text x="852" y="555.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.2×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="585.5" class="label" text-anchor="start">Copy, erase all of 1 000</text>
+<line x1="497.5" y1="581.0" x2="537.5" y2="581.0" class="link"/>
+<circle cx="497.5" cy="581.0" r="5.5" class="ring ref"/>
+<circle cx="537.5" cy="581.0" r="4.5" class="dot amc"/>
+<text x="852" y="585.5" class="ratio" text-anchor="end"><tspan font-weight="600">3.3×</tspan> <tspan class="word">slower</tspan></text>
+<text x="28.0" y="615.5" class="label" text-anchor="start">Lookup in 100 000</text>
+<line x1="268.0" y1="611.0" x2="298.6" y2="611.0" class="link"/>
+<circle cx="298.6" cy="611.0" r="5.5" class="ring ref"/>
+<circle cx="268.0" cy="611.0" r="4.5" class="dot amc"/>
+<text x="852" y="615.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.5×</tspan> <tspan class="word">faster</tspan></text>
+</svg>
