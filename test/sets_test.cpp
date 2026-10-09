@@ -500,6 +500,53 @@ TYPED_TEST(SetListExtractTest, InsertNodeAlreadyPresent) {
 #endif
 
 template <typename T>
+class SetStatefulCompareTest : public ::testing::Test {};
+
+// clang-format off
+typedef ::testing::Types<FlatSet<int32_t, ModuloCompare>,
+                         FlatSet<int32_t, ModuloCompare, amc::allocator<int32_t>, SmallVector<int32_t, 4>>
+#ifdef AMC_SMALLSET
+                        ,SmallSet<int32_t, 2, ModuloCompare>,
+                         SmallSet<int32_t, 2, ModuloCompare, amc::allocator<int32_t>, FlatSet<int32_t, ModuloCompare>>
+#endif
+                        >
+    SetsStatefulCompareTypes;
+// clang-format on
+
+TYPED_TEST_SUITE(SetStatefulCompareTest, SetsStatefulCompareTypes, );
+
+// Sets must use their comparator object, which may hold a state, and never a default constructed one.
+TYPED_TEST(SetStatefulCompareTest, UseComparatorObject) {
+  using SetType = TypeParam;
+  const ModuloCompare comp(10);
+  // 11, 21 and 12 are equivalent to 1, 1 and 2. 3 makes small SmallSets grow before they are inserted.
+  const int32_t values[] = {1, 2, 3, 11, 21, 12};
+
+  SetType rangeConstructed(std::begin(values), std::end(values), comp);
+  SetType rangeInserted(comp);
+  rangeInserted.insert(std::begin(values), std::end(values));
+  SetType oneByOne(comp);
+  for (int32_t v : values) {
+    oneByOne.insert(v);
+  }
+  for (const SetType* s : {&rangeConstructed, &rangeInserted, &oneByOne}) {
+    EXPECT_EQ(s->size(), 3U);
+    EXPECT_TRUE(s->contains(31));
+    EXPECT_FALSE(s->contains(4));
+  }
+
+  // Sets are compared lexicographically, in their iteration order which is defined by the comparator object
+  SetType lhs(comp);  // iteration order: 11, 2
+  lhs.insert(11);
+  lhs.insert(2);
+  SetType rhs(comp);  // iteration order: 10, 3
+  rhs.insert(10);
+  rhs.insert(3);
+  EXPECT_TRUE(rhs < lhs);
+  EXPECT_FALSE(lhs < rhs);
+}
+
+template <typename T>
 class SetListMergeTest : public ::testing::Test {
  public:
   using List = typename std::list<T>;
