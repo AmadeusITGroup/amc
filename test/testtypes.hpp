@@ -172,8 +172,18 @@ struct ModuloCompare {
   int32_t _modulo = std::numeric_limits<int32_t>::max();
 };
 
+struct CopyException {};
+
 struct TypeStats {
   static TypeStats _stats;
+
+  /// Called by each copy (construction or assignment) of a ComplexType, before it modifies anything.
+  /// Throws CopyException when the number of copies set in '_nbCopiesBeforeThrow' have been done, never if negative.
+  void copy() {
+    if (_nbCopiesBeforeThrow >= 0 && _nbCopiesBeforeThrow-- == 0) {
+      throw CopyException();
+    }
+  }
 
   void start() { _count = true; }
   void end() { _count = false; }
@@ -235,6 +245,8 @@ struct TypeStats {
   size_t _nbReallocs{};
   size_t _nbFree{};
 
+  int _nbCopiesBeforeThrow{-1};
+
   bool _count{};
 };
 
@@ -262,7 +274,7 @@ struct ComplexType {
     }
   }
 
-  ComplexType(const ComplexType &o) : _ptr(malloc(o._i % kMaxMallocSize)), _c(o._c), _i(o._i) {
+  ComplexType(const ComplexType &o) : _ptr(MallocCopy(o)), _c(o._c), _i(o._i) {
     TypeStats::_stats.copyConstruct();
     if (_ptr) {
       TypeStats::_stats.malloc();
@@ -271,6 +283,7 @@ struct ComplexType {
 
   ComplexType &operator=(const ComplexType &o) {
     if (this != &o) {
+      TypeStats::_stats.copy();
       if (o._i > _i) {
         if (_ptr) {
           TypeStats::_stats.realloc();
@@ -335,6 +348,12 @@ struct ComplexType {
   void *_ptr;
   int8_t _c;
   uint32_t _i;
+
+ private:
+  static void *MallocCopy(const ComplexType &o) {
+    TypeStats::_stats.copy();
+    return malloc(o._i % kMaxMallocSize);
+  }
 };
 
 using ComplexNonTriviallyRelocatableType = ComplexType<false>;

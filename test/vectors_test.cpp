@@ -19,6 +19,7 @@
 #endif
 
 #include "testhelpers.hpp"
+#include "testmallocfailure.hpp"
 #include "testtypes.hpp"
 
 namespace amc {
@@ -31,22 +32,27 @@ class VectorTest : public ::testing::Test {
   using List = typename std::list<T>;
 };
 
+// Each type exercises a distinct combination of what the implementation dispatches on, as every type multiplies the
+// compilation time of the typed tests:
+//  - the vector flavor: FixedCapacityVector, SmallVector with inline elements, vector (no inline element)
+//  - the element type: trivially copyable (and trivially default constructible or not), trivially relocatable, non
+//    trivially relocatable, unaligned, over-aligned
+//  - for growable vectors, the allocator: with 'reallocate' (amc::allocator, default) or without (std::allocator)
+//  - small and signed size types
 typedef ::testing::Types<
-    FixedCapacityVector<char, 23>, FixedCapacityVector<uint32_t, 24>, FixedCapacityVector<TriviallyCopyableType, 18>,
+    FixedCapacityVector<char, 23>, FixedCapacityVector<TriviallyCopyableType, 18>,
     FixedCapacityVector<ComplexNonTriviallyRelocatableType, 17>,
-    FixedCapacityVector<ComplexTriviallyRelocatableType, 29>, FixedCapacityVector<NonTriviallyRelocatableType, 64>,
+    FixedCapacityVector<ComplexTriviallyRelocatableType, 29>,
+
     SmallVector<char, 5>, SmallVector<uint32_t, 4, std::allocator<uint32_t>, int32_t>,
     SmallVector<TriviallyCopyableType, 8>, SmallVector<ComplexNonTriviallyRelocatableType, 6>,
-    SmallVector<ComplexTriviallyRelocatableType, 8>, SmallVector<ComplexTriviallyRelocatableType, 10>,
+    SmallVector<ComplexTriviallyRelocatableType, 8>,
     SmallVector<NonTriviallyRelocatableType, 1, std::allocator<NonTriviallyRelocatableType>, int16_t>,
-    SmallVector<uint32_t, 0, std::allocator<uint32_t>, signed char>,
-    SmallVector<NonTriviallyRelocatableType, 3, std::allocator<NonTriviallyRelocatableType>>,
-    SmallVector<UnalignedToPtr<3>, 4>, SmallVector<UnalignedToPtr<7>, 3>, SmallVector<UnalignedToPtr<5>, 2>,
-    vector<int32_t, std::allocator<int32_t>, uint64_t>, vector<TriviallyCopyableType>,
-    vector<ComplexNonTriviallyRelocatableType>, vector<ComplexTriviallyRelocatableType>,
-    vector<ComplexNonTriviallyRelocatableType, std::allocator<ComplexNonTriviallyRelocatableType>>,
-    vector<ComplexTriviallyRelocatableType, std::allocator<ComplexTriviallyRelocatableType>>,
-    vector<NonTriviallyRelocatableType>, SmallVector<OverAlignedType, 3>, vector<OverAlignedType>>
+    SmallVector<UnalignedToPtr<3>, 4>, SmallVector<OverAlignedType, 3>,
+
+    vector<int32_t, std::allocator<int32_t>, uint64_t>, vector<uint32_t, std::allocator<uint32_t>, signed char>,
+    vector<TriviallyCopyableType>, vector<ComplexNonTriviallyRelocatableType>, vector<ComplexTriviallyRelocatableType>,
+    vector<ComplexTriviallyRelocatableType, std::allocator<ComplexTriviallyRelocatableType>>, vector<OverAlignedType>>
     MyTypes;
 TYPED_TEST_SUITE(VectorTest, MyTypes, );
 
@@ -245,6 +251,72 @@ TYPED_TEST(VectorTest, InputIterators) {
 #endif
 }
 
+// Number of elements putting all tested SmallVectors in their dynamic storage state, while fitting in the capacity of
+// all tested FixedCapacityVectors
+constexpr int kNbElemsLargeState = 12;
+
+template <class VectorType>
+VectorType CreateLargeVector() {
+  using Type = typename VectorType::value_type;
+  VectorType v;
+  for (int i = 1; i <= kNbElemsLargeState; ++i) {
+    v.push_back(Type(i));
+  }
+  return v;
+}
+
+TYPED_TEST(VectorTest, Shrink) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  VectorType v = CreateLargeVector<VectorType>();
+  v.resize(3, Type(42));
+  EXPECT_EQ(v, VectorType({1, 2, 3}));
+
+  // An empty vector releases its dynamic storage, if any
+  v.clear();
+  v.shrink_to_fit();
+  EXPECT_EQ(v.capacity(), VectorType().capacity());
+  v.push_back(Type(4));
+  EXPECT_EQ(v, VectorType{Type(4)});
+}
+
+TYPED_TEST(VectorTest, SelfAssignment) {
+  using VectorType = TypeParam;
+  VectorType v{1, 2, 3};
+  VectorType& self = v;  // assignment through a reference, avoiding self assignment warnings
+  v = self;
+  EXPECT_EQ(v, VectorType({1, 2, 3}));
+  v = std::move(self);
+  EXPECT_EQ(v, VectorType({1, 2, 3}));
+}
+
+TYPED_TEST(VectorTest, InsertEmptyRange) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  VectorType v{1, 2, 3};
+  const Type kElems[] = {4};
+  for (int pos = 0; pos <= 3; ++pos) {
+    typename VectorType::iterator it = v.insert(v.begin() + pos, std::begin(kElems), std::begin(kElems));
+    EXPECT_EQ(it, v.begin() + pos);
+    EXPECT_EQ(v, VectorType({1, 2, 3}));
+  }
+}
+
+// Swaps between all storage states of SmallVectors (inline and dynamic), in both directions
+TYPED_TEST(VectorTest, SwapSmallAndLarge) {
+  using VectorType = TypeParam;
+  const VectorType kSmall{1, 2};
+  const VectorType kLarge = CreateLargeVector<VectorType>();
+  VectorType v1 = kSmall;
+  VectorType v2 = kLarge;
+  v1.swap(v2);
+  EXPECT_EQ(v1, kLarge);
+  EXPECT_EQ(v2, kSmall);
+  v1.swap(v2);
+  EXPECT_EQ(v1, kSmall);
+  EXPECT_EQ(v2, kLarge);
+}
+
 TEST(VectorTest, Operators) {
   using VectorType = vector<int>;
 
@@ -338,19 +410,18 @@ class VectorRefTest : public ::testing::Test {
   using List = typename std::list<T>;
 };
 
+// Same selection principle as 'MyTypes', for larger vectors (no value construction here, hence no need to distinguish
+// trivially default constructible types)
 typedef ::testing::Types<
-    FixedCapacityVector<int32_t, 1000>, FixedCapacityVector<TriviallyCopyableType, 1000>,
-    FixedCapacityVector<ComplexNonTriviallyRelocatableType, 1000>,
-    FixedCapacityVector<ComplexTriviallyRelocatableType, 1000>, FixedCapacityVector<NonTriviallyRelocatableType, 1000>,
+    FixedCapacityVector<int32_t, 1000>, FixedCapacityVector<ComplexNonTriviallyRelocatableType, 1000>,
+    FixedCapacityVector<ComplexTriviallyRelocatableType, 1000>,
 
-    SmallVector<int32_t, 80>, SmallVector<TriviallyCopyableType, 90>,
-    SmallVector<int32_t, 100, std::allocator<int32_t>>,
-    SmallVector<TriviallyCopyableType, 110, std::allocator<TriviallyCopyableType>>,
+    SmallVector<int32_t, 80>, SmallVector<int32_t, 100, std::allocator<int32_t>>,
     SmallVector<ComplexNonTriviallyRelocatableType, 120>, SmallVector<ComplexTriviallyRelocatableType, 130>,
-    SmallVector<NonTriviallyRelocatableType, 140>, vector<int32_t>, vector<TriviallyCopyableType>,
-    vector<ComplexNonTriviallyRelocatableType>,
+
+    vector<int32_t>, vector<ComplexNonTriviallyRelocatableType>,
     vector<ComplexTriviallyRelocatableType, std::allocator<ComplexTriviallyRelocatableType>>,
-    SmallVector<NonTriviallyRelocatableType, 0U, std::allocator<NonTriviallyRelocatableType>, uint64_t>>
+    vector<NonTriviallyRelocatableType, std::allocator<NonTriviallyRelocatableType>, uint64_t>>
     MyTypesForRef;
 TYPED_TEST_SUITE(VectorRefTest, MyTypesForRef, );
 
@@ -601,6 +672,8 @@ TEST(VectorTest, NonCopyableType) {
   EXPECT_EQ(v.back(), NonCopyableType());
   v.resize(7);
   EXPECT_EQ(v[6], NonCopyableType());
+  v.resize(2);
+  EXPECT_EQ(v.size(), 2U);
 
   v.emplace_back(1);
   EXPECT_EQ(v.back(), NonCopyableType(1));
@@ -824,7 +897,7 @@ TYPED_TEST(VectorTest, EmplaceSelfReference) {
       vec.push_back(Type(i + 1));  // {1, 2, 3, 4, 5, 6}
     }
     if (inplace) {
-      vec.reserve(vec.size() + 2U);  // no reallocation will happen during emplace
+      vec.reserve(vec.size() + 3U);  // no reallocation will happen during emplace
     } else {
       vec.shrink_to_fit();  // force a reallocation during first emplace for growable vectors
     }
@@ -834,8 +907,14 @@ TYPED_TEST(VectorTest, EmplaceSelfReference) {
     // Emplace a copy of element #1 (value 2) at index 1. The source is the element at the emplace position.
     p = vec.emplace(vec.begin() + 1, vec[1]);
     EXPECT_EQ(*p, Type(2));
-    EXPECT_EQ(static_cast<uint32_t>(vec.size()), 8U);
-    const Type kExpected[] = {Type(1), Type(2), Type(2), Type(5), Type(3), Type(4), Type(5), Type(6)};
+    if (!inplace) {
+      vec.shrink_to_fit();  // force a reallocation during next emplace for growable vectors
+    }
+    // Emplace a copy of element #0 (value 1) at the end, without any element to shift
+    p = vec.emplace(vec.end(), vec[0]);
+    EXPECT_EQ(*p, Type(1));
+    EXPECT_EQ(static_cast<uint32_t>(vec.size()), 9U);
+    const Type kExpected[] = {Type(1), Type(2), Type(2), Type(5), Type(3), Type(4), Type(5), Type(6), Type(1)};
     EXPECT_TRUE(std::equal(vec.begin(), vec.end(), kExpected));
   }
 }
@@ -887,6 +966,93 @@ TEST(VectorTest, EmplaceGrowFailureDoesNotLeak) {
   CheckEmplaceGrowFailureDoesNotLeak<vector<TrivRelocType, std::allocator<TrivRelocType>, uint8_t>>();
   CheckEmplaceGrowFailureDoesNotLeak<SmallVector<NonTrivRelocType, 4, std::allocator<NonTrivRelocType>, uint8_t>>();
   CheckEmplaceGrowFailureDoesNotLeak<SmallVector<TrivRelocType, 4, std::allocator<TrivRelocType>, uint8_t>>();
+}
+
+// When copying the inserted element throws, the elements shifted to make room for it are shifted back: the vector keeps
+// its elements, without any leak.
+template <class VectorType>
+void CheckInsertCopyThrowsKeepsElements() {
+  using Type = typename VectorType::value_type;
+  const Type value(5);
+  TypeStats& stats = TypeStats::_stats;
+  for (bool inplace : {true, false}) {
+    for (int pos = 0; pos <= 4; ++pos) {
+      VectorType v{1, 2, 3, 4};
+      if (inplace) {
+        v.reserve(5U);  // no reallocation: the elements are shifted in place
+      }
+      stats = TypeStats();
+      stats.start();
+      stats._nbCopiesBeforeThrow = 0;
+      EXPECT_THROW(v.insert(v.begin() + pos, value), CopyException);
+      stats._nbCopiesBeforeThrow = 0;
+      EXPECT_THROW(v.insert(v.begin() + pos, v[3]), CopyException);  // source among the shifted elements
+      stats._nbCopiesBeforeThrow = -1;
+      stats.end();
+      EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
+      EXPECT_EQ(stats._nbConstructs + stats._nbCopyConstructs + stats._nbMoveConstructs, stats._nbDestructs);
+    }
+  }
+}
+
+TEST(VectorTest, InsertCopyThrowsKeepsElements) {
+  CheckInsertCopyThrowsKeepsElements<vector<ComplexTriviallyRelocatableType>>();
+  CheckInsertCopyThrowsKeepsElements<vector<ComplexNonTriviallyRelocatableType>>();
+  CheckInsertCopyThrowsKeepsElements<SmallVector<ComplexTriviallyRelocatableType, 2>>();
+  CheckInsertCopyThrowsKeepsElements<SmallVector<ComplexNonTriviallyRelocatableType, 8>>();
+  CheckInsertCopyThrowsKeepsElements<FixedCapacityVector<ComplexTriviallyRelocatableType, 5>>();
+  CheckInsertCopyThrowsKeepsElements<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 5>>();
+}
+
+// When the allocation needed to grow fails (out of memory), std::bad_alloc is thrown and the vector keeps its elements
+// and its capacity.
+template <class VectorType>
+void CheckGrowAllocationFailureKeepsElements() {
+  using Type = typename VectorType::value_type;
+  for (int nbElems : {0, 2, 3, 8}) {
+    VectorType v;
+    for (int i = 0; i < nbElems; ++i) {
+      v.push_back(Type(i));
+    }
+    v.shrink_to_fit();
+    if (v.size() != v.capacity()) {
+      continue;  // inline storage not full: inserting an element does not allocate
+    }
+    const VectorType expected = v;
+    const auto capacity = v.capacity();
+    const Type value(42);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.push_back(value); }), std::bad_alloc);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.emplace(v.begin(), 42); }), std::bad_alloc);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.insert(v.begin(), 3U, value); }), std::bad_alloc);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.reserve(capacity + 10U); }), std::bad_alloc);
+    EXPECT_EQ(v, expected);
+    EXPECT_EQ(v.capacity(), capacity);
+  }
+}
+
+TEST(VectorTest, GrowAllocationFailureKeepsElements) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  // Growth with 'realloc' for trivially relocatable types, with 'malloc' and relocation of the elements otherwise
+  CheckGrowAllocationFailureKeepsElements<vector<int>>();
+  CheckGrowAllocationFailureKeepsElements<vector<SimpleNonTriviallyCopyableType>>();
+  // Including the transition from the inline storage to the dynamic one
+  CheckGrowAllocationFailureKeepsElements<SmallVector<int, 2>>();
+  CheckGrowAllocationFailureKeepsElements<SmallVector<SimpleNonTriviallyCopyableType, 2>>();
+  // operator new
+  CheckGrowAllocationFailureKeepsElements<vector<int, std::allocator<int>>>();
+}
+
+// Same for the rvalue overload when moving the inserted element throws (elements are shifted with memmove here)
+TEST(VectorTest, InsertMoveThrowsKeepsElements) {
+  using VectorType = vector<MoveForbidden<true>>;
+  VectorType v(3);
+  v.reserve(4U);
+  const MoveForbidden<true>* data = v.data();
+  EXPECT_THROW(v.insert(v.begin() + 1, MoveForbidden<true>()), MoveForbiddenException);
+  EXPECT_EQ(v.size(), 3U);
+  EXPECT_EQ(v.data(), data);
 }
 
 // Exact reproduction of the first scenario reported in GitHub issue #63.
@@ -951,38 +1117,33 @@ TEST(VectorTest, PushBackRvalueSelfReferenceGrow) {
   PushBackRvalueSelfReferenceGrowImpl<SmallVector<ComplexTriviallyRelocatableType, 2>>();
 }
 
-TEST(VectorTest, SizeTypeNoIntegerOverflowFixedCapacityVector) {
-  using IntVector = FixedCapacityVector<int, 255U>;
-  using ExceptionType = std::out_of_range;
-
-  static_assert(sizeof(IntVector::size_type) == 1U, "");
-  IntVector v(250);
-  constexpr int kTab[] = {1, 2, 3, 4, 5, 6};
+// Growing beyond max_size throws ExceptionType, whatever the method adding elements, without modifying the vector.
+// With 8 bits size types, the size would overflow.
+template <class IntVector, class ExceptionType>
+void CheckGrowBeyondMaxSizeThrows() {
+  using SizeType = typename IntVector::size_type;
+  const SizeType maxSize = IntVector().max_size();
+  IntVector v(static_cast<SizeType>(maxSize - 5U));
+  const int kTab[] = {1, 2, 3, 4, 5, 6};
   EXPECT_THROW(v.insert(v.begin() + 1, kTab, kTab + 6), ExceptionType);
-  v.resize(255);
-  int i = 4;
+  EXPECT_EQ(v.size(), static_cast<SizeType>(maxSize - 5U));
+  v.resize(maxSize);
 #ifdef AMC_NONSTD_FEATURES
   EXPECT_THROW(v.append(1U, 0), ExceptionType);
 #endif
+  const int i = 4;
   EXPECT_THROW(v.push_back(0), ExceptionType);
   EXPECT_THROW(v.push_back(i), ExceptionType);
   EXPECT_THROW(v.emplace_back(0), ExceptionType);
+  EXPECT_THROW(v.insert(v.begin(), 0), ExceptionType);
+  EXPECT_EQ(v.size(), maxSize);
 }
 
-TEST(VectorTest, SizeTypeNoIntegerOverflowSmallVector) {
-  using IntVector = SmallVector<int, 32, std::allocator<int>, uint8_t>;
-  using ExceptionType = std::overflow_error;
-  static_assert(sizeof(IntVector::size_type) == 1U, "");
-  IntVector v(250);
-  const int kTab[] = {1, 2, 3, 4, 5, 6};
-  EXPECT_THROW(v.insert(v.begin() + 1, kTab, kTab + 6), ExceptionType);
-  v.resize(255);
-#ifdef AMC_NONSTD_FEATURES
-  EXPECT_THROW(v.append(1, 0), ExceptionType);
-#endif
-  EXPECT_THROW(v.push_back(0), ExceptionType);
-  EXPECT_THROW(v.push_back(4), ExceptionType);
-  EXPECT_THROW(v.emplace_back(0), ExceptionType);
+TEST(VectorTest, GrowBeyondMaxSizeThrows) {
+  static_assert(sizeof(FixedCapacityVector<int, 255U>::size_type) == 1U, "");
+  CheckGrowBeyondMaxSizeThrows<FixedCapacityVector<int, 255U>, std::out_of_range>();
+  CheckGrowBeyondMaxSizeThrows<SmallVector<int, 32, std::allocator<int>, uint8_t>, std::overflow_error>();
+  CheckGrowBeyondMaxSizeThrows<inplace_vector<int, 10>, std::bad_alloc>();
 }
 
 TEST(VectorTest, RelocatabilityAvoidsMoveOperations) {
@@ -1000,6 +1161,13 @@ TEST(VectorTest, RelocatabilityAvoidsMoveOperations) {
   EXPECT_EQ(v3.capacity(), v3.size());
   // Cannot use reallocate as type is not trivially relocatable: attempt to use forbidden move operations
   EXPECT_THROW(v3.emplace_back(), MoveForbiddenException);
+}
+
+TEST(VectorTest, BasicAllocatorWrapperOfStatelessAllocatorsAreEqual) {
+  using IntAlloc = BasicAllocatorWrapper<int, SimpleAllocator>;
+  using CharAlloc = BasicAllocatorWrapper<char, SimpleAllocator>;
+  EXPECT_TRUE(IntAlloc() == CharAlloc());
+  EXPECT_FALSE(IntAlloc() != CharAlloc());
 }
 
 TEST(VectorTest, RelocatabilityAgainstRefVector) {
