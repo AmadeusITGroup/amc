@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <utility>
 
@@ -142,6 +143,17 @@ struct SelfMoveUnsafeType {
 };
 
 static_assert(!amc::is_trivially_relocatable<SelfMoveUnsafeType>::value, "");
+
+/// Stateful comparator of integers, comparing their remainders of the division by the modulo given at construction.
+/// A default constructed one compares the integers themselves (if they are non negative).
+struct ModuloCompare {
+  ModuloCompare() = default;
+  explicit ModuloCompare(int32_t modulo) : _modulo(modulo) {}
+
+  bool operator()(int32_t lhs, int32_t rhs) const { return lhs % _modulo < rhs % _modulo; }
+
+  int32_t _modulo = std::numeric_limits<int32_t>::max();
+};
 
 struct TypeStats {
   static TypeStats _stats;

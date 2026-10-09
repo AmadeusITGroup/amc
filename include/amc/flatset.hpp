@@ -496,14 +496,27 @@ class FlatSet : private Compare {
     return insert(std::forward<V>(v)).first;
   }
 
-  static bool value_equi(const_reference v1, const_reference v2) {
-    return !value_compare()(v1, v2) && !value_compare()(v2, v1);
-  }
-
   Compare &compRef() { return static_cast<Compare &>(*this); }
   const Compare &compRef() const { return static_cast<const Compare &>(*this); }
 
-  void eraseDuplicates() { _sortedVector.erase(std::unique(mbegin(), mend(), value_equi), end()); }
+  /// Erase consecutive equivalent elements, keeping the first one of each group, according to our comparator object
+  /// (which may hold a state).
+  /// As elements are sorted, an element is equivalent to its predecessor 'p' if and only if it is not greater than 'p':
+  /// a single comparison per element is needed (std::unique would require a symmetric equivalence predicate).
+  void eraseDuplicates() {
+    const Compare &comp = compRef();
+    const miterator last = mend();
+    miterator dest =
+        std::adjacent_find(mbegin(), last, [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); });
+    if (dest != last) {
+      for (miterator it = std::next(dest); ++it != last;) {
+        if (comp(*dest, *it)) {
+          *++dest = std::move(*it);
+        }
+      }
+      _sortedVector.erase(std::next(dest), end());
+    }
+  }
 
   VecType _sortedVector;
 };

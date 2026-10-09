@@ -542,10 +542,10 @@ class SmallSet {
     };
 
     if (isSmall()) {
-      auto sortedPtrs = ComputeSortedPtrVec(_vec);
+      auto sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
       if (o.isSmall()) {
         // We are both small, we need to sort both containers
-        auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
+        auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
         return std::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
                                                       oSortedPtrs.end(), Comp());
       }
@@ -555,7 +555,7 @@ class SmallSet {
     }
     if (o.isSmall()) {
       // other is small: as we do not order elements in the small container, we need to sort them.
-      auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
+      auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
       return std::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
                                                     Comp());
     }
@@ -587,10 +587,10 @@ class SmallSet {
     };
 
     if (isSmall()) {
-      auto sortedPtrs = ComputeSortedPtrVec(_vec);
+      auto sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
       if (o.isSmall()) {
         // We are both small, we need to sort both containers
-        auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
+        auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
         return std::lexicographical_compare(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
                                             oSortedPtrs.end(), Comp());
       }
@@ -599,7 +599,7 @@ class SmallSet {
     }
     if (o.isSmall()) {
       // other is small: as we do not order elements in the small container, we need to sort them.
-      auto oSortedPtrs = ComputeSortedPtrVec(o._vec);
+      auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
       return std::lexicographical_compare(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(), Comp());
     }
     return _set < o._set;
@@ -675,12 +675,13 @@ class SmallSet {
 
   using PtrVec = FixedCapacityVector<const_pointer, N, vec::UncheckedGrowingPolicy>;
 
-  static PtrVec ComputeSortedPtrVec(const VecType &c) {
+  /// Pointers to the elements of 'c', sorted with comparator object 'comp' (which may hold a state).
+  static PtrVec ComputeSortedPtrVec(const VecType &c, const Compare &comp) {
     PtrVec sortedPtrs;
     std::transform(c.begin(), c.end(), std::back_inserter(sortedPtrs),
                    [](const_reference r) { return std::addressof(r); });
     std::sort(sortedPtrs.begin(), sortedPtrs.end(),
-              [](const_pointer p1, const_pointer p2) { return Compare()(*p1, *p2); });
+              [&comp](const_pointer p1, const_pointer p2) { return comp(*p1, *p2); });
     return sortedPtrs;
   }
 
