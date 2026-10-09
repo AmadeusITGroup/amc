@@ -331,6 +331,35 @@ class ElemStorage {
   alignas(T) std::uint8_t _el[sizeof(T)];
 };
 
+/// Element constructed outside of the vector, to be relocated into it afterwards.
+/// It is destroyed at the end of its scope, unless 'release' has been called after a successful relocation.
+/// Relocation functions provide this guarantee: if they throw, the element has not been relocated (and is still alive).
+template <class T>
+class TemporaryElem {
+ public:
+  template <class... Args>
+  explicit TemporaryElem(Args&&... args) {
+    amc::construct_at(_storage.ptr(), std::forward<Args>(args)...);
+  }
+
+  TemporaryElem(const TemporaryElem&) = delete;
+  TemporaryElem& operator=(const TemporaryElem&) = delete;
+
+  ~TemporaryElem() {
+    if (_owned) {
+      amc::destroy_at(_storage.ptr());
+    }
+  }
+
+  T* ptr() noexcept { return _storage.ptr(); }
+
+  void release() noexcept { _owned = false; }
+
+ private:
+  ElemStorage<T> _storage;
+  bool _owned = true;
+};
+
 /// Relocate the element 'e', constructed outside of the vector, at 'pos', shifting the 'n' elements starting at 'pos'
 /// one slot to the right.
 template <class T, class SizeType>
@@ -358,9 +387,9 @@ inline void emplace_n(T* pos, SizeType n, Args&&... args) {
   if (n == 0) {
     amc::construct_at(pos, std::forward<Args>(args)...);
   } else {
-    ElemStorage<T> e;
-    amc::construct_at(e.ptr(), std::forward<Args>(args)...);
+    TemporaryElem<T> e(std::forward<Args>(args)...);
     relocate_insert_n(pos, n, e.ptr());
+    e.release();
   }
 }
 
@@ -977,12 +1006,12 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     iterator pos;
     if (this->size() == this->capacity()) {
       // construct before possible iterator invalidation from grow in constructor arguments
-      ElemStorage<T> e;
-      amc::construct_at(e.ptr(), std::forward<Args&&>(args)...);
+      TemporaryElem<T> e(std::forward<Args>(args)...);
       SizeType idx = static_cast<SizeType>(position - this->begin());
       this->grow(this->size() + 1U);
       pos = this->begin() + idx;
       relocate_insert_n(pos, nElemsToShift, e.ptr());
+      e.release();
     } else {
       pos = const_cast<iterator>(position);
       emplace_n(pos, nElemsToShift, std::forward<Args>(args)...);
@@ -996,11 +1025,11 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     iterator endIt;
     if (this->size() == this->capacity()) {
       // construct before possible iterator invalidation from grow in constructor arguments
-      ElemStorage<T> e;
-      amc::construct_at(e.ptr(), std::forward<Args&&>(args)...);
+      TemporaryElem<T> e(std::forward<Args>(args)...);
       this->grow(this->size() + 1U);
       endIt = this->dynStorage() + this->size();
       amc::relocate_at(e.ptr(), endIt);
+      e.release();
     } else {
       endIt = this->begin() + this->size();
       amc::construct_at(endIt, std::forward<Args&&>(args)...);
