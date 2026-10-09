@@ -9,7 +9,6 @@
 #include <limits>
 #include <stdexcept>
 
-#include "algorithm.hpp"
 #include "config.hpp"
 #include "memory.hpp"
 #include "type_traits.hpp"
@@ -20,6 +19,10 @@
 #ifdef AMC_CXX23
 #include <ranges>
 #endif
+#endif
+
+#ifdef AMC_CXX20
+#include "algorithm.hpp"
 #endif
 
 namespace amc {
@@ -1485,17 +1488,21 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     append(std::ranges::cbegin(rg), std::ranges::cend(rg));
   }
 
+  /// Appends elements of 'rg' until the vector is full.
+  /// Returns an iterator to the first non appended element ('std::ranges::dangling' if 'rg' is a non borrowed rvalue).
   template <class R>
   std::ranges::borrowed_iterator_t<R> try_append_range(R&& rg) {
-    using It = std::ranges::borrowed_iterator_t<R>;
-    It first = std::ranges::begin(rg);
-    if constexpr (std::random_access_iterator<It>) {
-      const uintmax_t count = std::min<SizeType>(std::ranges::size(rg), this->capacity() - this->size());
+    auto first = std::ranges::begin(rg);
+    if constexpr (std::ranges::sized_range<R> && std::ranges::random_access_range<R>) {
+      // compute in uintmax_t as the size of the range may not fit in SizeType
+      const uintmax_t count = std::min(static_cast<uintmax_t>(std::ranges::size(rg)),
+                                       static_cast<uintmax_t>(this->capacity() - this->size()));
       amc::uninitialized_copy_n(first, static_cast<SizeType>(count), this->end());
-      this->setSize(this->size() + static_cast<SizeType>(count));
-      return first + count;
+      this->setSize(static_cast<SizeType>(this->size() + count));
+      return first + static_cast<std::ranges::range_difference_t<R> >(count);
     } else {
-      It last = std::ranges::end(rg);
+      // the range may not be common (its end may be a sentinel of a different type than its iterator)
+      auto last = std::ranges::end(rg);
       for (; first != last && this->size() < this->capacity(); ++first) {
         amc::construct_at(this->end(), *first);
         this->incrSize();
