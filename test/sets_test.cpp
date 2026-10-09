@@ -4,7 +4,9 @@
 #include <amc/config.hpp>
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
+#include <iterator>
 #include <list>
+#include <sstream>
 #ifdef AMC_SMALLSET
 #include <amc/smallset.hpp>
 #endif
@@ -294,6 +296,22 @@ TYPED_TEST(SetListTest, RangeConstructor) {
   using value_type = typename TypeParam::value_type;
   const value_type kNewEls[] = {1, 2, 3, 4};
   TypeParam s(std::begin(kNewEls), std::end(kNewEls));
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4}));
+}
+
+// Single pass input iterators (here, reading from a stream) can be traversed only once.
+TYPED_TEST(SetListTest, InsertInputIterators) {
+  std::istringstream ss("18 4 3 6 4");
+  TypeParam s{1, 2, 3};
+  s.insert(std::istream_iterator<int>(ss), std::istream_iterator<int>());
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
+}
+
+TYPED_TEST(SetListTest, RangeConstructorInputIterators) {
+  std::istringstream ss("4 1 3 2 1");
+  std::istream_iterator<int> first(ss);
+  std::istream_iterator<int> last;
+  TypeParam s(first, last);
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4}));
 }
 

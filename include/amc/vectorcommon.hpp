@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 
@@ -1266,15 +1267,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// The behavior is undefined if either argument is an iterator into *this.
   template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
   void assign(InputIt first, InputIt last) {
-    const uintmax_t count = static_cast<uintmax_t>(std::distance(first, last));
-    if (static_cast<uintmax_t>(this->size()) < count) {
-      this->adjustCapacity(count);
-      assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
-    } else {
-      // copy to already existing elements and destroy remaining ones
-      amc::destroy(std::copy(first, last, this->begin()), end());
-    }
-    this->setSize(static_cast<SizeType>(count));
+    assignImpl(first, last, typename std::iterator_traits<InputIt>::iterator_category());
   }
 
   void assign(std::initializer_list<T> ilist) { assign(ilist.begin(), ilist.end()); }
@@ -1333,22 +1326,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
   iterator insert(const_iterator position, InputIt first, InputIt last) {
     assert(position >= this->cbegin() && position <= cend());
-    const auto count = static_cast<uintmax_t>(std::distance(first, last));
-    iterator pos;
-    if (count > 0) {
-      pos = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count, position);
-      SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
-      if (nElemsToShift == 0) {
-        amc::uninitialized_copy_n(first, count, pos);
-      } else {
-        shift_right(pos, nElemsToShift, static_cast<SizeType>(count));
-        copy_after_shift(first, nElemsToShift, static_cast<SizeType>(count), pos);
-      }
-      this->setSize(static_cast<SizeType>(this->size() + count));
-    } else {
-      pos = const_cast<iterator>(position);
-    }
-    return pos;
+    return insertImpl(position, first, last, typename std::iterator_traits<InputIt>::iterator_category());
   }
 
   iterator insert(const_iterator pos, std::initializer_list<T> list) { return insert(pos, list.begin(), list.end()); }
@@ -1444,8 +1422,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// The behavior is undefined if first and last are iterators into *this
   template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
   void append(InputIt first, InputIt last) {
-    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + static_cast<uintmax_t>(std::distance(first, last)));
-    this->setSize(static_cast<SizeType>(amc::uninitialized_copy(first, last, end()) - this->begin()));
+    appendImpl(first, last, typename std::iterator_traits<InputIt>::iterator_category());
   }
 
   void append(size_type count) {
@@ -1488,6 +1465,84 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     }
   }
 #endif
+
+ private:
+  // Range methods implementations, dispatched on the iterator category.
+  // Forward iterators can be traversed several times: we compute the number of elements first to reserve once.
+  // Single pass input iterators can be traversed only once, so we cannot know their number of elements in advance.
+
+  template <class ForwardIt>
+  void assignImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
+    const uintmax_t count = static_cast<uintmax_t>(std::distance(first, last));
+    if (static_cast<uintmax_t>(this->size()) < count) {
+      this->adjustCapacity(count);
+      assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
+    } else {
+      // copy to already existing elements and destroy remaining ones
+      amc::destroy(std::copy(first, last, this->begin()), end());
+    }
+    this->setSize(static_cast<SizeType>(count));
+  }
+
+  template <class InputIt>
+  void assignImpl(InputIt first, InputIt last, std::input_iterator_tag) {
+    // copy to already existing elements, then destroy remaining ones or append remaining input elements
+    const iterator endIt = end();
+    iterator it = this->begin();
+    for (; it != endIt && first != last; ++it, (void)++first) {
+      *it = *first;
+    }
+    if (it != endIt) {
+      amc::destroy(it, endIt);
+      this->setSize(static_cast<SizeType>(it - this->begin()));
+    } else {
+      appendImpl(first, last, std::input_iterator_tag());
+    }
+  }
+
+  template <class ForwardIt>
+  iterator insertImpl(const_iterator position, ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
+    const auto count = static_cast<uintmax_t>(std::distance(first, last));
+    iterator pos;
+    if (count > 0) {
+      pos = this->adjustCapacity(static_cast<uintmax_t>(this->size()) + count, position);
+      SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
+      if (nElemsToShift == 0) {
+        amc::uninitialized_copy_n(first, count, pos);
+      } else {
+        shift_right(pos, nElemsToShift, static_cast<SizeType>(count));
+        copy_after_shift(first, nElemsToShift, static_cast<SizeType>(count), pos);
+      }
+      this->setSize(static_cast<SizeType>(this->size() + count));
+    } else {
+      pos = const_cast<iterator>(position);
+    }
+    return pos;
+  }
+
+  template <class InputIt>
+  iterator insertImpl(const_iterator position, InputIt first, InputIt last, std::input_iterator_tag) {
+    // append new elements at the end, then rotate them to their final position
+    const auto idx = position - this->cbegin();  // position may be invalidated by append
+    const auto oldSize = this->size();
+    appendImpl(first, last, std::input_iterator_tag());
+    const iterator pos = this->begin() + idx;
+    std::rotate(pos, this->begin() + oldSize, end());
+    return pos;
+  }
+
+  template <class ForwardIt>
+  void appendImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
+    this->adjustCapacity(static_cast<uintmax_t>(this->size()) + static_cast<uintmax_t>(std::distance(first, last)));
+    this->setSize(static_cast<SizeType>(amc::uninitialized_copy(first, last, end()) - this->begin()));
+  }
+
+  template <class InputIt>
+  void appendImpl(InputIt first, InputIt last, std::input_iterator_tag) {
+    for (; first != last; ++first) {
+      this->emplace_back(*first);
+    }
+  }
 
  protected:
   template <class... Args>
