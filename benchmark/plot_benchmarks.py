@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Draws the benchmark charts of README.md (docs/bench_*.svg) and the tables of numbers under them.
+r"""Draws the benchmark charts of README.md (docs/bench_*.svg) and the tables of numbers under them.
 
 Only needs the Python standard library.
 
 1. Build the benchmarks in Release, once per compiler, and run them pinned to a single core (a core of the biggest L3
-   cache on hybrid CPUs), with their JSON output named <benchmark>-<compiler tag>.json, for instance:
+   cache on hybrid CPUs). Run each benchmark in its own process: the state in which a benchmark leaves the heap changes
+   the times of the next ones (by up to 20 %). Name the JSON outputs <benchmark>-<compiler tag>-<n>.json, for instance:
 
-     taskset -c 2 vectors_benchmark --benchmark_repetitions=5 --benchmark_report_aggregates_only=true \\
-       --benchmark_out=<dir>/vectors-gcc13.json --benchmark_out_format=json
+     vectors_benchmark --benchmark_list_tests | while read -r name; do
+       taskset -c 2 vectors_benchmark --benchmark_filter="^$(printf '%s' "$name" | sed 's/[.*+?()|^$\[]/\\&/g')\$" \
+         --benchmark_repetitions=5 --benchmark_report_aggregates_only=true \
+         --benchmark_out=<dir>/vectors-gcc13-$((++n)).json --benchmark_out_format=json
+     done
 
-   and the same for sets_benchmark (sets-gcc13.json), and for other compilers (vectors-clang23.json...).
+   and the same for sets_benchmark (sets-gcc13-<n>.json), and for other compilers (vectors-clang23-<n>.json...).
    The compiler tag 'gcc13' is displayed as 'GCC 13', 'clang23' as 'Clang 23'.
 
 2. python3 benchmark/plot_benchmarks.py --import <dir>
@@ -100,28 +104,37 @@ def cpu_model():
 
 
 def import_results(raw_dir):
-    """Stores the medians of the Google Benchmark JSON outputs of 'raw_dir' in docs/benchmarks/."""
+    """Stores the medians of the Google Benchmark JSON outputs of 'raw_dir' in docs/benchmarks/.
+
+    The outputs <benchmark>-<compiler tag>-<anything>.json of separate runs are merged into <benchmark>-<compiler tag>.
+    """
     os.makedirs(RESULTS, exist_ok=True)
     paths = sorted(glob.glob(os.path.join(raw_dir, "*-*.json")))
     if not paths:
         sys.exit(f"no <benchmark>-<compiler>.json file in {raw_dir}")
+    groups = {}
     for path in paths:
-        with open(path) as f:
-            raw = json.load(f)
-        context = {k: raw["context"][k] for k in ("date", "num_cpus", "mhz_per_cpu", "caches", "library_version")}
-        context["cpu"] = cpu_model()
-        medians = {}
-        for b in raw["benchmarks"]:
-            if b.get("run_type") == "aggregate" and b.get("aggregate_name") != "median":
-                continue
-            # 'Erase<T>/iterations:10000' -> 'Erase<T>'
-            name = re.sub(r"/(iterations|repeats|min_time):[^/]*", "", b["run_name"])
-            medians[name] = b["real_time"] * TIME_UNITS_NS[b["time_unit"]]
-        out = os.path.join(RESULTS, os.path.basename(path))
+        groups.setdefault("-".join(os.path.basename(path)[:-len(".json")].split("-")[:2]), []).append(path)
+    for group, group_paths in groups.items():
+        context, medians = None, {}
+        for path in group_paths:
+            with open(path) as f:
+                raw = json.load(f)
+            if context is None:
+                keys = ("date", "num_cpus", "mhz_per_cpu", "caches", "library_version")
+                context = {k: raw["context"][k] for k in keys}
+                context["cpu"] = cpu_model()
+            for b in raw["benchmarks"]:
+                if b.get("run_type") == "aggregate" and b.get("aggregate_name") != "median":
+                    continue
+                # 'Erase<T>/iterations:10000' -> 'Erase<T>'
+                name = re.sub(r"/(iterations|repeats|min_time):[^/]*", "", b["run_name"])
+                medians[name] = b["real_time"] * TIME_UNITS_NS[b["time_unit"]]
+        out = os.path.join(RESULTS, group + ".json")
         with open(out, "w") as f:
             json.dump({"context": context, "median_real_time_ns": medians}, f, indent=1, sort_keys=True)
             f.write("\n")
-        print(f"imported {out}")
+        print(f"imported {out} from {len(group_paths)} file(s)")
 
 
 def load_results():
