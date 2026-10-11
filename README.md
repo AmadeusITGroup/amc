@@ -77,15 +77,17 @@ Performance compared to the standard containers, as measured by the provided ben
 
 The complex types are 16 bytes structures owning a dynamically allocated buffer (copying them allocates, moving them steals the buffer), the first one being declared trivially relocatable. The gains come from trivially relocatable types, whose elements are shifted with a single `memmove` instead of one move per element. `std::vector` already does it for trivially copyable types like `uint32_t`, and for types which are not trivially relocatable, `amc::vector` uses the same algorithms as `std::vector`.
 
-`amc::vector` grows its capacity by a factor of 1.5, like the MSVC standard library, where libstdc++ and libc++ double it: it reallocates about 1.7 times more often, and moves each element about twice instead of once on average. For trivially relocatable types, `amc::vector` grows with `realloc`, which can extend large blocks without copying them: growing a `uint32_t` vector to 1 million elements is 1.2 times faster than with `std::vector` despite the smaller factor. The smaller factor costs for small vectors, and for types which are not trivially relocatable (see `amc::vector` in the `SmallVector` chart below). Growing a vector of the complex types is not shown: its time is dominated by the allocations of the elements themselves.
+`amc::vector` doubles its capacity while it takes fewer than 4 KiB, like libstdc++ and libc++, as reallocating a small block costs more than the memory left unused. Beyond, it grows its capacity by a factor of 1.5, like the MSVC standard library, to save memory: a large vector reallocates about 1.7 times more often, and moves each element about twice instead of once on average. For trivially relocatable types, `amc::vector` grows with `realloc`, which can extend large blocks without copying them: growing a `uint32_t` vector to 1 million elements is 2.1 times faster than with `std::vector` despite the smaller factor. Blocks of up to 1 KiB are copied to a new block instead, as `realloc` can seldom extend them in place and bypasses the fast paths of `malloc` and `free` for small blocks. The smaller factor costs for large vectors of types which are not trivially relocatable. Growing a vector of the complex types is not shown: its time is dominated by the allocations of the elements themselves.
+
+These allocations also dominate inserting at the end and erasing at the front, where `amc::vector` is slower than `std::vector` for the complex types despite the `memmove`. Each iteration allocates and frees about 2 400 element buffers, and glibc returns the free memory at the top of the heap to the system once it exceeds 128 KiB (`M_TRIM_THRESHOLD`): the next allocations take page faults to get it back. Whether this happens depends on the exact sequence of allocations. Before inserting copies of a value, libstdc++ copies it into a temporary, which `amc::vector` does not need. This one extra block per iteration changes which freed blocks glibc keeps in its thread cache, where they are never merged, and one of them then usually sits right below the top of the heap, preventing the trimming: `amc::vector` takes about 34 page faults per iteration, `std::vector` about 1. With the thread cache disabled, `std::vector` takes as many page faults as `amc::vector`. With the trimming disabled instead (`GLIBC_TUNABLES=glibc.malloc.trim_threshold=1073741824`), `amc::vector` is 1.2 times faster than `std::vector` for the trivially relocatable type, and as fast for the other one.
 
 #### SmallVector
 
 ![amc::SmallVector vs std::vector](./docs/bench_smallvector.svg)
 
-`amc::SmallVector<T, N>` stores up to `N` elements in the object itself: a vector which stays small never allocates. In this benchmark, a vector is filled by `emplace_back`, read and destroyed, a given share of the vectors being small (up to the inline capacity of 16 elements) and the others large (17 to 64 elements, which move to the heap). The more vectors stay small, the bigger the gain: up to 2.4 to 3.2 times for `uint32_t`, and 1.3 to 1.6 times for the complex types, whose elements allocate their own buffer. When most vectors outgrow the inline storage, moving their elements to the heap costs, especially for types which are not trivially relocatable: `SmallVector` then takes about a third more time than `std::vector`.
+`amc::SmallVector<T, N>` stores up to `N` elements in the object itself: a vector which stays small never allocates. In this benchmark, a vector is filled by `emplace_back`, read and destroyed, a given share of the vectors being small (up to the inline capacity of 16 elements) and the others large (17 to 64 elements, which move to the heap). The more vectors stay small, the bigger the gain: up to 2.5 to 3.2 times for `uint32_t`, and 1.3 to 1.5 times for the complex types, whose elements allocate their own buffer. When most vectors outgrow the inline storage, moving their elements to the heap costs for types which are not trivially relocatable: `SmallVector` then takes up to 15 % more time than `std::vector`.
 
-`amc::vector` is slower than `std::vector` for the complex types here, because of its smaller growth factor, and for the trivially relocatable one, because `realloc` cannot extend a block in place when the buffers of the elements are allocated right after it.
+`amc::vector` is faster than `std::vector` here for `uint32_t` (1.2 to 1.4 times), and slower for the complex type which is not trivially relocatable (up to 1.3 times when all the vectors are large).
 
 #### Sets
 
@@ -100,12 +102,12 @@ Lookup time mostly depends on where the set fits in the cache hierarchy: per ele
  - **independent** lookups: the CPU overlaps the cache misses of successive lookups, so this is a throughput, which can be shorter than a memory access,
  - **chained** lookups: each looked up value depends on the element found by the previous lookup, so this is the latency of a single lookup.
 
- - With 1 000 000 elements, `amc::FlatSet` (4 MB) still fits in the L3 cache while the node based sets (40 to 50 MB) do not: its lookup latency is about 3.5 times lower than the one of `std::unordered_set`.
+ - With 1 000 000 elements, `amc::FlatSet` (4 MB) still fits in the L3 cache while the node based sets (40 to 50 MB) do not: its lookup latency is 3.3 to 4.4 times lower than the one of `std::unordered_set`.
  - Clang compiles the binary searches of `amc::FlatSet` (`std::lower_bound`) and `std::set` with conditional moves, GCC with branches. Mispredicted branches serialize the lookups, so with GCC independent lookups are barely faster than chained ones. Beyond the L3 cache however, the speculative execution of the predicted branch prefetches the next levels of the binary search of `amc::FlatSet`, which is then faster with GCC than with Clang.
 
 #### Benchmarks
 
-The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks.py) from the results stored in [docs/benchmarks](docs/benchmarks): median of 5 repetitions, pinned to a single core of an idle machine, with libstdc++ 13. Beyond the L3 cache, results vary by about 15 % between runs. The numbers of both compilers:
+The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks.py) from the results stored in [docs/benchmarks](docs/benchmarks): each benchmark in its own process, median of 5 repetitions, pinned to a single core of an idle machine, with libstdc++ 13. Beyond the L3 cache, results vary by about 15 % between runs. The numbers of both compilers:
 
 <!-- BEGIN benchmark tables, generated by benchmark/plot_benchmarks.py -->
 
@@ -113,25 +115,25 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Operation                                                             | std::vector | amc::vector | amc         |
 | --------------------------------------------------------------------- | ----------: | ----------: | ----------: |
-| Complex trivially relocatable type: Assign a count or a range         |     6.64 µs |     6.58 µs |        same |
-| Complex trivially relocatable type: Construct and swap                |      279 ns |      276 ns |        same |
-| Complex trivially relocatable type: Insert at end, erase at front     |     49.1 µs |     40.6 µs | 1.2× faster |
-| Complex trivially relocatable type: Insert N copies                   |     2.13 µs |      227 ns | 9.4× faster |
-| Complex trivially relocatable type: Insert a range of pointers        |     17.3 µs |     13.9 µs | 1.2× faster |
-| Complex trivially relocatable type: Insert a std::set range           |     28.4 µs |     17.4 µs | 1.6× faster |
-| uint32_t: Assign a count or a range                                   |       12 ns |     14.3 ns | 1.2× slower |
-| uint32_t: Construct and swap                                          |     10.3 ns |     8.85 ns | 1.2× faster |
-| uint32_t: Insert at end, erase at front                               |      216 ns |      208 ns |        same |
-| uint32_t: Insert N copies                                             |     27.8 ns |     30.5 ns | 1.1× slower |
-| uint32_t: Insert a range of pointers                                  |       84 ns |     80.2 ns |        same |
-| uint32_t: Insert a std::set range                                     |     5.56 µs |      5.3 µs |        same |
-| uint32_t: Grow to 1M by emplace_back                                  |     1.35 ms |     1.12 ms | 1.2× faster |
-| Complex non trivially relocatable type: Assign a count or a range     |     6.69 µs |      6.6 µs |        same |
-| Complex non trivially relocatable type: Construct and swap            |      280 ns |      286 ns |        same |
-| Complex non trivially relocatable type: Insert at end, erase at front |     45.7 µs |     45.4 µs |        same |
-| Complex non trivially relocatable type: Insert N copies               |     2.32 µs |      2.1 µs | 1.1× faster |
-| Complex non trivially relocatable type: Insert a range of pointers    |     19.1 µs |     18.4 µs |        same |
-| Complex non trivially relocatable type: Insert a std::set range       |     27.7 µs |       25 µs | 1.1× faster |
+| Complex trivially relocatable type: Assign a count or a range         |     6.68 µs |     6.61 µs |        same |
+| Complex trivially relocatable type: Construct and swap                |      283 ns |      283 ns |        same |
+| Complex trivially relocatable type: Insert at end, erase at front     |     46.6 µs |     56.1 µs | 1.2× slower |
+| Complex trivially relocatable type: Insert N copies                   |     2.11 µs |      176 ns |  12× faster |
+| Complex trivially relocatable type: Insert a range of pointers        |     19.5 µs |     13.5 µs | 1.4× faster |
+| Complex trivially relocatable type: Insert a std::set range           |     28.1 µs |     19.2 µs | 1.5× faster |
+| uint32_t: Assign a count or a range                                   |       12 ns |     13.9 ns | 1.2× slower |
+| uint32_t: Construct and swap                                          |     9.92 ns |     8.84 ns | 1.1× faster |
+| uint32_t: Insert at end, erase at front                               |      217 ns |      211 ns |        same |
+| uint32_t: Insert N copies                                             |     27.5 ns |     30.2 ns | 1.1× slower |
+| uint32_t: Insert a range of pointers                                  |     87.4 ns |     81.1 ns | 1.1× faster |
+| uint32_t: Insert a std::set range                                     |     4.42 µs |     4.29 µs |        same |
+| uint32_t: Grow to 1M by emplace_back                                  |     2.27 ms |     1.06 ms | 2.1× faster |
+| Complex non trivially relocatable type: Assign a count or a range     |      6.7 µs |     6.64 µs |        same |
+| Complex non trivially relocatable type: Construct and swap            |      280 ns |      287 ns |        same |
+| Complex non trivially relocatable type: Insert at end, erase at front |     45.5 µs |     60.7 µs | 1.3× slower |
+| Complex non trivially relocatable type: Insert N copies               |     2.32 µs |     2.06 µs | 1.1× faster |
+| Complex non trivially relocatable type: Insert a range of pointers    |     18.8 µs |     18.7 µs |        same |
+| Complex non trivially relocatable type: Insert a std::set range       |     27.7 µs |     24.9 µs | 1.1× faster |
 
 </details>
 
@@ -139,25 +141,25 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Operation                                                             | std::vector | amc::vector | amc         |
 | --------------------------------------------------------------------- | ----------: | ----------: | ----------: |
-| Complex trivially relocatable type: Assign a count or a range         |     6.47 µs |     6.55 µs |        same |
-| Complex trivially relocatable type: Construct and swap                |      261 ns |      259 ns |        same |
-| Complex trivially relocatable type: Insert at end, erase at front     |     51.4 µs |     53.8 µs |        same |
-| Complex trivially relocatable type: Insert N copies                   |     1.56 µs |      178 ns | 8.8× faster |
-| Complex trivially relocatable type: Insert a range of pointers        |     16.9 µs |     13.3 µs | 1.3× faster |
-| Complex trivially relocatable type: Insert a std::set range           |     26.8 µs |     16.2 µs | 1.7× faster |
-| uint32_t: Assign a count or a range                                   |     12.8 ns |     11.3 ns | 1.1× faster |
-| uint32_t: Construct and swap                                          |     8.03 ns |     9.68 ns | 1.2× slower |
-| uint32_t: Insert at end, erase at front                               |      213 ns |      208 ns |        same |
-| uint32_t: Insert N copies                                             |       30 ns |     30.1 ns |        same |
-| uint32_t: Insert a range of pointers                                  |     81.9 ns |     79.4 ns |        same |
-| uint32_t: Insert a std::set range                                     |     5.51 µs |     5.42 µs |        same |
-| uint32_t: Grow to 1M by emplace_back                                  |     1.29 ms |     1.07 ms | 1.2× faster |
-| Complex non trivially relocatable type: Assign a count or a range     |     6.47 µs |      6.6 µs |        same |
-| Complex non trivially relocatable type: Construct and swap            |      268 ns |      262 ns |        same |
-| Complex non trivially relocatable type: Insert at end, erase at front |     46.2 µs |     45.8 µs |        same |
-| Complex non trivially relocatable type: Insert N copies               |     1.62 µs |     1.86 µs | 1.1× slower |
-| Complex non trivially relocatable type: Insert a range of pointers    |     17.6 µs |     17.3 µs |        same |
-| Complex non trivially relocatable type: Insert a std::set range       |     27.4 µs |     23.7 µs | 1.2× faster |
+| Complex trivially relocatable type: Assign a count or a range         |     6.44 µs |     6.53 µs |        same |
+| Complex trivially relocatable type: Construct and swap                |      260 ns |      258 ns |        same |
+| Complex trivially relocatable type: Insert at end, erase at front     |     45.8 µs |     55.4 µs | 1.2× slower |
+| Complex trivially relocatable type: Insert N copies                   |     1.55 µs |      166 ns | 9.3× faster |
+| Complex trivially relocatable type: Insert a range of pointers        |     17.1 µs |     13.4 µs | 1.3× faster |
+| Complex trivially relocatable type: Insert a std::set range           |       27 µs |     18.6 µs | 1.5× faster |
+| uint32_t: Assign a count or a range                                   |     11.4 ns |     9.84 ns | 1.2× faster |
+| uint32_t: Construct and swap                                          |     8.09 ns |     8.93 ns | 1.1× slower |
+| uint32_t: Insert at end, erase at front                               |      220 ns |      207 ns | 1.1× faster |
+| uint32_t: Insert N copies                                             |     30.1 ns |     30.4 ns |        same |
+| uint32_t: Insert a range of pointers                                  |     80.7 ns |     82.3 ns |        same |
+| uint32_t: Insert a std::set range                                     |     4.38 µs |     4.34 µs |        same |
+| uint32_t: Grow to 1M by emplace_back                                  |     2.17 ms |     1.03 ms | 2.1× faster |
+| Complex non trivially relocatable type: Assign a count or a range     |     6.52 µs |     6.56 µs |        same |
+| Complex non trivially relocatable type: Construct and swap            |      260 ns |      256 ns |        same |
+| Complex non trivially relocatable type: Insert at end, erase at front |     46.2 µs |     60.5 µs | 1.3× slower |
+| Complex non trivially relocatable type: Insert N copies               |     1.42 µs |     1.48 µs |        same |
+| Complex non trivially relocatable type: Insert a range of pointers    |       17 µs |     17.3 µs |        same |
+| Complex non trivially relocatable type: Insert a std::set range       |     27.8 µs |     24.5 µs | 1.1× faster |
 
 </details>
 
@@ -165,27 +167,27 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Vectors                                            | std::vector | amc::vector | amc::SmallVector<T, 16> | SmallVector vs std::vector |
 | -------------------------------------------------- | ----------: | ----------: | ----------------------: | -------------------------: |
-| Complex trivially relocatable type: All large      |      385 ns |      413 ns |                  361 ns |                1.1× faster |
-| Complex trivially relocatable type: 50 % small     |      246 ns |      274 ns |                  215 ns |                1.1× faster |
-| Complex trivially relocatable type: 80 % small     |      157 ns |      181 ns |                  126 ns |                1.2× faster |
-| Complex trivially relocatable type: 90 % small     |      126 ns |      148 ns |                 94.5 ns |                1.3× faster |
-| Complex trivially relocatable type: 95 % small     |      112 ns |      131 ns |                 79.1 ns |                1.4× faster |
-| Complex trivially relocatable type: 99 % small     |     99.4 ns |      116 ns |                 67.3 ns |                1.5× faster |
-| Complex trivially relocatable type: All small      |     96.3 ns |      112 ns |                 62.3 ns |                1.5× faster |
-| uint32_t: All large                                |     74.5 ns |       87 ns |                 60.7 ns |                1.2× faster |
-| uint32_t: 50 % small                               |     63.1 ns |     65.3 ns |                 44.1 ns |                1.4× faster |
-| uint32_t: 80 % small                               |     51.4 ns |     46.2 ns |                 26.5 ns |                1.9× faster |
-| uint32_t: 90 % small                               |     47.7 ns |     39.9 ns |                 20.6 ns |                2.3× faster |
-| uint32_t: 95 % small                               |     45.6 ns |     36.5 ns |                 17.7 ns |                2.6× faster |
-| uint32_t: 99 % small                               |     43.6 ns |     34.4 ns |                 15.1 ns |                2.9× faster |
-| uint32_t: All small                                |     43.4 ns |     34.7 ns |                 13.8 ns |                3.2× faster |
-| Complex non trivially relocatable type: All large  |      371 ns |      524 ns |                  495 ns |                1.3× slower |
-| Complex non trivially relocatable type: 50 % small |      240 ns |      328 ns |                  286 ns |                1.2× slower |
-| Complex non trivially relocatable type: 80 % small |      157 ns |      194 ns |                  153 ns |                       same |
-| Complex non trivially relocatable type: 90 % small |      125 ns |      154 ns |                  109 ns |                1.1× faster |
-| Complex non trivially relocatable type: 95 % small |      112 ns |      135 ns |                 87.4 ns |                1.3× faster |
-| Complex non trivially relocatable type: 99 % small |     99.9 ns |      118 ns |                 69.1 ns |                1.4× faster |
-| Complex non trivially relocatable type: All small  |     99.4 ns |      113 ns |                 62.3 ns |                1.6× faster |
+| Complex trivially relocatable type: All large      |      370 ns |      334 ns |                  315 ns |                1.2× faster |
+| Complex trivially relocatable type: 50 % small     |      238 ns |      215 ns |                  196 ns |                1.2× faster |
+| Complex trivially relocatable type: 80 % small     |      154 ns |      136 ns |                  116 ns |                1.3× faster |
+| Complex trivially relocatable type: 90 % small     |      125 ns |      111 ns |                 90.5 ns |                1.4× faster |
+| Complex trivially relocatable type: 95 % small     |      110 ns |     97.6 ns |                 77.3 ns |                1.4× faster |
+| Complex trivially relocatable type: 99 % small     |     99.1 ns |     86.4 ns |                 66.7 ns |                1.5× faster |
+| Complex trivially relocatable type: All small      |     96.1 ns |     85.6 ns |                 62.9 ns |                1.5× faster |
+| uint32_t: All large                                |     74.2 ns |     54.3 ns |                 43.2 ns |                1.7× faster |
+| uint32_t: 50 % small                               |     63.4 ns |     47.5 ns |                 33.5 ns |                1.9× faster |
+| uint32_t: 80 % small                               |     51.4 ns |     37.7 ns |                 22.5 ns |                2.3× faster |
+| uint32_t: 90 % small                               |     47.4 ns |     34.4 ns |                 18.5 ns |                2.6× faster |
+| uint32_t: 95 % small                               |     45.2 ns |     32.7 ns |                 16.3 ns |                2.8× faster |
+| uint32_t: 99 % small                               |     43.4 ns |     31.3 ns |                 14.4 ns |                3.0× faster |
+| uint32_t: All small                                |     42.7 ns |       31 ns |                 13.5 ns |                3.2× faster |
+| Complex non trivially relocatable type: All large  |      366 ns |      428 ns |                  388 ns |                1.1× slower |
+| Complex non trivially relocatable type: 50 % small |      237 ns |      263 ns |                  228 ns |                       same |
+| Complex non trivially relocatable type: 80 % small |      153 ns |      164 ns |                  129 ns |                1.2× faster |
+| Complex non trivially relocatable type: 90 % small |      124 ns |      130 ns |                 96.4 ns |                1.3× faster |
+| Complex non trivially relocatable type: 95 % small |      118 ns |      114 ns |                 79.7 ns |                1.5× faster |
+| Complex non trivially relocatable type: 99 % small |     97.8 ns |      101 ns |                 66.9 ns |                1.5× faster |
+| Complex non trivially relocatable type: All small  |     94.4 ns |     95.1 ns |                 62.4 ns |                1.5× faster |
 
 </details>
 
@@ -193,27 +195,27 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Vectors                                            | std::vector | amc::vector | amc::SmallVector<T, 16> | SmallVector vs std::vector |
 | -------------------------------------------------- | ----------: | ----------: | ----------------------: | -------------------------: |
-| Complex trivially relocatable type: All large      |      370 ns |      460 ns |                  390 ns |                1.1× slower |
-| Complex trivially relocatable type: 50 % small     |      240 ns |      293 ns |                  237 ns |                       same |
-| Complex trivially relocatable type: 80 % small     |      158 ns |      198 ns |                  138 ns |                1.1× faster |
-| Complex trivially relocatable type: 90 % small     |      129 ns |      160 ns |                  106 ns |                1.2× faster |
-| Complex trivially relocatable type: 95 % small     |      112 ns |      144 ns |                 89.2 ns |                1.3× faster |
-| Complex trivially relocatable type: 99 % small     |      102 ns |      131 ns |                 75.8 ns |                1.3× faster |
-| Complex trivially relocatable type: All small      |     98.3 ns |      124 ns |                 71.3 ns |                1.4× faster |
-| uint32_t: All large                                |     62.2 ns |     86.8 ns |                   74 ns |                1.2× slower |
-| uint32_t: 50 % small                               |       58 ns |     65.3 ns |                 50.1 ns |                1.2× faster |
-| uint32_t: 80 % small                               |     44.9 ns |     46.6 ns |                 30.8 ns |                1.5× faster |
-| uint32_t: 90 % small                               |     41.3 ns |       40 ns |                   23 ns |                1.8× faster |
-| uint32_t: 95 % small                               |       40 ns |     37.2 ns |                 19.4 ns |                2.1× faster |
-| uint32_t: 99 % small                               |     38.5 ns |     34.8 ns |                 16.1 ns |                2.4× faster |
-| uint32_t: All small                                |     37.7 ns |     33.9 ns |                 15.6 ns |                2.4× faster |
-| Complex non trivially relocatable type: All large  |      362 ns |      525 ns |                  490 ns |                1.4× slower |
-| Complex non trivially relocatable type: 50 % small |      237 ns |      329 ns |                  288 ns |                1.2× slower |
-| Complex non trivially relocatable type: 80 % small |      151 ns |      202 ns |                  160 ns |                1.1× slower |
-| Complex non trivially relocatable type: 90 % small |      123 ns |      161 ns |                  116 ns |                1.1× faster |
-| Complex non trivially relocatable type: 95 % small |      109 ns |      141 ns |                   94 ns |                1.2× faster |
-| Complex non trivially relocatable type: 99 % small |     96.5 ns |      122 ns |                 76.7 ns |                1.3× faster |
-| Complex non trivially relocatable type: All small  |     93.3 ns |      118 ns |                 71.3 ns |                1.3× faster |
+| Complex trivially relocatable type: All large      |      360 ns |      375 ns |                  352 ns |                       same |
+| Complex trivially relocatable type: 50 % small     |      235 ns |      243 ns |                  218 ns |                1.1× faster |
+| Complex trivially relocatable type: 80 % small     |      151 ns |      153 ns |                  133 ns |                1.1× faster |
+| Complex trivially relocatable type: 90 % small     |      123 ns |      124 ns |                  102 ns |                1.2× faster |
+| Complex trivially relocatable type: 95 % small     |      110 ns |      109 ns |                 87.6 ns |                1.3× faster |
+| Complex trivially relocatable type: 99 % small     |     99.4 ns |     97.3 ns |                 75.4 ns |                1.3× faster |
+| Complex trivially relocatable type: All small      |     96.6 ns |     97.7 ns |                 72.1 ns |                1.3× faster |
+| uint32_t: All large                                |     61.5 ns |     53.2 ns |                 49.1 ns |                1.3× faster |
+| uint32_t: 50 % small                               |     55.1 ns |     46.1 ns |                   37 ns |                1.5× faster |
+| uint32_t: 80 % small                               |     44.1 ns |       37 ns |                 24.4 ns |                1.8× faster |
+| uint32_t: 90 % small                               |     40.7 ns |     33.7 ns |                 20.1 ns |                2.0× faster |
+| uint32_t: 95 % small                               |     38.9 ns |     32.3 ns |                 17.9 ns |                2.2× faster |
+| uint32_t: 99 % small                               |     37.3 ns |     31.2 ns |                 15.7 ns |                2.4× faster |
+| uint32_t: All small                                |     37.1 ns |     30.7 ns |                 14.9 ns |                2.5× faster |
+| Complex non trivially relocatable type: All large  |      358 ns |      454 ns |                  411 ns |                1.1× slower |
+| Complex non trivially relocatable type: 50 % small |      233 ns |      284 ns |                  247 ns |                1.1× slower |
+| Complex non trivially relocatable type: 80 % small |      151 ns |      179 ns |                  144 ns |                       same |
+| Complex non trivially relocatable type: 90 % small |      123 ns |      144 ns |                  108 ns |                1.1× faster |
+| Complex non trivially relocatable type: 95 % small |      109 ns |      125 ns |                 90.9 ns |                1.2× faster |
+| Complex non trivially relocatable type: 99 % small |       98 ns |      111 ns |                   76 ns |                1.3× faster |
+| Complex non trivially relocatable type: All small  |     94.4 ns |      107 ns |                 73.2 ns |                1.3× faster |
 
 </details>
 
@@ -221,17 +223,17 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Operation                                                        | std::set | std::unordered_set | amc::FlatSet | amc vs std::set |
 | ---------------------------------------------------------------- | -------: | -----------------: | -----------: | --------------: |
-| Complex trivially relocatable type: Insert 200 random values     |  4.43 µs |                    |       3.2 µs |     1.4× faster |
-| Complex trivially relocatable type: Copy, erase all of 1 000     |   109 µs |                    |      47.8 µs |     2.3× faster |
-| Complex trivially relocatable type: Lookup in 1 000 000          |  1.13 µs |                    |       210 ns |     5.4× faster |
-| uint32_t: Insert 200 random values                               |  2.75 µs |            3.72 µs |      1.26 µs |     2.2× faster |
-| uint32_t: Copy, erase all of 100                                 |  1.33 µs |             1.2 µs |       429 ns |     3.1× faster |
-| uint32_t: Copy, erase all of 1 000                               |  16.6 µs |            24.4 µs |      9.76 µs |     1.7× faster |
-| uint32_t: Copy, erase all of 10 000                              |   796 µs |             291 µs |       920 µs |     1.2× slower |
-| uint32_t: Copy, erase all of 100 000                             |    15 ms |            4.59 ms |      69.9 ms |     4.7× slower |
-| Complex non trivially relocatable type: Insert 200 random values |  4.44 µs |                    |      18.8 µs |     4.2× slower |
-| Complex non trivially relocatable type: Copy, erase all of 1 000 |   108 µs |                    |       360 µs |     3.3× slower |
-| Complex non trivially relocatable type: Lookup in 100 000        |   268 ns |                    |       106 ns |     2.5× faster |
+| Complex trivially relocatable type: Insert 200 random values     |  4.47 µs |                    |         3 µs |     1.5× faster |
+| Complex trivially relocatable type: Copy, erase all of 1 000     |   107 µs |                    |      64.7 µs |     1.6× faster |
+| Complex trivially relocatable type: Lookup in 1 000 000          |  1.09 µs |                    |       190 ns |     5.7× faster |
+| uint32_t: Insert 200 random values                               |  2.83 µs |            3.39 µs |      1.13 µs |     2.5× faster |
+| uint32_t: Copy, erase all of 100                                 |  1.39 µs |            1.23 µs |       424 ns |     3.3× faster |
+| uint32_t: Copy, erase all of 1 000                               |  16.7 µs |            24.2 µs |       9.6 µs |     1.7× faster |
+| uint32_t: Copy, erase all of 10 000                              |   803 µs |             287 µs |       930 µs |     1.2× slower |
+| uint32_t: Copy, erase all of 100 000                             |    15 ms |             4.6 ms |      69.6 ms |     4.7× slower |
+| Complex non trivially relocatable type: Insert 200 random values |  4.47 µs |                    |      18.6 µs |     4.2× slower |
+| Complex non trivially relocatable type: Copy, erase all of 1 000 |   108 µs |                    |       377 µs |     3.5× slower |
+| Complex non trivially relocatable type: Lookup in 100 000        |   252 ns |                    |      95.1 ns |     2.6× faster |
 
 </details>
 
@@ -239,17 +241,17 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Operation                                                        | std::set | std::unordered_set | amc::FlatSet | amc vs std::set |
 | ---------------------------------------------------------------- | -------: | -----------------: | -----------: | --------------: |
-| Complex trivially relocatable type: Insert 200 random values     |  4.71 µs |                    |       3.2 µs |     1.5× faster |
-| Complex trivially relocatable type: Copy, erase all of 1 000     |   111 µs |                    |      47.9 µs |     2.3× faster |
-| Complex trivially relocatable type: Lookup in 1 000 000          |   486 ns |                    |       127 ns |     3.8× faster |
-| uint32_t: Insert 200 random values                               |  3.27 µs |            3.05 µs |      3.04 µs |     1.1× faster |
-| uint32_t: Copy, erase all of 100                                 |  1.38 µs |            1.12 µs |      1.21 µs |     1.1× faster |
-| uint32_t: Copy, erase all of 1 000                               |  17.8 µs |            23.3 µs |      21.2 µs |     1.2× slower |
-| uint32_t: Copy, erase all of 10 000                              |   826 µs |             276 µs |       704 µs |     1.2× faster |
-| uint32_t: Copy, erase all of 100 000                             |  15.3 ms |            4.48 ms |      67.5 ms |     4.4× slower |
-| Complex non trivially relocatable type: Insert 200 random values |  4.77 µs |                    |      20.7 µs |     4.4× slower |
-| Complex non trivially relocatable type: Copy, erase all of 1 000 |   110 µs |                    |       179 µs |     1.6× slower |
-| Complex non trivially relocatable type: Lookup in 100 000        |  97.4 ns |                    |      76.9 ns |     1.3× faster |
+| Complex trivially relocatable type: Insert 200 random values     |  4.79 µs |                    |      3.11 µs |     1.5× faster |
+| Complex trivially relocatable type: Copy, erase all of 1 000     |   114 µs |                    |      67.8 µs |     1.7× faster |
+| Complex trivially relocatable type: Lookup in 1 000 000          |   532 ns |                    |       129 ns |     4.1× faster |
+| uint32_t: Insert 200 random values                               |  3.36 µs |            2.92 µs |      2.93 µs |     1.1× faster |
+| uint32_t: Copy, erase all of 100                                 |  1.39 µs |            1.13 µs |       1.2 µs |     1.2× faster |
+| uint32_t: Copy, erase all of 1 000                               |  17.8 µs |            23.4 µs |        21 µs |     1.2× slower |
+| uint32_t: Copy, erase all of 10 000                              |   829 µs |             285 µs |       705 µs |     1.2× faster |
+| uint32_t: Copy, erase all of 100 000                             |  16.4 ms |             4.6 ms |      67.4 ms |     4.1× slower |
+| Complex non trivially relocatable type: Insert 200 random values |  4.83 µs |                    |        20 µs |     4.1× slower |
+| Complex non trivially relocatable type: Copy, erase all of 1 000 |   114 µs |                    |       198 µs |     1.7× slower |
+| Complex non trivially relocatable type: Lookup in 100 000        |   117 ns |                    |        78 ns |     1.5× faster |
 
 </details>
 
@@ -257,12 +259,12 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Elements   | std::set          | std::unordered_set | amc::FlatSet      |
 | ---------- | ----------------: | -----------------: | ----------------: |
-| 100        | 22.9 ns / 24.3 ns |    7.04 ns / 14 ns |   24 ns / 26.3 ns |
-| 1 000      | 34.4 ns / 35.2 ns |  7.74 ns / 14.6 ns |   37 ns / 39.6 ns |
-| 10 000     | 58.8 ns / 59.8 ns |  9.29 ns / 20.7 ns | 48.9 ns / 50.5 ns |
-| 100 000    |   112 ns / 114 ns |  9.23 ns / 39.1 ns |   64 ns / 65.9 ns |
-| 1 000 000  |   536 ns / 568 ns |   56.4 ns / 319 ns | 94.9 ns / 95.8 ns |
-| 10 000 000 |  1.2 µs / 1.24 µs |   75.6 ns / 464 ns |   207 ns / 288 ns |
+| 100        | 22.5 ns / 23.9 ns |    7.44 ns / 14 ns | 24.1 ns / 25.9 ns |
+| 1 000      | 34.7 ns / 34.6 ns |  8.17 ns / 14.4 ns |   36.9 ns / 39 ns |
+| 10 000     | 57.6 ns / 57.4 ns |  9.73 ns / 20.3 ns | 49.1 ns / 50.1 ns |
+| 100 000    |   109 ns / 109 ns |  9.56 ns / 39.1 ns | 63.8 ns / 66.3 ns |
+| 1 000 000  |   551 ns / 591 ns |   55.9 ns / 315 ns | 95.6 ns / 96.9 ns |
+| 10 000 000 | 1.19 µs / 1.22 µs |   75.6 ns / 464 ns |   204 ns / 285 ns |
 
 </details>
 
@@ -270,12 +272,12 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 
 | Elements   | std::set          | std::unordered_set | amc::FlatSet      |
 | ---------- | ----------------: | -----------------: | ----------------: |
-| 100        | 13.8 ns / 22.5 ns |  7.38 ns / 14.4 ns | 10.7 ns / 18.2 ns |
-| 1 000      | 21.9 ns / 31.3 ns |  7.97 ns / 14.7 ns | 11.7 ns / 21.9 ns |
-| 10 000     | 33.2 ns / 52.9 ns |  9.57 ns / 21.1 ns |     21 ns / 29 ns |
-| 100 000    |  58.3 ns / 108 ns |   9.5 ns / 39.4 ns | 29.7 ns / 42.6 ns |
-| 1 000 000  |   248 ns / 658 ns |   57.4 ns / 321 ns | 46.2 ns / 89.2 ns |
-| 10 000 000 |  605 ns / 1.26 µs |   76.5 ns / 466 ns |   259 ns / 548 ns |
+| 100        | 13.8 ns / 22.6 ns |  7.34 ns / 14.1 ns |   10.8 ns / 18 ns |
+| 1 000      |     22 ns / 31 ns |  7.95 ns / 14.6 ns | 11.7 ns / 21.8 ns |
+| 10 000     |   33 ns / 51.8 ns |  9.54 ns / 20.7 ns | 21.2 ns / 28.7 ns |
+| 100 000    |  59.9 ns / 105 ns |   9.7 ns / 39.8 ns | 30.1 ns / 42.7 ns |
+| 1 000 000  |   268 ns / 703 ns |   58.7 ns / 349 ns |   50.2 ns / 80 ns |
+| 10 000 000 |  650 ns / 1.36 µs |   77.2 ns / 475 ns |   306 ns / 488 ns |
 
 </details>
 

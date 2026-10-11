@@ -1094,7 +1094,8 @@ TEST(VectorTest, InsertCopyThrowsKeepsElements) {
 template <class VectorType>
 void CheckGrowAllocationFailureKeepsElements() {
   using Type = typename VectorType::value_type;
-  for (int nbElems : {0, 2, 3, 8}) {
+  // 300 elements take more than SimpleAllocator::kMaxCopiedSize bytes: reallocated with 'realloc' rather than a copy
+  for (int nbElems : {0, 2, 3, 8, 300}) {
     VectorType v;
     for (int i = 0; i < nbElems; ++i) {
       v.push_back(Type(i));
@@ -1358,7 +1359,59 @@ TEST(VectorTest, GrowBeyondMaxSizeThrows) {
   CheckGrowBeyondMaxSizeThrows<inplace_vector<int, 10>, std::bad_alloc>();
 }
 
+/// Capacities taken by a vector while 'nbElems' elements are pushed back, starting from its initial one.
+template <class VectorType>
+std::vector<std::size_t> GrowthCapacities(int nbElems) {
+  VectorType v;
+  std::vector<std::size_t> capacities{static_cast<std::size_t>(v.capacity())};
+  for (int i = 0; i < nbElems; ++i) {
+    v.emplace_back();
+    if (static_cast<std::size_t>(v.capacity()) != capacities.back()) {
+      capacities.push_back(static_cast<std::size_t>(v.capacity()));
+    }
+  }
+  return capacities;
+}
+
+// The capacity of a growing vector doubles while it takes fewer bytes than vec::kMaxDoublingBytes (reallocating a small
+// block costs more than the memory left unused), then grows by a factor of 1.5 to save memory.
+TEST(VectorTest, GrowthFactor) {
+  using Sizes = std::vector<std::size_t>;
+  using SmallIntVector = SmallVector<int32_t, 4>;
+  using Elem1500 = std::array<char, 1500>;
+  using Elem5000 = std::array<char, 5000>;
+  using Elem5000StdVector = vector<Elem5000, std::allocator<Elem5000>>;
+  static_assert(vec::kMaxDoublingBytes == 4096U, "the expected capacities depend on it");
+  EXPECT_EQ(GrowthCapacities<vector<int32_t>>(2500),
+            Sizes({0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 1536, 2304, 3456}));
+  // From the inline storage to the dynamic one, then within the dynamic one
+  EXPECT_EQ(GrowthCapacities<SmallIntVector>(40), Sizes({4, 8, 16, 32, 64}));
+  // 2 elements take fewer than 4096 bytes, 4 elements more
+  EXPECT_EQ(GrowthCapacities<vector<Elem1500>>(10), Sizes({0, 1, 2, 4, 6, 9, 14}));
+  // Without 'reallocate' in the allocator
+  EXPECT_EQ(GrowthCapacities<Elem5000StdVector>(5), Sizes({0, 1, 2, 3, 5}));
+}
+
+// The basic allocator of amc::allocator reallocates small blocks by a copy and larger ones with 'realloc': both keep
+// the bytes fitting in the new block, when growing as well as when shrinking. A null pointer is allocated.
+TEST(VectorTest, SimpleAllocatorReallocate) {
+  constexpr std::size_t kMaxCopiedSize = SimpleAllocator::kMaxCopiedSize;
+  const unsigned char kBytes[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  SimpleAllocator alloc;
+  std::size_t size = sizeof(kBytes);
+  auto* p = static_cast<unsigned char*>(alloc.reallocate(nullptr, 0, size));
+  std::copy(std::begin(kBytes), std::end(kBytes), p);
+  // copy, 'realloc' growing, 'realloc' shrinking, copy shrinking
+  for (std::size_t newSize : {kMaxCopiedSize, 2U * kMaxCopiedSize, kMaxCopiedSize + 1U, std::size_t{4}}) {
+    p = static_cast<unsigned char*>(alloc.reallocate(p, size, newSize));
+    size = newSize;
+    EXPECT_TRUE(std::equal(p, p + std::min(size, sizeof(kBytes)), kBytes));
+  }
+  alloc.deallocate(p, size);
+}
+
 TEST(VectorTest, RelocatabilityAvoidsMoveOperations) {
+  // Allocates its storage: TestReallocateAllocator does not reallocate a null pointer
   vector<MoveForbidden<true>, BasicAllocatorWrapper<MoveForbidden<true>, TestReallocateAllocator>> v(10);
   EXPECT_EQ(v.capacity(), v.size());
   // Should use TestAllocator::reallocate: no forbidden move / new allocate operation
@@ -1406,6 +1459,13 @@ TEST(VectorTest, AllocationSizeOverflow) {
   EXPECT_EQ(v.max_size(), alloc.max_size());
   EXPECT_THROW(v.reserve(alloc.max_size() + 1U), std::overflow_error);
   EXPECT_EQ(v, VectorType({1, 2}));
+}
+
+// Like 'free', amc::allocator deallocates a null pointer, including for over-aligned types (whose allocated blocks
+// start before their elements).
+TEST(VectorTest, AllocatorDeallocatesNullPointer) {
+  amc::allocator<int>().deallocate(nullptr, 0U);
+  amc::allocator<OverAlignedType>().deallocate(nullptr, 0U);
 }
 
 // Allocators with a state are handled like in the standard containers: memory is only deallocated by an allocator

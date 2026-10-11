@@ -613,7 +613,10 @@ class PropagatingArenaAllocator : public BasicAllocatorWrapper<T, ArenaAllocator
 };
 
 struct BiggerAllocateException {};
+struct NullReallocateException {};
 
+/// Its 'reallocate' throws for a null pointer: the vectors allocate their first storage rather than reallocating a null
+/// pointer, which is slower with 'realloc'.
 class TestReallocateAllocator {
  public:
   void *allocate(size_t n) {
@@ -623,7 +626,10 @@ class TestReallocateAllocator {
     return bytes;
   }
 
-  void *reallocate(void *, size_t, size_t newSz) {
+  void *reallocate(void *p, size_t, size_t newSz) {
+    if (!p) {
+      throw NullReallocateException();
+    }
     if (newSz > 20) {
       throw std::bad_alloc();
     }

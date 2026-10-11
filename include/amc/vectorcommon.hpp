@@ -736,6 +736,10 @@ class StdVectorBase : private Alloc {
   template <class OSizeType>
   void swapDynStorage(StaticVectorBase<T, OSizeType>&) noexcept {}
 
+  /// Same as 'size() == capacity()', but an equality lets the compiler replace the capacity by the size in 'grow':
+  /// Clang then updates the next capacity at each element of a loop of 'emplace_back' (11 % slower).
+  bool isFull() const noexcept { return _capa <= _size; }
+
   void incrSize() noexcept { ++_size; }
   void decrSize() noexcept { --_size; }
   SizeType& msize() noexcept { return _size; }
@@ -914,6 +918,10 @@ class SmallVectorBase : private Alloc {
   void swapDynStorage(StaticVectorBase<T, OSizeType>&) noexcept {}
 
   static constexpr SizeType kMaxSize = std::numeric_limits<SizeType>::max();
+
+  /// An equality, unlike StdVectorBase::isFull: GCC simplifies it with the state encoding above, but not an inequality,
+  /// which adds instructions to each 'emplace_back' of a small vector (5 % slower).
+  bool isFull() const noexcept { return size() == capacity(); }
 
   void incrSize() noexcept {
     if (isSmall()) {
@@ -1141,7 +1149,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
     SizeType nElemsToShift = static_cast<SizeType>(this->size() - (position - this->begin()));
     iterator pos;
-    if (this->size() == this->capacity()) {
+    if (this->isFull()) {
       // construct before possible iterator invalidation from grow in constructor arguments
       TemporaryElem<T> e(std::forward<Args>(args)...);
       SizeType idx = static_cast<SizeType>(position - this->begin());
@@ -1160,7 +1168,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   template <class... Args>
   reference emplace_back(Args&&... args) {
     iterator endIt;
-    if (this->size() == this->capacity()) {
+    if (this->isFull()) {
       // construct before possible iterator invalidation from grow in constructor arguments
       TemporaryElem<T> e(std::forward<Args>(args)...);
       this->grow(this->size() + 1U);

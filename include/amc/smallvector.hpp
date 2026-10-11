@@ -17,10 +17,22 @@
 namespace amc {
 namespace vec {
 
+/// Capacities of fewer bytes double when a vector grows, larger ones grow by a factor of 1.5: reallocating a small
+/// block costs more than the memory left unused, and the smaller factor saves memory for large blocks.
+constexpr std::size_t kMaxDoublingBytes = 4096;
+
+/// Capacity below which a vector of T doubles its capacity when growing (see kMaxDoublingBytes).
+template <class T>
+constexpr std::uintmax_t MaxDoublingCapacity() {
+  return (kMaxDoublingBytes + sizeof(T) - 1U) / sizeof(T);
+}
+
 /// New capacity for at least 'newSize' elements, not exceeding 'maxCapa' (see MaxCapacity).
+/// Capacities below 'maxDoublingCapa' double, larger ones grow by a factor of 1.5.
 /// 'exact' is only set by 'reserve', which allocates exactly the requested capacity.
 template <class SizeType>
-inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::uintmax_t maxCapa, bool exact) {
+inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::uintmax_t maxCapa,
+                                 std::uintmax_t maxDoublingCapa, bool exact) {
   if (AMC_UNLIKELY(maxCapa < newSize)) {
     throw std::overflow_error(
         "Attempt to use more elements than max_size(). Use a larger size_type if it is the limit");
@@ -28,9 +40,10 @@ inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::
   if (exact) {
     return static_cast<SizeType>(newSize);
   }
-  // Realloc * 1.5 except if minimum requested size is larger (choose it in this case).
-  return static_cast<SizeType>(std::min(
-      std::max(static_cast<std::uintmax_t>((3U * static_cast<std::uintmax_t>(oldCapa) + 1U) / 2U), newSize), maxCapa));
+  const auto capa = static_cast<std::uintmax_t>(oldCapa);
+  const std::uintmax_t grownCapa = capa < maxDoublingCapa ? 2U * capa : (3U * capa + 1U) / 2U;
+  // Except if the minimum requested size is larger (choose it in this case)
+  return static_cast<SizeType>(std::min(std::max(grownCapa, newSize), maxCapa));
 }
 
 template <class Alloc>
@@ -62,13 +75,15 @@ inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, Siz
   return newPtr;
 }
 
+// 'grow' is declared inline: GCC otherwise stops inlining it into the modifiers, and the vector then stays in memory
+// instead of registers in the loops that fill it (up to 20 % slower on small vectors).
 template <class T, class Alloc, class SizeType>
-void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
+inline void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
   SizeType newCapa;
   const std::uintmax_t maxCapa = MaxCapacity<SizeType>(static_cast<const Alloc&>(*this));
   if (isSmall()) {
     SizeType oldCapa = _size == std::numeric_limits<SizeType>::max() ? _capa : _size;
-    newCapa = SafeNextCapacity(oldCapa, minSize, maxCapa, exact);
+    newCapa = SafeNextCapacity(oldCapa, minSize, maxCapa, MaxDoublingCapacity<T>(), exact);
     T* dynStorage = this->allocate(static_cast<std::size_t>(newCapa));
     try {
       (void)amc::uninitialized_relocate_n(_storage.ptr(), _capa, dynStorage);
@@ -79,16 +94,19 @@ void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exac
     _storage.setDyn(dynStorage);
     _size = _capa;
   } else {
-    newCapa = SafeNextCapacity(_capa, minSize, maxCapa, exact);
+    newCapa = SafeNextCapacity(_capa, minSize, maxCapa, MaxDoublingCapacity<T>(), exact);
     _storage.setDyn(vec::Reallocate(static_cast<Alloc&>(*this), _storage.dyn(), _capa, newCapa, _size));
   }
   _capa = newCapa;
 }
 
 template <class T, class Alloc, class SizeType>
-void StdVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
-  SizeType newCapa = SafeNextCapacity(_capa, minSize, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)), exact);
-  _storage = vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, newCapa, _size);
+inline void StdVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
+  SizeType newCapa = SafeNextCapacity(_capa, minSize, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)),
+                                      MaxDoublingCapacity<T>(), exact);
+  // Without capacity there is no storage: allocate it rather than reallocating a null pointer, which is slower
+  _storage = _capa == 0U ? this->allocate(static_cast<std::size_t>(newCapa))
+                         : vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, newCapa, _size);
   _capa = newCapa;
 }
 
