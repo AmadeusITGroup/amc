@@ -764,6 +764,23 @@ TEST(VectorTest, NonCopyableType) {
   EXPECT_EQ(v.back(), NonCopyableType(1));
 }
 
+template <class VecType>
+bool UsesInlineStorage(const VecType& v) {
+  const char* first = reinterpret_cast<const char*>(std::addressof(v));
+  const char* data = reinterpret_cast<const char*>(v.data());
+  return first <= data && data < first + sizeof(VecType);
+}
+
+// A small SmallVector has its inline capacity, and a large one always has a larger capacity.
+template <class VecType>
+void ExpectInlineCapacityInvariant(const VecType& v) {
+  if (UsesInlineStorage(v)) {
+    EXPECT_EQ(v.capacity(), VecType::kInlineCapacity);
+  } else {
+    EXPECT_GT(v.capacity(), VecType::kInlineCapacity);
+  }
+}
+
 #ifdef AMC_NONSTD_FEATURES
 TEST(VectorTest, CustomSwap) {
   using ObjType = NonTriviallyRelocatableType;
@@ -884,7 +901,217 @@ TEST(VectorTest, Swap2DifferentSizeTypes) {
   CheckSwap2DifferentSizeTypes<vector<int, Alloc, uint8_t>, SmallVector<int, 4, Alloc, uint32_t>>();
   CheckSwap2DifferentSizeTypes<SmallVector<int, 4, Alloc, uint8_t>, SmallVector<int, 8, Alloc, uint32_t>>();
 }
+
+// swap2 deeply swapping the elements of a small SmallVector should keep it small, with its elements inline, as swap2
+// exchanging the dynamic storages of large vectors should keep them large, whatever their sizes and capacities.
+template <class OtherVec>
+void CheckSwap2SmallVectorStates() {
+  using SV = SmallVector<int, 2>;
+  {
+    SV sv{1};
+    OtherVec o{2, 3};
+    sv.swap2(o);
+    EXPECT_TRUE(UsesInlineStorage(sv));
+    EXPECT_EQ(sv, SV({2, 3}));
+    EXPECT_EQ(sv.capacity(), 2U);
+    EXPECT_EQ(o, OtherVec{1});
+    o.swap2(sv);
+    EXPECT_TRUE(UsesInlineStorage(sv));
+    EXPECT_EQ(sv, SV{1});
+    EXPECT_EQ(o, OtherVec({2, 3}));
+    sv.push_back(4);
+    EXPECT_TRUE(UsesInlineStorage(sv));
+    sv.push_back(5);
+    EXPECT_FALSE(UsesInlineStorage(sv));
+    EXPECT_EQ(sv, SV({1, 4, 5}));
+  }
+  {
+    SV sv{1, 2};
+    OtherVec o{3};
+    o.swap2(sv);
+    EXPECT_TRUE(UsesInlineStorage(sv));
+    EXPECT_EQ(sv, SV{3});
+    EXPECT_EQ(sv.capacity(), 2U);
+    EXPECT_EQ(o, OtherVec({1, 2}));
+    sv.push_back(4);
+    EXPECT_TRUE(UsesInlineStorage(sv));
+    EXPECT_EQ(sv, SV({3, 4}));
+  }
+}
+
+TEST(VectorTest, Swap2SmallVectorStates) {
+  CheckSwap2SmallVectorStates<FixedCapacityVector<int, 2>>();
+  CheckSwap2SmallVectorStates<SmallVector<int, 3>>();
+  CheckSwap2SmallVectorStates<vector<int>>();
+
+  // large vectors exchanging their dynamic storages, the capacity of each being smaller than the size of the other
+  using SV = SmallVector<int, 2>;
+  const std::initializer_list<int> values{1, 2, 3, 4, 5, 6, 7, 8};
+  {
+    SV sv(values);
+    vector<int> v{9, 10, 11};
+    v.shrink_to_fit();
+    sv.swap2(v);
+    EXPECT_EQ(sv, SV({9, 10, 11}));
+    EXPECT_EQ(sv.capacity(), 3U);
+    EXPECT_EQ(v, vector<int>(values));
+    v.swap2(sv);
+    EXPECT_EQ(sv, SV(values));
+    EXPECT_EQ(v, vector<int>({9, 10, 11}));
+  }
+  {
+    SV sv(values);
+    SmallVector<int, 1> o{9, 10, 11};
+    o.shrink_to_fit();
+    sv.swap2(o);
+    EXPECT_EQ(sv, SV({9, 10, 11}));
+    EXPECT_EQ(sv.capacity(), 3U);
+    EXPECT_EQ(o, (SmallVector<int, 1>(values)));
+    o.swap2(sv);
+    EXPECT_EQ(sv, SV(values));
+    EXPECT_EQ(o, (SmallVector<int, 1>{9, 10, 11}));
+  }
+}
+
+// swap2 only gives a SmallVector a dynamic storage larger than its inline capacity: otherwise, elements are swapped one
+// by one, as with a vector without storage.
+TEST(VectorTest, Swap2SmallVectorOnlyTakesStorageLargerThanInline) {
+  using SV = SmallVector<int, 4>;
+  const std::initializer_list<int> values{1, 2, 3, 4, 5, 6};
+  for (uint32_t capacity = 0; capacity <= 6; ++capacity) {
+    for (int fromSmallVector = 0; fromSmallVector < 2; ++fromSmallVector) {
+      SV sv(values);
+      sv.reserve(8);
+      vector<int> v;
+      v.reserve(capacity);
+      for (int i = 0; i < static_cast<int>(capacity) && i < 3; ++i) {
+        v.push_back(10 + i);
+      }
+      const SV expected(v.begin(), v.end());
+      const int* svData = sv.data();
+      const int* vData = v.data();
+      if (fromSmallVector == 1) {
+        sv.swap2(v);
+      } else {
+        v.swap2(sv);
+      }
+      EXPECT_EQ(sv, expected);
+      EXPECT_EQ(v, vector<int>(values));
+      ExpectInlineCapacityInvariant(sv);
+      EXPECT_FALSE(UsesInlineStorage(sv));
+      if (capacity > 4U) {
+        EXPECT_EQ(sv.data(), vData);
+        EXPECT_EQ(v.data(), svData);
+        EXPECT_EQ(sv.capacity(), capacity);
+      } else {
+        EXPECT_EQ(sv.data(), svData);
+        EXPECT_EQ(sv.capacity(), 8U);
+      }
+    }
+  }
+
+  // between large SmallVectors of different inline capacities
+  for (uint32_t capacity = 4; capacity <= 9; capacity += 5) {
+    for (int fromLargerInline = 0; fromLargerInline < 2; ++fromLargerInline) {
+      SmallVector<int, 8> sv8(10, 1);
+      SmallVector<int, 2> sv2{7, 8, 9};
+      sv2.reserve(capacity);
+      EXPECT_EQ(sv2.capacity(), capacity);
+      const int* sv8Data = sv8.data();
+      const int* sv2Data = sv2.data();
+      if (fromLargerInline == 1) {
+        sv8.swap2(sv2);
+      } else {
+        sv2.swap2(sv8);
+      }
+      EXPECT_EQ(sv8, (SmallVector<int, 8>{7, 8, 9}));
+      EXPECT_EQ(sv2, (SmallVector<int, 2>(10, 1)));
+      ExpectInlineCapacityInvariant(sv8);
+      ExpectInlineCapacityInvariant(sv2);
+      // sv8 can only take the storage of sv2 if its capacity is larger than 8
+      EXPECT_EQ(sv8.data() == sv2Data, capacity > 8U);
+      EXPECT_EQ(sv2.data() == sv8Data, capacity > 8U);
+    }
+  }
+}
 #endif
+
+// A SmallVector built from a vector steals its dynamic storage only if its capacity is larger than the inline one.
+// Otherwise, the elements are relocated inline: a large SmallVector always has a capacity larger than its inline one,
+// which the move assignment of a small SmallVector relies on.
+template <class T>
+void CheckSmallVectorFromVector() {
+  using SV = SmallVector<T, 4>;
+  for (uint32_t capacity = 0; capacity <= 6; ++capacity) {
+    for (uint32_t size = 0; size <= capacity; ++size) {
+      vector<T> v;
+      v.reserve(capacity);
+      SV expected;
+      for (uint32_t i = 0; i < size; ++i) {
+        v.emplace_back(i);
+        expected.emplace_back(i);
+      }
+      const T* data = v.data();
+      SV sv(std::move(v));
+      EXPECT_TRUE(v.empty());
+      EXPECT_EQ(v.capacity(), 0U);
+      EXPECT_EQ(v.data(), nullptr);
+      EXPECT_EQ(sv, expected);
+      ExpectInlineCapacityInvariant(sv);
+      EXPECT_EQ(UsesInlineStorage(sv), capacity <= 4U);
+      if (capacity > 4U) {
+        EXPECT_EQ(sv.data(), data);
+        EXPECT_EQ(sv.capacity(), capacity);
+      }
+
+      // move assignment of a full small SmallVector, which keeps the dynamic storage of a large one
+      const T* svData = sv.data();
+      sv = SV{10, 11, 12, 13};
+      EXPECT_EQ(sv, (SV{10, 11, 12, 13}));
+      ExpectInlineCapacityInvariant(sv);
+      if (capacity > 4U) {
+        EXPECT_EQ(sv.data(), svData);
+      }
+      sv.emplace_back(14);
+      EXPECT_EQ(sv, (SV{10, 11, 12, 13, 14}));
+      ExpectInlineCapacityInvariant(sv);
+    }
+  }
+}
+
+TEST(VectorTest, SmallVectorFromVector) {
+  CheckSmallVectorFromVector<int>();
+  CheckSmallVectorFromVector<ComplexTriviallyRelocatableType>();
+  CheckSmallVectorFromVector<ComplexNonTriviallyRelocatableType>();
+}
+
+// If a move throws when relocating the elements of the vector inline, the vector keeps all of them (ThrowingMoveType
+// copies its value when moved).
+TEST(VectorTest, SmallVectorFromVectorThrowingMove) {
+  using SV = SmallVector<ThrowingMoveType, 4>;
+  const int nbLive = ThrowingMoveType::NbLive();
+  {
+    vector<ThrowingMoveType> v;
+    v.reserve(3);
+    v.emplace_back(1);
+    v.emplace_back(2);
+    v.emplace_back(3);
+    ThrowingMoveType::NbMovesBeforeThrow() = 1;
+    EXPECT_THROW({ SV sv(std::move(v)); }, MoveForbiddenException);
+    ThrowingMoveType::NbMovesBeforeThrow() = -1;
+    EXPECT_EQ(v.size(), 3U);
+    EXPECT_EQ(v.capacity(), 3U);
+    EXPECT_EQ(v.back(), 3);
+    EXPECT_EQ(ThrowingMoveType::NbLive(), nbLive + 3);
+    SV sv(std::move(v));
+    EXPECT_TRUE(UsesInlineStorage(sv));
+    EXPECT_EQ(sv.size(), 3U);
+    EXPECT_EQ(sv[0], 1);
+    EXPECT_EQ(sv[2], 3);
+    EXPECT_EQ(ThrowingMoveType::NbLive(), nbLive + 3);
+  }
+  EXPECT_EQ(ThrowingMoveType::NbLive(), nbLive);
+}
 
 TEST(VectorTest, TrickyEmplace) {
   using VectorType = vector<ComplexTriviallyRelocatableType>;
@@ -1649,7 +1876,7 @@ TEST(VectorTest, SmallVectorMoveConstructFromVector) {
   EXPECT_EQ(SV(std::move(v)).capacity(), 5U);
   EXPECT_EQ(v.capacity(), 0U);
   v = {1, 2, 3, 4};
-  EXPECT_EQ(SV(std::move(v)).capacity(), 4U);
+  EXPECT_EQ(SV(std::move(v)).capacity(), 5U);  // vector capacity not larger than N: its elements are relocated inline
   EXPECT_EQ(v.capacity(), 0U);
   v = {1, 2, 3, 4, 5, 6};
   EXPECT_EQ(SV(std::move(v)).capacity(), 6U);
@@ -1669,7 +1896,7 @@ TEST(VectorTest, SmallVectorMoveAssignFromVector) {
   EXPECT_EQ(v.capacity(), 0U);
   v = {1, 2, 3, 4};
   sv = std::move(v);
-  EXPECT_EQ(sv.capacity(), 4U);
+  EXPECT_EQ(sv.capacity(), 5U);  // vector capacity not larger than N: its elements are relocated inline
   EXPECT_EQ(v.capacity(), 0U);
   v = {1, 2, 3, 4, 5, 6};
   sv = std::move(v);

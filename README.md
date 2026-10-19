@@ -300,7 +300,7 @@ For all vectors (`FixedCapacityVector`, `SmallVector`, `vector`)
 | `append`       | Same as `insert(vec.end(), ...)`                             |
 | `swap2`        | Swap with all other flavors of vectors, not just `this` type |
 
-For `SmallVector` only, there is a constructor from a rvalue of a `amc::vector` that allows stealing of its dynamic storage.
+For `SmallVector` only, there is a constructor from a rvalue of a `amc::vector` that steals its dynamic storage if its capacity is larger than the inline capacity `N` (otherwise, its elements are relocated inline: a `SmallVector` which allocates always has a capacity larger than `N`).
 
 #### For FlatSet
 | Method          | Description                                                                                |

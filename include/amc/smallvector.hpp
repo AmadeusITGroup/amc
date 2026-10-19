@@ -167,6 +167,9 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
  *           all combinations are possible between the 3 types of vectors.
  *           Note that implementation is not noexcept, adjust capacity needs to be called for both operands.
  *
+ * A SmallVector can be built from a rvalue amc::vector: it steals its dynamic storage if its capacity is larger than
+ * N, otherwise it relocates its elements inline. Indeed, a 'Large' SmallVector always has a capacity larger than N.
+ *
  * In addition, size_type can be configured and is uint32_t by default.
  *
  * If 'Alloc' provides this additional optional method
