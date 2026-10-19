@@ -270,10 +270,9 @@ inline bool CapacitiesFitEachOther(SizeType1 capacity1, SizeType2 capacity2) noe
          static_cast<std::uintmax_t>(capacity2) <= static_cast<std::uintmax_t>(std::numeric_limits<SizeType1>::max());
 }
 
-/// Swap of sizes (or capacities) of different size types.
-/// Requirements: each value fits in the size type of the other one. Callers ensure it: swap2 grows each vector to the
-/// size of the other one first (which throws if it does not fit), and only exchanges dynamic storages whose capacities
-/// fit in the size type of each other.
+/// Swap of sizes (or capacities) of different size types, for vectors exchanging their dynamic storages.
+/// Requirements: each value fits in the size type of the other one. Callers ensure it: swap2 only exchanges dynamic
+/// storages whose capacities fit in the size type of each other.
 template <class SizeType1, class SizeType2>
 inline void swap_sizetype(SizeType1& lhs, SizeType2& rhs) noexcept {
   assert(CapacitiesFitEachOther(lhs, rhs));
@@ -629,7 +628,6 @@ class StaticVectorBase {
 
   void incrSize() noexcept { ++_size; }
   void decrSize() noexcept { --_size; }
-  SizeType& msize() noexcept { return _size; }
   void setSize(SizeType s) noexcept { _size = s; }
 
  private:
@@ -717,15 +715,13 @@ class StdVectorBase : private Alloc {
   template <class, class, class>
   friend class StdVectorBase;
 
-  template <class OSizeType>
-  bool canSwapDynStorage(StaticVectorBase<T, OSizeType>&) const noexcept {
-    return false;
-  }
+  /// Tells whether swap2 can exchange our dynamic storage with the one of 'o', of inline capacity 'oInplaceCapa'.
   template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept;
+  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t,
+                         std::uintmax_t oInplaceCapa) const noexcept;
 
   template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
+  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t, std::uintmax_t) const noexcept {
     return AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
   }
 
@@ -733,8 +729,6 @@ class StdVectorBase : private Alloc {
   void swapDynStorage(VectorType& o) noexcept {
     SwapDynStorage(_storage, o._storage);
   }
-  template <class OSizeType>
-  void swapDynStorage(StaticVectorBase<T, OSizeType>&) noexcept {}
 
   /// Same as 'size() == capacity()', but an equality lets the compiler replace the capacity by the size in 'grow':
   /// Clang then updates the next capacity at each element of a loop of 'emplace_back' (11 % slower).
@@ -804,6 +798,9 @@ class SmallVectorBase : private Alloc {
   /// Maximum size and capacity would make no sense in a SmallVector for a small state, because it could not grow
   /// (it could be transformed into a FixedCapacityVector, or, if larger size is needed, SizeType could be upgraded
   /// to a larger type). This invalid configuration is caught in a static_assert in SmallVector class.
+  /// Invariant: a large SmallVector has a capacity larger than its inline capacity. It grows from the inline capacity,
+  /// shrink_to_fit comes back to the small state if the elements fit inline, and dynamic storages taken from other
+  /// vectors (move construction from a vector, swap2) are larger than the inline capacity too.
   explicit SmallVectorBase(SizeType inplaceCapa) noexcept : _capa(0), _size(inplaceCapa) {}
 
   SmallVectorBase(SizeType inplaceCapa, const Alloc& alloc) noexcept : Alloc(alloc), _capa(0), _size(inplaceCapa) {}
@@ -841,13 +838,23 @@ class SmallVectorBase : private Alloc {
     _size = amc::exchange(o._size, inplaceCapa);
   }
 
-  void move_construct(StdVectorBase<T, Alloc, SizeType>& o) noexcept {
-    if (o._capa != 0) {
-      // Always steal dynamic buffer in this case, to make move construct faster
-      _storage.setDyn(o._storage);
-      o._storage = nullptr;
+  void move_construct(StdVectorBase<T, Alloc, SizeType>& o,
+                      SizeType inplaceCapa) noexcept(is_move_construct_nothrow<T>::value) {
+    if (inplaceCapa < o._capa) {
+      // Steal the dynamic buffer, larger than the inline storage, to make move construct faster
+      _storage.setDyn(amc::exchange(o._storage, nullptr));
       _capa = amc::exchange(o._capa, SizeType{0});
       _size = amc::exchange(o._size, SizeType{0});
+    } else if (o._capa != 0) {
+      // A large SmallVector has a capacity larger than the inline one: relocate the elements of 'o' inline instead.
+      // If a move throws, 'o' keeps all its elements (the moved ones in a moved-from state) and we stay small and
+      // empty.
+      (void)amc::uninitialized_relocate_n(o._storage, o._size, _storage.ptr());
+      setSize(o._size);
+      o._size = 0;
+      o.freeStorage();
+      o._storage = nullptr;
+      o._capa = 0;
     }
   }
 
@@ -858,6 +865,8 @@ class SmallVectorBase : private Alloc {
       // Indeed, capacity cannot shrink, except for shrink_to_fit which resets to small state if possible.
       // Besides, if 'this' is large, let's not shrink to small size and keep our dynamic memory for now.
       // To sum-up, in this context, we do not touch our capacity, only move and relocates o's elements
+      // (move construction from a vector and swap2 only take dynamic storages larger than the inline capacity too)
+      assert(isSmall() || inplaceCapa < _capa);
       move_n(o._storage.ptr(), o._capa, begin(), size());
       // Use setSize for both as it correctly handles the encoding of the full small state
       setSize(o._capa);
@@ -895,27 +904,27 @@ class SmallVectorBase : private Alloc {
   template <class, class, class>
   friend class StdVectorBase;
 
+  /// Tells whether swap2 can exchange our dynamic storage with the one of 'o', our inline capacities being
+  /// 'inplaceCapa' and 'oInplaceCapa': both vectors are large, and a SmallVector only takes a dynamic storage larger
+  /// than its inline capacity (see move_assign).
   template <class OAlloc, class OSizeType>
-  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-    return !isSmall() && AllocatorsAreEqual(get_allocator(), o.get_allocator()) &&
-           CapacitiesFitEachOther(_capa, o._capa);
-  }
-  template <class OSizeType>
-  bool canSwapDynStorage(StaticVectorBase<T, OSizeType>&) const noexcept {
-    return false;
+  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t inplaceCapa,
+                         std::uintmax_t) const noexcept {
+    return !isSmall() && inplaceCapa < static_cast<std::uintmax_t>(o._capa) &&
+           AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
   }
   template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-    return !isSmall() && !o.isSmall() && AllocatorsAreEqual(get_allocator(), o.get_allocator()) &&
-           CapacitiesFitEachOther(_capa, o._capa);
+  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t inplaceCapa,
+                         std::uintmax_t oInplaceCapa) const noexcept {
+    return !isSmall() && !o.isSmall() && inplaceCapa < static_cast<std::uintmax_t>(o._capa) &&
+           oInplaceCapa < static_cast<std::uintmax_t>(_capa) &&
+           AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
   }
 
   template <class VectorType>
   void swapDynStorage(VectorType& o) noexcept {
     SwapDynStorage(_storage, o._storage);
   }
-  template <class OSizeType>
-  void swapDynStorage(StaticVectorBase<T, OSizeType>&) noexcept {}
 
   static constexpr SizeType kMaxSize = std::numeric_limits<SizeType>::max();
 
@@ -957,10 +966,12 @@ class SmallVectorBase : private Alloc {
     }
   }
 
-  /// Access to 'real' size member reference.
-  SizeType& msize() noexcept { return isSmall() ? _capa : _size; }
-  /// Access to 'real' capacity member reference. No need to check for small state here, this method is only called
-  /// for large state vectors.
+  /// Access to 'real' size and capacity member references. No need to check for small state here, these methods are
+  /// only called for large state vectors.
+  SizeType& msize() noexcept {
+    assert(!isSmall());
+    return _size;
+  }
   SizeType& mcapacity() noexcept { return _capa; }
 
   iterator dynStorage() const noexcept { return _storage.dyn(); }
@@ -988,11 +999,13 @@ class SmallVectorBase : private Alloc {
   ElemWithPtrStorage<T> _storage;
 };
 
+/// A large SmallVector only takes a dynamic storage larger than its inline capacity 'oInplaceCapa' (see move_assign).
 template <class T, class Alloc, class SizeType>
 template <class OSizeType, class OAlloc>
-bool StdVectorBase<T, Alloc, SizeType>::canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o) const noexcept {
-  return !o.isSmall() && AllocatorsAreEqual(get_allocator(), o.get_allocator()) &&
-         CapacitiesFitEachOther(_capa, o._capa);
+bool StdVectorBase<T, Alloc, SizeType>::canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t,
+                                                          std::uintmax_t oInplaceCapa) const noexcept {
+  return !o.isSmall() && oInplaceCapa < static_cast<std::uintmax_t>(_capa) &&
+         AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
 }
 
 template <class T, class SizeType, class GrowingPolicy>
@@ -1090,10 +1103,21 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
   template <class, class, class, bool>
   friend class DynamicVector;
 
+  /// swap2 implementation ('o' may be any vector, the inline capacities are only used by the dynamic ones).
+  /// We cannot exchange dynamic storages: swaps all elements, after having checked that each size fits in the capacity
+  /// of the other vector, which may make 'o' grow. Then swaps the sizes with setSize, which keeps the encoding of the
+  /// small state of SmallVector.
   template <class VectorType>
-  void swap2_impl(VectorType& o) noexcept(is_swap_noexcept<T>::value) {
-    swap_deep(this->begin(), this->size(), o.begin(), o.size());
-    swap_sizetype(this->msize(), o.msize());
+  void swap2_impl(VectorType& o, std::uintmax_t, std::uintmax_t) {
+    using OSizeType = typename VectorType::size_type;
+    adjustCapacity(o.size());
+    o.adjustCapacity(this->size());
+    const SizeType size = this->size();
+    const OSizeType oSize = o.size();
+    assert(CapacitiesFitEachOther(size, oSize));
+    swap_deep(this->begin(), size, o.begin(), oSize);
+    this->setSize(static_cast<SizeType>(oSize));
+    o.setSize(static_cast<OSizeType>(size));
   }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
@@ -1112,12 +1136,6 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
   const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v, const T**) const {
     adjustCapacity(neededCapacity);
     return v;
-  }
-
-  template <class VectorType>
-  void adjustEachOtherCapacity(VectorType& o) const {
-    adjustCapacity(o.size());
-    o.adjustCapacity(this->size());
   }
 };
 
@@ -1194,22 +1212,44 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   template <class, class, class, bool>
   friend class DynamicVector;
 
+  /// swap2 implementations, 'inplaceCapa' and 'oInplaceCapa' being the inline capacities of this vector and 'o'.
   template <class OSizeType, class OGrowingPolicy>
-  void swap2_impl(StaticVector<T, OSizeType, OGrowingPolicy>& o) noexcept(is_swap_noexcept<T>::value) {
+  void swap2_impl(StaticVector<T, OSizeType, OGrowingPolicy>& o, std::uintmax_t, std::uintmax_t) {
     // Here 'o' cannot grow so we cannot swap any dynamic storage. Deeply swap all elements
-    swap_deep(this->begin(), this->size(), o.begin(), o.size());
-    swap_sizetype(this->msize(), o.msize());
+    swap2_deep(o);
   }
 
   template <class OAlloc, class OSizeType, bool OWithInlineElems>
-  void swap2_impl(DynamicVector<T, OAlloc, OSizeType, OWithInlineElems>& o) noexcept(is_swap_noexcept<T>::value) {
-    if (this->canSwapDynStorage(o)) {
+  void swap2_impl(DynamicVector<T, OAlloc, OSizeType, OWithInlineElems>& o, std::uintmax_t inplaceCapa,
+                  std::uintmax_t oInplaceCapa) {
+    if (this->canSwapDynStorage(o, inplaceCapa, oInplaceCapa)) {
+      // Both vectors are large: take their size members before swapping the capacities, as a SmallVector compares
+      // them to know its state.
+      SizeType& size = this->msize();
+      OSizeType& oSize = o.msize();
       this->swapDynStorage(o);
       swap_sizetype(this->mcapacity(), o.mcapacity());
+      swap_sizetype(size, oSize);
     } else {
-      swap_deep(this->begin(), this->size(), o.begin(), o.size());
+      swap2_deep(o);
     }
-    swap_sizetype(this->msize(), o.msize());
+  }
+
+  /// Swaps all elements, after having grown each vector to the size of the other one (which throws if it does not fit
+  /// in its size type). Then swaps the sizes with setSize, which keeps the encoding of the small state of SmallVector.
+  /// Do not use public method reserve as it takes size_type argument instead of uintmax_t (as the two size types may
+  /// differ, we should use uintmax_t to avoid overflows)
+  template <class VectorType>
+  void swap2_deep(VectorType& o) {
+    using OSizeType = typename VectorType::size_type;
+    adjustCapacity(o.size());
+    o.adjustCapacity(this->size());
+    const SizeType size = this->size();
+    const OSizeType oSize = o.size();
+    assert(CapacitiesFitEachOther(size, oSize));
+    swap_deep(this->begin(), size, o.begin(), oSize);
+    this->setSize(static_cast<SizeType>(oSize));
+    o.setSize(static_cast<OSizeType>(size));
   }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
@@ -1252,18 +1292,6 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
       }
     }
     return v;
-  }
-
-  /// Adjust each other capacity for swap2 method
-  /// Optim: For two 'Large' SmallVectors, no need to reserve as we can swap directly the dynamic storage
-  /// Do not use public method reserve as it takes size_type argument instead of LargestSizeType
-  /// (as the two size types may differ we should use LargestSizeType to avoid overflows)
-  template <class VectorType>
-  void adjustEachOtherCapacity(VectorType& o) {
-    if (!this->canSwapDynStorage(o)) {
-      adjustCapacity(o.size());
-      o.adjustCapacity(this->size());
-    }
   }
 };
 
@@ -1601,14 +1629,6 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   // Additional convenient methods activated when non standard features are enabled
 
-  /// Like swap, but can take other vectors of same type with different inline number of elements
-  /// It has one drawback though: it can throw (as it can make SmallVectors grow)
-  template <class OAlloc, class OSizeType, bool OWithInlineElements, class OGrowingPolicy>
-  void swap2(VectorImpl<T, OAlloc, OSizeType, OWithInlineElements, OGrowingPolicy>& o) {
-    this->adjustEachOtherCapacity(o);
-    this->swap2_impl(o);
-  }
-
   /// Append elements to the end of the vector. Similar to: vec.insert(vec.end(), ...).
   /// The behavior is undefined if first and last are iterators into *this
   template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
@@ -1788,11 +1808,6 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
                     DefineDestructor<T, WithInlineElements>::value>(std::forward<Args&&>(args)...) {}
 };
 
-template <class T, class A, class S, bool I, class G>
-void swap(VectorImpl<T, A, S, I, G>& lhs, VectorImpl<T, A, S, I, G>& rhs) {
-  lhs.swap2(rhs);
-}
-
 /// Add inplace storage when needed
 template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N, class Enable = void>
 class VectorWithInplaceStorage : public VectorImpl<T, Alloc, SizeType, true, GrowingPolicy> {
@@ -1885,12 +1900,13 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
     this->move_construct(o, N);
   }
 
-  /// Build a SmallVector from a vector, stealing its dynamic storage.
+  /// Build a SmallVector from a vector, stealing its dynamic storage if its capacity is larger than N. Otherwise, its
+  /// elements are relocated inline (a large SmallVector always has a capacity larger than N), and its storage is freed.
   template <SizeType ON = N, class OGrowingPolicy = GrowingPolicy>
   Vector(Vector<T, Alloc, SizeType, OGrowingPolicy, 0>&& o,
          typename std::enable_if<std::is_same<OGrowingPolicy, vec::DynamicGrowingPolicy>::value && (ON > 0)>::type* = 0)
       : Base(N, o.get_allocator()) {
-    this->move_construct(o);
+    this->move_construct(o, N);
   }
 
   /// If 'alloc' is not equal to the allocator of 'o', its elements are moved one by one.
@@ -1925,6 +1941,17 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
     this->swap_impl(o);
     swapAllocators(o, typename AllocTraits::propagate_on_swap());
   }
+
+#ifdef AMC_NONSTD_FEATURES
+  /// Like swap, but can take other vectors of same type with different inline number of elements
+  /// It has one drawback though: it can throw (as it can make SmallVectors grow)
+  /// Defined here instead of VectorImpl as it needs the inline capacities of both vectors: a SmallVector only takes a
+  /// dynamic storage larger than its inline capacity.
+  template <class OAlloc, class OSizeType, class OGrowingPolicy, OSizeType ON>
+  void swap2(Vector<T, OAlloc, OSizeType, OGrowingPolicy, ON>& o) {
+    this->swap2_impl(o, static_cast<std::uintmax_t>(N), static_cast<std::uintmax_t>(ON));
+  }
+#endif
 
   void shrink_to_fit() { this->shrink_impl(N); }
 
