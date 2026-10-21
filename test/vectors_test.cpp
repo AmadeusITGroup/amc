@@ -1316,6 +1316,78 @@ TEST(VectorTest, InsertCopyThrowsKeepsElements) {
   CheckInsertCopyThrowsKeepsElements<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 5>>();
 }
 
+// When assigning the inserted element throws, the shifted elements are moved back. If one of these moves throws too,
+// the element constructed past the end of the vector by the shift is destroyed all the same (no leak): the vector keeps
+// its size, with valid elements of unspecified values.
+template <class VectorType>
+void CheckInsertUndoShiftThrowsDoesNotLeak() {
+  using Type = typename VectorType::value_type;
+  int& nbAssignmentsBeforeThrow = Type::NbAssignmentsBeforeThrow();
+  int& nbAssignmentsBeforeNextThrow = Type::NbAssignmentsBeforeNextThrow();
+  const int nbLive = Type::NbLive();
+  for (int method = 0; method < 3; ++method) {
+    for (bool grow : {false, true}) {
+      for (int pos = 0; pos < 4; ++pos) {  // inserting at the end shifts nothing
+        const int nbShifted = 4 - pos;
+        // Undoing the shift move assigns the 'nbShifted' elements back: the 'nbUndoMoves' first ones succeed, the next
+        // one throws (none if all of them succeed)
+        for (int nbUndoMoves = 0; nbUndoMoves <= nbShifted; ++nbUndoMoves) {
+          {
+            VectorType v{1, 2, 3, 4};
+            if (grow) {
+              v.shrink_to_fit();
+              if (v.capacity() != v.size()) {
+                continue;  // cannot grow (FixedCapacityVector) or room left in the inline storage
+              }
+            } else {
+              v.reserve(5U);
+            }
+            const Type value(5);
+            Type::NbThrows() = 0;
+            // the shift move constructs the last element past the end, then move assigns the 'nbShifted - 1' other
+            // ones: the next assignment, of the inserted element, throws
+            nbAssignmentsBeforeThrow = nbShifted - 1;
+            nbAssignmentsBeforeNextThrow = nbUndoMoves;
+            if (method == 0) {
+              EXPECT_THROW(v.insert(v.begin() + pos, value), AssignmentException);
+            } else if (method == 1) {
+              EXPECT_THROW(v.insert(v.begin() + pos, Type(5)), AssignmentException);
+            } else {
+              EXPECT_THROW(v.emplace(v.begin() + pos, 5), AssignmentException);
+            }
+            nbAssignmentsBeforeThrow = -1;
+            nbAssignmentsBeforeNextThrow = -1;
+
+            const bool undoThrows = nbUndoMoves < nbShifted;
+            EXPECT_EQ(Type::NbThrows(), undoThrows ? 2 : 1);
+            EXPECT_EQ(v.size(), 4U);
+            EXPECT_EQ(Type::NbLive(), nbLive + 5);  // the elements of 'v' and 'value', none past the end of 'v'
+            if (undoThrows) {
+              for (const Type& elem : v) {
+                const int32_t i = elem;
+                EXPECT_TRUE(i == -1 || (1 <= i && i <= 4));  // moved from, or one of the initial values
+              }
+            } else {
+              EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
+            }
+            v.push_back(value);  // still usable
+            EXPECT_EQ(static_cast<int32_t>(v.back()), 5);
+          }
+          EXPECT_EQ(Type::NbLive(), nbLive);
+        }
+      }
+    }
+  }
+}
+
+TEST(VectorTest, InsertUndoShiftThrowsDoesNotLeak) {
+  using Type = ThrowingAssignmentType;
+  CheckInsertUndoShiftThrowsDoesNotLeak<vector<Type>>();
+  CheckInsertUndoShiftThrowsDoesNotLeak<SmallVector<Type, 4>>();  // grows from the inline storage
+  CheckInsertUndoShiftThrowsDoesNotLeak<SmallVector<Type, 8>>();  // stays in the inline storage
+  CheckInsertUndoShiftThrowsDoesNotLeak<FixedCapacityVector<Type, 5>>();
+}
+
 // When the allocation needed to grow fails (out of memory), std::bad_alloc is thrown and the vector keeps its elements
 // and its capacity.
 template <class VectorType>
