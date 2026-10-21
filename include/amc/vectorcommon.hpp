@@ -197,13 +197,22 @@ inline void copy_after_shift(ForwardIt first, SizeType, SizeType count, T* pos) 
   amc::uninitialized_copy_n(first, count, pos);
 }
 
-/// Shift 'n' elements starting at 'first' one slot back to the left
+/// Shift 'n' elements starting at 'first' one slot back to the left, and destroy the last one (moved from).
 /// Requirements: n != 0 with one slot of initialized memory at first - 1
+/// It undoes a 'shift_right(first - 1, n)' when inserting at 'first - 1' throws: the size of the vector does not
+/// account for the last slot, so its element is destroyed even if a move throws, the other ones keeping valid but
+/// unspecified values (basic guarantee).
+/// (not declared noexcept(is_shift_nothrow<T>::value), as GCC warns about the rethrow when it is true)
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void shift_left(T* first, SizeType n) noexcept(is_shift_nothrow<T>::value) {
-  *(first - 1) = std::move(*first);  // move first element to initialized memory slot 'first - 1'
-  // move next 'n - 1' elements one slot to the left and destroy last moved element
-  amc::destroy_at(std::move(first + 1, first + n, first));
+void shift_left(T* first, SizeType n) {
+  T* last = first + n - 1;
+  try {
+    std::move(first, last + 1, first - 1);
+  } catch (...) {
+    amc::destroy_at(last);
+    throw;
+  }
+  amc::destroy_at(last);
 }
 
 template <class T, class SizeType, typename std::enable_if<amc::is_trivially_relocatable<T>::value, bool>::type = true>

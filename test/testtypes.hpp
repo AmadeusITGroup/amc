@@ -440,6 +440,77 @@ struct ThrowingMoveType {
 
 static_assert(!amc::is_trivially_relocatable<ThrowingMoveType>::value, "");
 
+struct AssignmentException {};
+
+/// Non trivially relocatable type owning a heap allocated value, whose copy and move assignments throw
+/// AssignmentException, before modifying anything, once 'NbAssignmentsBeforeThrow()' assignments have been done (never
+/// if negative). After a throw, 'NbAssignmentsBeforeThrow()' is set to 'NbAssignmentsBeforeNextThrow()' (-1 by default,
+/// throwing only once): the operation undoing a failed one may throw as well. Its moves construct without throwing.
+/// Counts its live objects and its throws, a leaked object also leaking its value for the sanitizers.
+struct ThrowingAssignmentType {
+  static int &NbAssignmentsBeforeThrow() {
+    static int nbAssignmentsBeforeThrow = -1;
+    return nbAssignmentsBeforeThrow;
+  }
+  static int &NbAssignmentsBeforeNextThrow() {
+    static int nbAssignmentsBeforeNextThrow = -1;
+    return nbAssignmentsBeforeNextThrow;
+  }
+  static int &NbThrows() {
+    static int nbThrows = 0;
+    return nbThrows;
+  }
+  static int &NbLive() {
+    static int nbLive = 0;
+    return nbLive;
+  }
+
+  ThrowingAssignmentType(int32_t i = 0) : _p(new int32_t(i)) { ++NbLive(); }
+  ThrowingAssignmentType(const ThrowingAssignmentType &o) : _p(o._p ? new int32_t(*o._p) : nullptr) { ++NbLive(); }
+  ThrowingAssignmentType(ThrowingAssignmentType &&o) noexcept : _p(o._p) {
+    o._p = nullptr;
+    ++NbLive();
+  }
+  ThrowingAssignmentType &operator=(const ThrowingAssignmentType &o) {
+    Assign();
+    if (this != &o) {
+      int32_t *p = o._p ? new int32_t(*o._p) : nullptr;
+      delete _p;
+      _p = p;
+    }
+    return *this;
+  }
+  ThrowingAssignmentType &operator=(ThrowingAssignmentType &&o) {
+    Assign();
+    if (this != &o) {
+      delete _p;
+      _p = o._p;
+      o._p = nullptr;
+    }
+    return *this;
+  }
+  ~ThrowingAssignmentType() {
+    delete _p;
+    --NbLive();
+  }
+
+  /// -1 for a moved from object
+  operator int32_t() const { return _p != nullptr ? *_p : -1; }
+
+  static void Assign() {
+    int &nbAssignmentsBeforeThrow = NbAssignmentsBeforeThrow();
+    if (nbAssignmentsBeforeThrow >= 0 && nbAssignmentsBeforeThrow-- == 0) {
+      nbAssignmentsBeforeThrow = NbAssignmentsBeforeNextThrow();
+      ++NbThrows();
+      throw AssignmentException();
+    }
+  }
+
+  int32_t *_p;
+};
+
+static_assert(!amc::is_trivially_relocatable<ThrowingAssignmentType>::value, "");
+
 template <unsigned int Size>
 struct UnalignedToPtr {
   static constexpr size_t kIntSize = Size < sizeof(uint32_t) ? Size : sizeof(uint32_t);
