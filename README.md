@@ -321,13 +321,14 @@ It is a type trait currently not (yet?) present in the standard, although is has
 No need to use a modified compiler to benefit from trivially relocatibilty optimizations: you can use helper type traits provided by this library to mark explicitely types that you know **are** trivially relocatable. The conservative approach assumes that all trivially copyable types are trivially relocatable, so no need to mark them as such.
 With trivially relocatable types, performance gains are easily measurable for all operations of the Vector like container involving *relocation* of elements (grow, insert in middle, etc).
 
-Fortunately, most types are trivially relocatable. `amc::vector` itself is trivially relocatable (as well as `FixedCapacityVector` and `SmallVector` if T is). Types containing pointers to parts of themselves are typically not trivially relocatable, because moving them would require to update the internal pointers they hold to parts of themselves (`std::list`, `std::set`, `std::map` are for instance). `std::string` is not trivially relocatable in some implementations, but some open source equivalents are (for instance, [folly::fbstring](https://github.com/facebook/folly/blob/master/folly/FBString.h)). More information [here](https://quuxplusone.github.io/blog/2019/02/20/p1144-what-types-are-relocatable/).
+Fortunately, most types are trivially relocatable. `amc::vector` itself is trivially relocatable if its allocator is (`amc::allocator` and `std::allocator` are), `SmallVector` if T and its allocator are, and `FixedCapacityVector` if T is. Types containing pointers to parts of themselves are typically not trivially relocatable, because moving them would require to update the internal pointers they hold to parts of themselves (`std::list`, `std::set`, `std::map` are for instance). `std::string` is not trivially relocatable in some implementations, but some open source equivalents are (for instance, [folly::fbstring](https://github.com/facebook/folly/blob/master/folly/FBString.h)). More information [here](https://quuxplusone.github.io/blog/2019/02/20/p1144-what-types-are-relocatable/).
 
 The most convenient way to mark a type as trivially relocatable is to declare in the public part of the class:
 
 `using trivially_relocatable = std::true_type;`
 
 This is only necessary for non trivially copyable types, because trivially copyable types are trivially relocatable by default.
+This also applies to allocators: a custom allocator which is not trivially copyable (for instance with a user-provided copy constructor) makes the vectors using it not trivially relocatable, unless it is marked as such. `amc::BasicAllocatorWrapper` is trivially relocatable if its basic allocator is.
 
 ## Build with CMake
 

@@ -219,6 +219,12 @@ struct BasicAllocatorWrapper<void, BasicAllocator> {
   };
 };
 
+/// A BasicAllocatorWrapper is trivially relocatable if its basic allocator is, its only state.
+/// Specialized rather than declared as a member, which classes derived from it (maybe with a state) would inherit.
+template <class T, class BasicAllocator>
+struct is_trivially_relocatable<BasicAllocatorWrapper<T, BasicAllocator> > : is_trivially_relocatable<BasicAllocator> {
+};
+
 /**
  * Basic allocator using malloc, realloc and free.
  * A basic allocator is a class that provides methods:

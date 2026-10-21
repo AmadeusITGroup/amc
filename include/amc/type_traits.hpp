@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -103,6 +104,10 @@ struct is_trivially_relocatable
 template <class T, class U>
 struct is_trivially_relocatable<std::pair<T, U> >
     : std::integral_constant<bool, is_trivially_relocatable<T>::value && is_trivially_relocatable<U>::value> {};
+
+/// std::allocator is stateless, but not trivially copyable in all implementations (user-provided copy constructor).
+template <class T>
+struct is_trivially_relocatable<std::allocator<T> > : std::true_type {};
 
 #ifdef AMC_CXX17
 template <typename T>

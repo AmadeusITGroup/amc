@@ -512,6 +512,24 @@ TEST(VectorTest, CustomOperations) {
   static_assert(is_trivially_relocatable<SmallVector<int, 10>>::value,
                 "SmallVector with inline storage should be trivially relocatable if T is");
 
+  // Vectors with a dynamic storage are only trivially relocatable if their allocator is
+  static_assert(is_trivially_relocatable<std::allocator<int>>::value, "std::allocator should be trivially relocatable");
+  static_assert(is_trivially_relocatable<vector<int, std::allocator<int>>>::value, "");
+  static_assert(is_trivially_relocatable<SmallVector<int, 10, std::allocator<int>>>::value, "");
+  static_assert(is_trivially_relocatable<vector<int, ArenaAllocatorOf<int>>>::value, "");
+  static_assert(is_trivially_relocatable<SmallVector<int, 10, PropagatingArenaAllocator<int>>>::value, "");
+  static_assert(is_trivially_relocatable<BasicAllocatorWrapper<int, TriviallyRelocatableBasicAllocator>>::value,
+                "BasicAllocatorWrapper should be trivially relocatable if its basic allocator is");
+  static_assert(!is_trivially_relocatable<BasicAllocatorWrapper<int, SelfAddressBasicAllocator>>::value, "");
+  static_assert(!is_trivially_relocatable<vector<int, SelfAddressAllocator<int>>>::value,
+                "vector should not be trivially relocatable if its allocator is not");
+  static_assert(!is_trivially_relocatable<SmallVector<int, 0, SelfAddressAllocator<int>>>::value, "");
+  static_assert(!is_trivially_relocatable<SmallVector<int, 10, SelfAddressAllocator<int>>>::value,
+                "SmallVector should not be trivially relocatable if its allocator is not");
+  static_assert(!is_trivially_relocatable<vector<int, BasicAllocatorWrapper<int, SelfAddressBasicAllocator>>>::value,
+                "");
+  static_assert(!is_trivially_relocatable<SmallVector<NonTriviallyRelocatableType, 10>>::value, "");
+
   EXPECT_EQ(IntVectorType().capacity(), kStaticSize);
   EXPECT_EQ(OtherVectorType().max_size(), 42U);
   IntVectorType v;
@@ -1763,6 +1781,42 @@ TEST(VectorTest, RelocatabilityAvoidsMoveOperations) {
   EXPECT_EQ(v3.capacity(), v3.size());
   // Cannot use reallocate as type is not trivially relocatable: attempt to use forbidden move operations
   EXPECT_THROW(v3.emplace_back(), MoveForbiddenException);
+}
+
+// Vectors of vectors whose allocator knows its own address move these vectors when they relocate them (grow, insert,
+// erase, shrink), instead of copying their bytes: the allocators are then never used at a stale address.
+template <class OuterVector>
+void CheckNestedVectorsRelocateAllocators() {
+  using InnerVector = typename OuterVector::value_type;
+  static_assert(!is_trivially_relocatable<InnerVector>::value, "");
+  const int64_t nbStaleAddresses = SelfAddressCheck::NbStaleAddresses();
+  {
+    OuterVector v;
+    for (int i = 0; i < 20; ++i) {
+      v.emplace_back(3U, i);
+    }
+    v.insert(v.begin(), InnerVector(3U, -1));
+    v.erase(v.begin() + 1);
+    v.shrink_to_fit();
+    for (InnerVector& inner : v) {
+      inner.push_back(42);
+    }
+    ASSERT_EQ(v.size(), 20U);
+    EXPECT_EQ(v.front(), InnerVector({-1, -1, -1, 42}));
+    EXPECT_EQ(v[1], InnerVector({1, 1, 1, 42}));
+    EXPECT_EQ(v.back(), InnerVector({19, 19, 19, 42}));
+  }
+  EXPECT_EQ(SelfAddressCheck::NbStaleAddresses(), nbStaleAddresses);
+}
+
+TEST(VectorTest, NestedVectorsRelocateAllocators) {
+  using InnerVector = vector<int, SelfAddressAllocator<int>>;
+  using InnerSmallVector = SmallVector<int, 2, BasicAllocatorWrapper<int, SelfAddressBasicAllocator>>;
+  CheckNestedVectorsRelocateAllocators<vector<InnerVector>>();
+  CheckNestedVectorsRelocateAllocators<vector<InnerVector, std::allocator<InnerVector>>>();
+  CheckNestedVectorsRelocateAllocators<SmallVector<InnerVector, 4>>();
+  CheckNestedVectorsRelocateAllocators<vector<InnerSmallVector>>();
+  CheckNestedVectorsRelocateAllocators<SmallVector<InnerSmallVector, 4, std::allocator<InnerSmallVector>>>();
 }
 
 TEST(VectorTest, BasicAllocatorWrapperOfStatelessAllocatorsAreEqual) {
