@@ -1429,6 +1429,44 @@ TEST(VectorTest, GrowAllocationFailureKeepsElements) {
   CheckGrowAllocationFailureKeepsElements<vector<int, std::allocator<int>>>();
 }
 
+// When the allocation needed to shrink fails (out of memory), std::bad_alloc is propagated (the process is not
+// terminated) and the vector keeps its elements and its capacity.
+template <class VectorType>
+void CheckShrinkAllocationFailureKeepsElements() {
+  using Type = typename VectorType::value_type;
+  // 300 elements take more than SimpleAllocator::kMaxCopiedSize bytes: reallocated with 'realloc' rather than a copy
+  for (int nbElems : {3, 8, 300}) {
+    VectorType v;
+    v.reserve(static_cast<typename VectorType::size_type>(2 * nbElems));
+    for (int i = 0; i < nbElems; ++i) {
+      v.push_back(Type(i));
+    }
+    const VectorType expected = v;
+    const auto capacity = v.capacity();
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.shrink_to_fit(); }), std::bad_alloc);
+    EXPECT_EQ(v, expected);
+    EXPECT_EQ(v.capacity(), capacity);
+
+    v.shrink_to_fit();
+    EXPECT_EQ(v, expected);
+    EXPECT_EQ(v.capacity(), v.size());
+  }
+}
+
+TEST(VectorTest, ShrinkAllocationFailureKeepsElements) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  // Shrink with 'realloc' for trivially relocatable types, with 'malloc' and relocation of the elements otherwise
+  CheckShrinkAllocationFailureKeepsElements<vector<int>>();
+  CheckShrinkAllocationFailureKeepsElements<vector<SimpleNonTriviallyCopyableType>>();
+  // Dynamic storage too large to come back to the inline one
+  CheckShrinkAllocationFailureKeepsElements<SmallVector<int, 2>>();
+  CheckShrinkAllocationFailureKeepsElements<SmallVector<SimpleNonTriviallyCopyableType, 2>>();
+  // operator new
+  CheckShrinkAllocationFailureKeepsElements<vector<int, std::allocator<int>>>();
+}
+
 // When copying one of several inserted elements throws, the elements constructed past the end of the vector are
 // destroyed (no leak) and its size is unchanged. Trivially relocatable elements are even shifted back: the vector keeps
 // its elements. Same for assign of more copies of a value than the size of the vector.

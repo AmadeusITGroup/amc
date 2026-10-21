@@ -706,7 +706,7 @@ class StdVectorBase : private Alloc {
 
   void grow(std::uintmax_t minSize, bool exact = false);
 
-  void shrink_impl(SizeType) noexcept {
+  void shrink_impl(SizeType) {
     if (_size != _capa) {
       shrink();
     }
