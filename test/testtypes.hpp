@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -681,6 +682,92 @@ class PropagatingArenaAllocator : public BasicAllocatorWrapper<T, ArenaAllocator
   template <class U>
   PropagatingArenaAllocator(const PropagatingArenaAllocator<U> &o)
       : BasicAllocatorWrapper<T, ::amc::ArenaAllocator>(o) {}
+};
+
+/// Standard allocator knowing its own address, like one registering itself somewhere: it is not trivially relocatable,
+/// as its copies and moves update its address, but a memcpy does not. Counts its uses at a stale address.
+class SelfAddressCheck {
+ public:
+  static int64_t &NbStaleAddresses() {
+    static int64_t nbStaleAddresses = 0;
+    return nbStaleAddresses;
+  }
+
+  SelfAddressCheck() noexcept : _self(this) {}
+  SelfAddressCheck(const SelfAddressCheck &) noexcept : _self(this) {}
+  SelfAddressCheck &operator=(const SelfAddressCheck &) noexcept { return *this; }
+  ~SelfAddressCheck() { checkAddress(); }
+
+  void checkAddress() const noexcept {
+    if (_self != this) {
+      ++NbStaleAddresses();
+    }
+  }
+
+ private:
+  const SelfAddressCheck *_self;
+};
+
+template <class T>
+class SelfAddressAllocator : private SelfAddressCheck {
+ public:
+  using value_type = T;
+
+  SelfAddressAllocator() noexcept = default;
+
+  template <class U>
+  SelfAddressAllocator(const SelfAddressAllocator<U> &) noexcept {}
+
+  T *allocate(std::size_t n) {
+    checkAddress();
+    return std::allocator<T>().allocate(n);
+  }
+
+  void deallocate(T *p, std::size_t n) {
+    checkAddress();
+    std::allocator<T>().deallocate(p, n);
+  }
+
+  template <class U>
+  bool operator==(const SelfAddressAllocator<U> &) const noexcept {
+    return true;
+  }
+
+  template <class U>
+  bool operator!=(const SelfAddressAllocator<U> &) const noexcept {
+    return false;
+  }
+};
+
+/// Basic allocator knowing its own address (see SelfAddressCheck): it is not trivially relocatable.
+class SelfAddressBasicAllocator : private SelfAddressCheck {
+ public:
+  void *allocate(std::size_t n) {
+    checkAddress();
+    return SimpleAllocator().allocate(n);
+  }
+
+  void *reallocate(void *p, std::size_t oldSz, std::size_t newSz) {
+    checkAddress();
+    return SimpleAllocator().reallocate(p, oldSz, newSz);
+  }
+
+  void deallocate(void *p, std::size_t n) {
+    checkAddress();
+    SimpleAllocator().deallocate(p, n);
+  }
+
+  bool operator==(const SelfAddressBasicAllocator &) const noexcept { return true; }
+};
+
+/// Basic allocator which is not trivially copyable, but declared trivially relocatable.
+class TriviallyRelocatableBasicAllocator : public SimpleAllocator {
+ public:
+  using trivially_relocatable = std::true_type;
+
+  TriviallyRelocatableBasicAllocator() noexcept = default;
+  TriviallyRelocatableBasicAllocator(const TriviallyRelocatableBasicAllocator &) noexcept {}
+  TriviallyRelocatableBasicAllocator &operator=(const TriviallyRelocatableBasicAllocator &) noexcept { return *this; }
 };
 
 struct BiggerAllocateException {};

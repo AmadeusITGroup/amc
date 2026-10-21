@@ -661,8 +661,8 @@ class StdVectorBase : private Alloc {
 
   allocator_type get_allocator() const noexcept { return *this; }
 
-  /// vector is always trivially relocatable
-  using trivially_relocatable = std::true_type;
+  /// vector is trivially relocatable if its allocator is (its elements are never stored inline)
+  using trivially_relocatable = typename is_trivially_relocatable<Alloc>::type;
 
   iterator begin() noexcept { return _storage; }
   const_iterator begin() const noexcept { return _storage; }
@@ -779,8 +779,9 @@ class SmallVectorBase : private Alloc {
 
   allocator_type get_allocator() const noexcept { return *this; }
 
-  /// SmallVector is trivially relocatable if T is
-  using trivially_relocatable = typename is_trivially_relocatable<T>::type;
+  /// SmallVector is trivially relocatable if T and its allocator are
+  using trivially_relocatable =
+      std::integral_constant<bool, is_trivially_relocatable<T>::value && is_trivially_relocatable<Alloc>::value>;
 
   iterator begin() noexcept { return isSmall() ? _storage.ptr() : _storage.dyn(); }
   const_iterator begin() const noexcept { return isSmall() ? _storage.ptr() : _storage.dyn(); }
