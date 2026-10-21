@@ -359,22 +359,16 @@ class FlatSet : private Compare {
 
   template <class C2, typename std::enable_if<!std::is_same<Compare, C2>::value, bool>::type = true>
   void merge(FlatSet<T, C2, Alloc, VecType> &o) {
-    for (miterator oit = o.mbegin(); oit != o.mend();) {
-      miterator lbIt = std::lower_bound(mbegin(), mend(), *oit, compRef());
-      if (lbIt == mend()) {
-        _sortedVector.push_back(std::move(*oit));
-        oit = o._sortedVector.erase(oit);
-      } else if (compRef()(*oit, *lbIt)) {
-        _sortedVector.insert(lbIt, std::move(*oit));
-        oit = o._sortedVector.erase(oit);
-      } else {
-        // equal
-        ++oit;
-      }
-    }
+    mergeOneByOne(o);
   }
 
   void merge(FlatSet &o) {
+    // The linear merge below requires 'o' to be ordered by our comparator. This is always the case for stateless
+    // comparators, but stateful ones of the same type may define different orderings (and equivalences).
+    if (!o.isStrictlySortedBy(compRef(), std::is_empty<Compare>())) {
+      mergeOneByOne(o);
+      return;
+    }
     // Do not use std::inplace_merge to avoid allocating memory if not needed
     miterator first1 = mbegin(), last1 = mend();
     miterator first2 = o.mbegin(), last2 = o.mend();
@@ -523,6 +517,39 @@ class FlatSet : private Compare {
 
   Compare &compRef() { return static_cast<Compare &>(*this); }
   const Compare &compRef() const { return static_cast<const Compare &>(*this); }
+
+  /// Moves each element of 'o' which is not already present in 'this' at its position according to our comparator,
+  /// whatever the order of 'o'.
+  template <class C2>
+  void mergeOneByOne(FlatSet<T, C2, Alloc, VecType> &o) {
+    for (miterator oit = o.mbegin(); oit != o.mend();) {
+      miterator lbIt = std::lower_bound(mbegin(), mend(), *oit, compRef());
+      if (lbIt == mend()) {
+        _sortedVector.push_back(std::move(*oit));
+        oit = o._sortedVector.erase(oit);
+      } else if (compRef()(*oit, *lbIt)) {
+        _sortedVector.insert(lbIt, std::move(*oit));
+        oit = o._sortedVector.erase(oit);
+      } else {
+        // equal
+        ++oit;
+      }
+    }
+  }
+
+  /// Tells whether each element is strictly less than its successor according to 'comp'.
+  bool isStrictlySortedBy(const Compare &comp) const {
+    return std::adjacent_find(begin(), end(),
+                              [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); }) == end();
+  }
+
+  /// Tells whether 'this' is strictly sorted by 'comp', another instance of our comparator type.
+  /// Stateless comparators all define the same ordering, so no check is needed.
+  /// Tag dispatch (instead of a constant condition) keeps C++11 compatibility without triggering MSVC C4127.
+  bool isStrictlySortedBy(const Compare &, std::true_type /*isEmptyCompare*/) const { return true; }
+  bool isStrictlySortedBy(const Compare &comp, std::false_type /*isEmptyCompare*/) const {
+    return isStrictlySortedBy(comp);
+  }
 
   /// Erase consecutive equivalent elements, keeping the first one of each group, according to our comparator object
   /// (which may hold a state).

@@ -7,6 +7,7 @@
 #include <iterator>
 #include <list>
 #include <sstream>
+#include <vector>
 #ifdef AMC_SMALLSET
 #include <amc/smallset.hpp>
 #endif
@@ -621,6 +622,45 @@ TYPED_TEST(SetStatefulCompareTest, UseComparatorObject) {
   rhs.insert(3);
   EXPECT_TRUE(rhs < lhs);
   EXPECT_FALSE(lhs < rhs);
+}
+
+// Comparator objects of the same type may define different orderings: merged elements must be ordered and deduplicated
+// according to the comparator object of the destination set, whatever the order of the source set.
+TYPED_TEST(SetStatefulCompareTest, MergeWithDifferentComparatorStates) {
+  using SetType = TypeParam;
+  using Values = std::vector<int32_t>;
+  const ModuloCompare moduloTen(10);
+
+  // destination compares remainders, source compares the integers themselves.
+  // 11 is equivalent to 1 for the destination only, and is kept in the source.
+  SetType dst(moduloTen);
+  dst.insert(1);
+  SetType src{3, 4, 11, 12, 25};
+  dst.merge(src);
+  EXPECT_EQ(Values(dst.begin(), dst.end()), Values({1, 12, 3, 4, 25}));
+  EXPECT_EQ(Values(src.begin(), src.end()), Values({11}));
+
+  // destination compares the integers themselves, source compares remainders (iteration order: 10, 21, 2, 13)
+  SetType dst2{5};
+  SetType src2(moduloTen);
+  for (int32_t v : {13, 2, 21, 10}) {
+    src2.insert(v);
+  }
+  dst2.merge(src2);
+  EXPECT_EQ(Values(dst2.begin(), dst2.end()), Values({2, 5, 10, 13, 21}));
+  EXPECT_TRUE(src2.empty());
+
+  // same orderings
+  SetType dst3(moduloTen);
+  dst3.insert(1);
+  dst3.insert(5);
+  SetType src3(moduloTen);
+  for (int32_t v : {13, 2, 21, 15, 10}) {
+    src3.insert(v);
+  }
+  dst3.merge(src3);
+  EXPECT_EQ(Values(dst3.begin(), dst3.end()), Values({10, 1, 2, 13, 5}));
+  EXPECT_EQ(Values(src3.begin(), src3.end()), Values({21, 15}));
 }
 
 template <typename T>
