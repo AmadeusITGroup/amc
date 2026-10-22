@@ -175,6 +175,25 @@ struct ModuloCompare {
   int32_t _modulo = std::numeric_limits<int32_t>::max();
 };
 
+struct CompareException {};
+
+/// Comparator of integers with operator<, which throws CompareException once 'NbComparisonsBeforeThrow()' comparisons
+/// have been done (never if negative).
+struct ThrowingCompare {
+  static int &NbComparisonsBeforeThrow() {
+    static int nbComparisonsBeforeThrow = -1;
+    return nbComparisonsBeforeThrow;
+  }
+
+  bool operator()(int32_t lhs, int32_t rhs) const {
+    int &nbComparisonsBeforeThrow = NbComparisonsBeforeThrow();
+    if (nbComparisonsBeforeThrow >= 0 && nbComparisonsBeforeThrow-- == 0) {
+      throw CompareException();
+    }
+    return lhs < rhs;
+  }
+};
+
 /// Type only providing operator== and operator< (no operator<=>, no conversion to an arithmetic type): from C++20,
 /// containers of this type should still be comparable, like the standard ones which use 'synth-three-way'.
 struct LessComparableType {

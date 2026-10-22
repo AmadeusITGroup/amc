@@ -129,6 +129,9 @@ class SmallSetIterator : public SmallSetIteratorCommon<T, SetItType> {
   const T *operator->() const noexcept { return &static_cast<const SmallSetIterator *>(this)->operator*(); }
 };
 
+template <class T, class Compare, class Alloc, class VecType>
+class FlatSet;
+
 /**
  * Set which is optimized for the case when number of elements is small (<= N).
  * The behavior of the set can be split in two steps:
@@ -680,23 +683,53 @@ class SmallSet {
   }
 
   /// Moves the elements of the vector to the set.
-  /// If an insertion throws, the elements already moved to the set are moved back to the vector, which then keeps all
-  /// the elements (strong guarantee if moving T does not throw), and the set is cleared: otherwise, the moved from
-  /// elements left in the vector would reappear once the set becomes empty again.
+  /// If it throws, the elements already moved to the set are moved back to the vector, which then keeps all the
+  /// elements (strong guarantee if moving T does not throw), and the set is cleared: otherwise, the moved from elements
+  /// left in the vector would reappear once the set becomes empty again.
   void grow() {
+    moveToEmptySet(_set);
+    _vec.clear();
+  }
+
+  /// The insertion of a range in a set such as std::set inserts the elements one by one.
+  template <class S>
+  void moveToEmptySet(S &set) {
     try {
-      _set.insert(std::make_move_iterator(_vec.begin()), std::make_move_iterator(_vec.end()));
+      set.insert(std::make_move_iterator(_vec.begin()), std::make_move_iterator(_vec.end()));
     } catch (...) {
       // The set contains exactly the elements of the vector inserted before the exception (they are all unique), which
       // are moved from in the vector. As the vector is unordered, they can be moved back in any order.
       miterator vecIt = _vec.begin();
-      for (auto setIt = _set.begin(); setIt != _set.end(); ++setIt, (void)++vecIt) {
+      for (auto setIt = set.begin(); setIt != set.end(); ++setIt, (void)++vecIt) {
         *vecIt = std::move(const_cast<T &>(*setIt));  // the set is cleared just after, it does not need to stay sorted
       }
-      _set.clear();
+      set.clear();
       throw;
     }
-    _vec.clear();
+  }
+
+  /// The insertion of a range in a FlatSet moves all the elements before comparing them, so they could not be moved
+  /// back if a comparison throws. Instead, they are sorted beforehand, by sorting pointers to them (which only compares
+  /// them: nothing to undo if it throws), then appended in this order to the vector of the FlatSet without comparing
+  /// them again, after a single allocation: then, only a move of an element can throw.
+  template <class V>
+  void moveToEmptySet(FlatSet<T, Compare, Alloc, V> &set) {
+    const PtrVec sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
+    V &setVec = set._sortedVector;
+    try {
+      setVec.reserve(static_cast<typename V::size_type>(sortedPtrs.size()));
+      for (const_pointer ptr : sortedPtrs) {
+        setVec.emplace_back(std::move(const_cast<T &>(*ptr)));
+      }
+    } catch (...) {
+      // The vector of the set contains the elements pointed to by the first pointers of 'sortedPtrs', in this order.
+      auto ptrIt = sortedPtrs.begin();
+      for (T &v : setVec) {
+        const_cast<T &>(**ptrIt++) = std::move(v);
+      }
+      setVec.clear();
+      throw;
+    }
   }
 
   bool isSmall() const noexcept { return _set.empty(); }

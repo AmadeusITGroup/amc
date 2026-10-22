@@ -442,16 +442,17 @@ TEST(SetTest, SmallSetSizeTest) {
 
 #ifdef AMC_SMALLSET
 // If moving the elements of a SmallSet to its set fails when it grows, it keeps all its elements, and they do not
-// reappear once its set becomes empty again.
-TEST(SetTest, SmallSetGrowAllocationFailureKeepsElements) {
-  if (!kMallocFailureInjection) {
-    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
-  }
-  using SetType = SmallSet<int, 4>;
-  for (int nbSuccessfulAllocations = 0; nbSuccessfulAllocations < 4; ++nbSuccessfulAllocations) {
-    SetType s{1, 2, 3, 4};
-    EXPECT_THROW(CallWithFailingMalloc([&] { s.insert(5); }, nbSuccessfulAllocations), std::bad_alloc);
-    EXPECT_EQ(s, SetType({1, 2, 3, 4}));
+// reappear once its set becomes empty again. 'insertFailing(s, n)' inserts 5 in 's', making an operation fail after 'n'
+// successful ones, and tells whether it failed.
+template <class SetType, class InsertFailing>
+void ExpectGrowFailureKeepsElements(InsertFailing insertFailing) {
+  for (int nbSuccesses = 0;; ++nbSuccesses) {
+    SetType s{4, 1, 3, 2};  // unsorted: the elements are moved to a FlatSet in another order
+    if (!insertFailing(s, nbSuccesses)) {
+      EXPECT_EQ(s, SetType({1, 2, 3, 4, 5}));
+      break;
+    }
+    EXPECT_EQ(s, SetType({1, 2, 3, 4})) << "failure after " << nbSuccesses << " successes";
     s.insert(5);
     EXPECT_EQ(s, SetType({1, 2, 3, 4, 5}));
     for (int i = 1; i <= 5; ++i) {
@@ -459,6 +460,42 @@ TEST(SetTest, SmallSetGrowAllocationFailureKeepsElements) {
     }
     EXPECT_TRUE(s.empty());
   }
+}
+
+TEST(SetTest, SmallSetGrowAllocationFailureKeepsElements) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  auto insertFailing = [](auto& s, int nbSuccessfulAllocations) {
+    try {
+      CallWithFailingMalloc([&] { s.insert(5); }, nbSuccessfulAllocations);
+    } catch (const std::bad_alloc&) {
+      return true;
+    }
+    return false;
+  };
+  ExpectGrowFailureKeepsElements<SmallSet<int, 4>>(insertFailing);
+  using T = ThrowingAssignmentType;  // loses its value when moved
+  ExpectGrowFailureKeepsElements<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>(insertFailing);
+}
+
+TEST(SetTest, SmallSetGrowThrowingMoveKeepsElements) {
+  using T = ThrowingMoveType;
+  const int nbLive = T::NbLive();
+  auto insertFailing = [](auto& s, int nbMoves) {
+    T::NbMovesBeforeThrow() = nbMoves;
+    bool thrown = false;
+    try {
+      s.insert(5);
+    } catch (const MoveForbiddenException&) {
+      thrown = true;
+    }
+    T::NbMovesBeforeThrow() = -1;
+    return thrown;
+  };
+  ExpectGrowFailureKeepsElements<SmallSet<T, 4>>(insertFailing);
+  ExpectGrowFailureKeepsElements<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>(insertFailing);
+  EXPECT_EQ(T::NbLive(), nbLive);
 }
 #endif
 
@@ -664,6 +701,57 @@ TYPED_TEST(SetStatefulCompareTest, MergeWithDifferentComparatorStates) {
 }
 
 template <typename T>
+class SetThrowingCompareTest : public ::testing::Test {};
+
+// SmallSets of ThrowingAssignmentType, whose moved from objects lose their value, grow from the small state to their
+// set (std::set or FlatSet) during the insertion.
+// clang-format off
+typedef ::testing::Types<FlatSet<int32_t, ThrowingCompare>,
+                         FlatSet<int32_t, ThrowingCompare, amc::allocator<int32_t>, SmallVector<int32_t, 4>>
+#ifdef AMC_SMALLSET
+                        ,SmallSet<ThrowingAssignmentType, 2, ThrowingCompare>,
+                         SmallSet<ThrowingAssignmentType, 2, ThrowingCompare, amc::allocator<ThrowingAssignmentType>,
+                                  FlatSet<ThrowingAssignmentType, ThrowingCompare>>
+#endif
+                        >
+    SetsThrowingCompareTypes;
+// clang-format on
+
+TYPED_TEST_SUITE(SetThrowingCompareTest, SetsThrowingCompareTypes, );
+
+// If a comparison throws during the insertion of a range, the set stays valid (sorted, without duplicates, without
+// moved from elements): it keeps all its previous elements, or it is emptied.
+TYPED_TEST(SetThrowingCompareTest, InsertRangeComparisonThrowKeepsValidSet) {
+  using SetType = TypeParam;
+  using Values = std::vector<int32_t>;
+  int& nbComparisonsBeforeThrow = ThrowingCompare::NbComparisonsBeforeThrow();
+  // unsorted, interleaved with the present elements and with a duplicate: each step of the insertion can throw
+  const Values inserted{3, 2, 1, 5};
+  const SetType expected{1, 2, 3, 4, 5};
+  for (int nbComparisons = 0;; ++nbComparisons) {
+    SetType s{4, 1};  // unsorted in the small state of SmallSets
+    nbComparisonsBeforeThrow = nbComparisons;
+    bool thrown = false;
+    try {
+      s.insert(inserted.begin(), inserted.end());
+    } catch (const CompareException&) {
+      thrown = true;
+    }
+    nbComparisonsBeforeThrow = -1;
+    if (!thrown) {
+      EXPECT_EQ(s, expected);
+      break;
+    }
+    const Values elems(s.begin(), s.end());
+    EXPECT_EQ(s, SetType(elems.begin(), elems.end())) << "throw at comparison " << nbComparisons;
+    EXPECT_TRUE(s.empty() || (s.contains(1) && s.contains(4))) << "throw at comparison " << nbComparisons;
+    for (int32_t v : elems) {
+      EXPECT_TRUE(expected.contains(v)) << "throw at comparison " << nbComparisons;
+    }
+  }
+}
+
+template <typename T>
 class SetLessComparableTest : public ::testing::Test {};
 
 // clang-format off
@@ -861,6 +949,29 @@ TEST(FlatSetTest, CreateFromVector) {
   SetType s(std::move(myVec));
   EXPECT_TRUE(myVec.empty());
   EXPECT_EQ(s, SetType({-1, 0, 5, 6, 8}));
+}
+
+// If a comparison throws during the assignment from a vector, whose elements may then be unsorted, the set is emptied.
+TEST(FlatSetTest, AssignFromVectorComparisonThrowEmptiesSet) {
+  using SetType = FlatSet<int32_t, ThrowingCompare>;
+  using VecType = SetType::vector_type;
+  int& nbComparisonsBeforeThrow = ThrowingCompare::NbComparisonsBeforeThrow();
+  for (int nbComparisons = 0;; ++nbComparisons) {
+    SetType s{1, 4};
+    nbComparisonsBeforeThrow = nbComparisons;
+    bool thrown = false;
+    try {
+      s = VecType{3, 2, 1, 5, 2};
+    } catch (const CompareException&) {
+      thrown = true;
+    }
+    nbComparisonsBeforeThrow = -1;
+    if (!thrown) {
+      EXPECT_EQ(s, SetType({1, 2, 3, 5}));
+      break;
+    }
+    EXPECT_TRUE(s.empty()) << "throw at comparison " << nbComparisons;
+  }
 }
 
 TEST(FlatSetTest, StealVector) {

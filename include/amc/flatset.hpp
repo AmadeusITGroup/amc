@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -158,14 +159,21 @@ class FlatSet : private Compare {
     eraseDuplicates();
   }
 
+  /// If the comparator or a move of an element throws, the set is emptied.
   FlatSet &operator=(vector_type &&v) {
     _sortedVector = std::move(v);
-    std::sort(_sortedVector.begin(), _sortedVector.end(), compRef());
-    eraseDuplicates();
+    try {
+      std::sort(_sortedVector.begin(), _sortedVector.end(), compRef());
+      eraseDuplicates();
+    } catch (...) {
+      _sortedVector.clear();
+      throw;
+    }
     return *this;
   }
 #endif
 
+  /// If an exception is thrown, the set is emptied.
   FlatSet &operator=(std::initializer_list<value_type> list) {
     _sortedVector.clear();
     insert(list.begin(), list.end());
@@ -215,11 +223,14 @@ class FlatSet : private Compare {
 
   iterator insert(const_iterator hint, T &&v) { return insert_hint(hint, std::move(v)); }
 
+  /// If an exception is thrown (by the comparator, or by a copy or a move of an element), the set either keeps only its
+  /// previous elements, or is emptied.
   template <class InputIt>
   void insert(InputIt first, InputIt last) {
     appendAndMerge([&] { _sortedVector.insert(_sortedVector.end(), first, last); });
   }
 
+  /// Same exception guarantee as the insertion of a range.
   void insert(std::initializer_list<value_type> ilist) { insert(ilist.begin(), ilist.end()); }
 
 #ifdef AMC_CXX17
@@ -253,6 +264,7 @@ class FlatSet : private Compare {
 
 #ifdef AMC_CXX23
   /// 'rg' may not be common (its end may be a sentinel of another type than its iterator).
+  /// Same exception guarantee as the insertion of a range of iterators.
   template <class R>
   void insert_range(R &&rg) {
     if constexpr (std::ranges::common_range<R> && std::ranges::forward_range<R>) {
@@ -437,6 +449,10 @@ class FlatSet : private Compare {
   template <class, class, class, class>
   friend class FlatSet;
 
+  // SmallSet moves its elements, already sorted and unique, directly to our vector when it grows
+  template <class, std::uintmax_t, class, class, class>
+  friend class SmallSet;
+
   using miterator = typename VecType::iterator;  // Custom non const iterator to allow modification of content
 
   miterator mbegin() noexcept { return _sortedVector.begin(); }
@@ -498,21 +514,27 @@ class FlatSet : private Compare {
   }
 
   /// Appends elements to the sorted vector with 'append', then sorts them and merges them with the previous ones.
-  /// If 'append' throws, the elements it already appended are erased, to keep the vector sorted.
+  /// If 'append' or the sort of the appended elements throws, the appended elements are erased: the previous ones are
+  /// kept. If the merge or the erasure of duplicates throws, the elements may not be sorted anymore: the set is
+  /// cleared.
   template <class Append>
   void appendAndMerge(Append append) {
     const difference_type oldSize = static_cast<difference_type>(size());
     try {
       append();
+      // sort appended elements only (beginning is already sorted)
+      std::sort(mbegin() + oldSize, mend(), compRef());
     } catch (...) {
       _sortedVector.erase(mbegin() + oldSize, mend());
       throw;
     }
-    const miterator first = mbegin() + oldSize;
-    // sort appended elements only (beginning is already sorted)
-    std::sort(first, mend(), compRef());
-    std::inplace_merge(mbegin(), first, mend(), compRef());
-    eraseDuplicates();
+    try {
+      std::inplace_merge(mbegin(), mbegin() + oldSize, mend(), compRef());
+      eraseDuplicates();
+    } catch (...) {
+      _sortedVector.clear();
+      throw;
+    }
   }
 
   Compare &compRef() { return static_cast<Compare &>(*this); }
