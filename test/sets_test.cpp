@@ -751,6 +751,45 @@ TYPED_TEST(SetThrowingCompareTest, InsertRangeComparisonThrowKeepsValidSet) {
   }
 }
 
+// If a comparison throws during an emplace, the set keeps exactly its previous elements: in particular, a SmallSet
+// which constructs the new element in its small vector before comparing it does not keep it, even if it is a duplicate.
+TYPED_TEST(SetThrowingCompareTest, EmplaceComparisonThrowKeepsElements) {
+  using SetType = TypeParam;
+  using Values = std::vector<int32_t>;
+  int& nbComparisonsBeforeThrow = ThrowingCompare::NbComparisonsBeforeThrow();
+  // small, small and full, and large states of SmallSets
+  for (const Values& initValues : {Values{4}, Values{4, 1}, Values{4, 1, 6}}) {
+    const SetType init(initValues.begin(), initValues.end());
+    for (int32_t v : {1, 4, 2, 7}) {  // present or not, before or after the first element
+      for (bool withHint : {false, true}) {
+        for (int nbComparisons = 0;; ++nbComparisons) {
+          SetType s(init);
+          nbComparisonsBeforeThrow = nbComparisons;
+          bool thrown = false;
+          try {
+            if (withHint) {
+              s.emplace_hint(s.begin(), v);
+            } else {
+              s.emplace(v);
+            }
+          } catch (const CompareException&) {
+            thrown = true;
+          }
+          nbComparisonsBeforeThrow = -1;
+          if (!thrown) {
+            SetType expected(init);
+            expected.insert(v);
+            EXPECT_EQ(s, expected) << "emplace " << v << (withHint ? " with hint" : "");
+            break;
+          }
+          EXPECT_EQ(s, init) << "emplace " << v << (withHint ? " with hint" : "") << ", throw at comparison "
+                             << nbComparisons;
+        }
+      }
+    }
+  }
+}
+
 template <typename T>
 class SetLessComparableTest : public ::testing::Test {};
 
