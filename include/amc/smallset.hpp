@@ -381,9 +381,17 @@ class SmallSet {
     if (isSmallContFull()) {
       return insert(T(std::forward<Args &&>(args)...));
     }
+    // The element is constructed in place before being compared, to avoid a temporary.
     miterator elIt = std::addressof(_vec.emplace_back(std::forward<Args &&>(args)...));
-    miterator it = std::find_if(_vec.begin(), elIt, FindFunctor<T>(key_comp(), *elIt));
-    bool isNew = it == elIt;
+    miterator it;
+    try {
+      it = std::find_if(_vec.begin(), elIt, FindFunctor<T>(key_comp(), *elIt));
+    } catch (...) {
+      // the new element may be a duplicate: it is removed if the comparator (or its copy) throws
+      _vec.pop_back();
+      throw;
+    }
+    const bool isNew = it == elIt;
     if (!isNew) {
       _vec.pop_back();
       elIt = it;
