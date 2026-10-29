@@ -405,9 +405,11 @@ class FlatSet : private Compare {
     }
   }
 
+  /// Like std::set, the range of an absent key is empty and positioned where the key would be inserted.
   std::pair<const_iterator, const_iterator> equal_range(const key_type &key) const {
-    const_iterator first = find(key);
-    const_iterator second = first != end() ? std::next(first) : end();
+    const_iterator first = lower_bound(key);
+    // keys are unique: the range holds at most the element found by lower_bound
+    const_iterator second = first == end() || compRef()(key, *first) ? first : std::next(first);
     return std::pair<const_iterator, const_iterator>(first, second);
   }
 

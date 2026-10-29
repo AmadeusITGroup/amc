@@ -6,6 +6,7 @@
 #include <amc/flatset.hpp>
 #include <iterator>
 #include <list>
+#include <set>
 #include <sstream>
 #include <vector>
 #ifdef AMC_SMALLSET
@@ -969,6 +970,35 @@ TEST(SmallSetTest, MergeDifferentCompare) {
   EXPECT_EQ(s2, RevSetType({'E'}));
 }
 #endif
+
+template <typename T>
+class FlatSetBoundsTest : public ::testing::Test {};
+
+// The bounds depend on the ordering of the comparator and on the iterators of the vector
+typedef ::testing::Types<FlatSet<char>, FlatSet<uint32_t, std::greater<uint32_t>, amc::allocator<uint32_t>,
+                                                std::vector<uint32_t, amc::allocator<uint32_t>>>>
+    FlatSetsBoundsType;
+TYPED_TEST_SUITE(FlatSetBoundsTest, FlatSetsBoundsType, );
+
+// Same positions as std::set, for present and absent keys: the range of an absent key is empty, at the position where
+// it would be inserted (and not at end(), like in {1, 3, 5}.equal_range(2))
+TYPED_TEST(FlatSetBoundsTest, EqualRangeAndBounds) {
+  using SetType = TypeParam;
+  using ValueType = typename SetType::value_type;
+  using RefSetType = std::set<ValueType, typename SetType::key_compare>;
+  for (const SetType& s : {SetType(), SetType{1, 3, 5}}) {
+    const RefSetType ref(s.begin(), s.end());
+    for (int k = 0; k <= 6; ++k) {
+      const ValueType key = static_cast<ValueType>(k);
+      const auto range = s.equal_range(key);
+      const auto refRange = ref.equal_range(key);
+      EXPECT_EQ(std::distance(s.begin(), range.first), std::distance(ref.begin(), refRange.first)) << "key " << k;
+      EXPECT_EQ(std::distance(s.begin(), range.second), std::distance(ref.begin(), refRange.second)) << "key " << k;
+      EXPECT_TRUE(range.first == s.lower_bound(key)) << "key " << k;
+      EXPECT_TRUE(range.second == s.upper_bound(key)) << "key " << k;
+    }
+  }
+}
 
 #ifdef AMC_NONSTD_FEATURES
 TEST(FlatSetTest, SpecificPointerMethods) {
