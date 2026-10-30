@@ -34,7 +34,7 @@ using AMCSmallNonRelocType = amc::SmallVector<ComplexNonTriviallyRelocatableType
 using AMCSmallInt = amc::SmallVector<uint32_t, kSmallSize>;
 
 template <class VecType>
-void InsertNElemsRandom(benchmark::State &state) {
+void InsertNElemsRandom(benchmark::State& state) {
   TypeStats::_stats = TypeStats();
   VecType v(1, 0);
   uint32_t s = 2U;
@@ -59,7 +59,7 @@ void InsertNElemsRandom(benchmark::State &state) {
 }
 
 template <class VecType>
-void InsertFromPointerRandom(benchmark::State &state) {
+void InsertFromPointerRandom(benchmark::State& state) {
   using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
   VecType v(1, 0);
@@ -81,7 +81,7 @@ void InsertFromPointerRandom(benchmark::State &state) {
 }
 
 template <class VecType>
-void InsertFromForwardItRandom(benchmark::State &state) {
+void InsertFromForwardItRandom(benchmark::State& state) {
   using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
   VecType v(1, 0);
@@ -108,7 +108,7 @@ void InsertFromForwardItRandom(benchmark::State &state) {
 }
 
 template <class VecType>
-void EraseRandom(benchmark::State &state) {
+void EraseRandom(benchmark::State& state) {
   TypeStats::_stats = TypeStats();
   VecType v(1, 0);
   uint32_t s = 2U;
@@ -129,7 +129,7 @@ void EraseRandom(benchmark::State &state) {
 }
 
 template <class VecType>
-void AssignRandom(benchmark::State &state) {
+void AssignRandom(benchmark::State& state) {
   using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
   VecType v;
@@ -153,7 +153,7 @@ void AssignRandom(benchmark::State &state) {
 }
 
 template <class VecType>
-void SwapRandom(benchmark::State &state) {
+void SwapRandom(benchmark::State& state) {
   TypeStats::_stats = TypeStats();
   VecType v;
   uint32_t s = 0;
@@ -170,7 +170,7 @@ void SwapRandom(benchmark::State &state) {
 }
 
 template <class VecType>
-void Growing(benchmark::State &state) {
+void Growing(benchmark::State& state) {
   using SizeType = typename VecType::size_type;
   TypeStats::_stats = TypeStats();
 
@@ -190,7 +190,7 @@ void Growing(benchmark::State &state) {
 }
 
 template <class VecType, unsigned TypicalMaxSize>
-void CommonUsage(benchmark::State &state) {
+void CommonUsage(benchmark::State& state) {
   using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
 
@@ -231,7 +231,7 @@ void CommonUsage(benchmark::State &state) {
 /// state.range(0) % of the vectors are small, with 1 to kSmallSize elements, the others have kSmallSize + 1 to
 /// 4 * kSmallSize elements (sizes are uniformly distributed in both ranges).
 template <class VecType>
-void SmallSizes(benchmark::State &state) {
+void SmallSizes(benchmark::State& state) {
   using ValueType = typename VecType::value_type;
   TypeStats::_stats = TypeStats();
   const auto smallPercent = static_cast<uint64_t>(state.range(0));
@@ -248,7 +248,7 @@ void SmallSizes(benchmark::State &state) {
     }
     // Without it, the compiler could remove the allocations of a vector which does not escape
     benchmark::DoNotOptimize(v.data());
-    for (const ValueType &e : v) {
+    for (const ValueType& e : v) {
       sum += static_cast<uint32_t>(e);
     }
     benchmark::DoNotOptimize(sum);
@@ -258,7 +258,7 @@ void SmallSizes(benchmark::State &state) {
 }
 
 /// Percentages of small vectors of the SmallSizes benchmark.
-void SmallSizesArgs(benchmark::internal::Benchmark *b) {
+void SmallSizesArgs(benchmark::internal::Benchmark* b) {
   for (int smallPercent : {0, 50, 80, 90, 95, 99, 100}) {
     b->Arg(smallPercent);
   }

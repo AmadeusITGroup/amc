@@ -27,11 +27,11 @@ namespace amc {
 template <typename Alloc>
 class BasicSingletonAllocatorAdaptor {
  public:
-  void *allocate(std::size_t n) { return Alloc::instance().allocate(n); }
-  void *reallocate(void *p, std::size_t oldSz, std::size_t newSz) {
+  void* allocate(std::size_t n) { return Alloc::instance().allocate(n); }
+  void* reallocate(void* p, std::size_t oldSz, std::size_t newSz) {
     return Alloc::instance().reallocate(p, oldSz, newSz);
   }
-  void deallocate(void *p, std::size_t n) { Alloc::instance().deallocate(p, n); }
+  void deallocate(void* p, std::size_t n) { Alloc::instance().deallocate(p, n); }
 };
 
 /**
@@ -57,23 +57,23 @@ class BasicAllocatorWrapper : private BasicAllocator {
   using value_type = T;
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;
-  using pointer = T *;
-  using const_pointer = const T *;
-  using reference = T &;
-  using const_reference = const T &;
+  using pointer = T*;
+  using const_pointer = const T*;
+  using reference = T&;
+  using const_reference = const T&;
 
   BasicAllocatorWrapper() = default;
 
-  BasicAllocatorWrapper(const BasicAllocatorWrapper &) = default;
-  BasicAllocatorWrapper(BasicAllocatorWrapper &&) = default;
-  BasicAllocatorWrapper &operator=(const BasicAllocatorWrapper &) noexcept = default;
-  BasicAllocatorWrapper &operator=(BasicAllocatorWrapper &&) noexcept = default;
+  BasicAllocatorWrapper(const BasicAllocatorWrapper&) = default;
+  BasicAllocatorWrapper(BasicAllocatorWrapper&&) = default;
+  BasicAllocatorWrapper& operator=(const BasicAllocatorWrapper&) noexcept = default;
+  BasicAllocatorWrapper& operator=(BasicAllocatorWrapper&&) noexcept = default;
 
   template <class U>
-  BasicAllocatorWrapper(const BasicAllocatorWrapper<U, BasicAllocator> &o) : BasicAllocator(o) {}
+  BasicAllocatorWrapper(const BasicAllocatorWrapper<U, BasicAllocator>& o) : BasicAllocator(o) {}
 
   /// Wraps a copy of 'basicAllocator' (useful for basic allocators with a state).
-  explicit BasicAllocatorWrapper(const BasicAllocator &basicAllocator) : BasicAllocator(basicAllocator) {}
+  explicit BasicAllocatorWrapper(const BasicAllocator& basicAllocator) : BasicAllocator(basicAllocator) {}
 
   pointer address(reference r) const noexcept { return std::addressof(r); }
   const_pointer address(const_reference r) const noexcept { return std::addressof(r); }
@@ -96,12 +96,12 @@ class BasicAllocatorWrapper : private BasicAllocator {
   }
 
   template <class U, class... Args>
-  void construct(U *p, Args &&...args) {
+  void construct(U* p, Args&&... args) {
     amc::construct_at(p, std::forward<Args>(args)...);
   }
 
   template <class U>
-  void destroy(U *p) {
+  void destroy(U* p) {
     amc::destroy_at(p);
   }
 
@@ -111,12 +111,12 @@ class BasicAllocatorWrapper : private BasicAllocator {
   };
 
   template <typename U>
-  constexpr bool operator==(const BasicAllocatorWrapper<U, BasicAllocator> &o) const {
+  constexpr bool operator==(const BasicAllocatorWrapper<U, BasicAllocator>& o) const {
     return IsEqual(o, std::is_empty<BasicAllocator>());
   }
 
   template <typename U>
-  constexpr bool operator!=(const BasicAllocatorWrapper<U, BasicAllocator> &rhs) const {
+  constexpr bool operator!=(const BasicAllocatorWrapper<U, BasicAllocator>& rhs) const {
     return !(*this == rhs);
   }
 
@@ -144,13 +144,13 @@ class BasicAllocatorWrapper : private BasicAllocator {
   }
 
   template <class U>
-  constexpr bool IsEqual(const BasicAllocatorWrapper<U, BasicAllocator> &, std::true_type) const {
+  constexpr bool IsEqual(const BasicAllocatorWrapper<U, BasicAllocator>&, std::true_type) const {
     return true;
   }
 
   template <class U>
-  constexpr bool IsEqual(const BasicAllocatorWrapper<U, BasicAllocator> &o, std::false_type) const {
-    return static_cast<const BasicAllocator &>(*this) == static_cast<const BasicAllocator &>(o);
+  constexpr bool IsEqual(const BasicAllocatorWrapper<U, BasicAllocator>& o, std::false_type) const {
+    return static_cast<const BasicAllocator&>(*this) == static_cast<const BasicAllocator&>(o);
   }
 
   void CheckSize(size_type n) const {
@@ -165,12 +165,12 @@ class BasicAllocatorWrapper : private BasicAllocator {
 
   pointer Allocate(size_type n, std::true_type) {
     const std::size_t nbBytes = n * sizeof(T);
-    char *block = static_cast<char *>(BasicAllocator::allocate(nbBytes + OverAlignedExtraBytes()));
-    void *elems = block + sizeof(std::size_t);
+    char* block = static_cast<char*>(BasicAllocator::allocate(nbBytes + OverAlignedExtraBytes()));
+    void* elems = block + sizeof(std::size_t);
     std::size_t space = nbBytes + alignof(T) - 1U;
     std::align(alignof(T), nbBytes, elems, space);  // cannot fail thanks to the extra bytes
-    const std::size_t offset = static_cast<std::size_t>(static_cast<char *>(elems) - block);
-    std::memcpy(static_cast<char *>(elems) - sizeof(std::size_t), &offset, sizeof(std::size_t));
+    const std::size_t offset = static_cast<std::size_t>(static_cast<char*>(elems) - block);
+    std::memcpy(static_cast<char*>(elems) - sizeof(std::size_t), &offset, sizeof(std::size_t));
     return static_cast<pointer>(elems);
   }
 
@@ -178,7 +178,7 @@ class BasicAllocatorWrapper : private BasicAllocator {
 
   void Deallocate(pointer p, size_type n, std::true_type) {
     if (p != nullptr) {
-      char *elems = reinterpret_cast<char *>(p);
+      char* elems = reinterpret_cast<char*>(p);
       std::size_t offset;
       std::memcpy(&offset, elems - sizeof(std::size_t), sizeof(std::size_t));
       BasicAllocator::deallocate(elems - offset, n * sizeof(T) + OverAlignedExtraBytes());
@@ -210,8 +210,8 @@ struct BasicAllocatorWrapper<void, BasicAllocator> {
   using value_type = void;
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;
-  using pointer = void *;
-  using const_pointer = const void *;
+  using pointer = void*;
+  using const_pointer = const void*;
 
   template <class U>
   struct rebind {
@@ -233,8 +233,8 @@ struct is_trivially_relocatable<BasicAllocatorWrapper<T, BasicAllocator> > : is_
  * void deallocate(void *p, size_t n)
  */
 struct SimpleAllocator {
-  void *allocate(std::size_t n) {
-    void *ptr = std::malloc(n);
+  void* allocate(std::size_t n) {
+    void* ptr = std::malloc(n);
     if (AMC_UNLIKELY(!ptr)) {
       throw std::bad_alloc();
     }
@@ -243,24 +243,24 @@ struct SimpleAllocator {
 
   /// Small blocks are copied to a new block instead: 'realloc' can seldom extend them in place, and it bypasses the
   /// fast paths of 'malloc' and 'free' for small blocks (like the thread cache of glibc), which outweigh the copy.
-  void *reallocate(void *p, std::size_t oldSz, std::size_t newSz) {
+  void* reallocate(void* p, std::size_t oldSz, std::size_t newSz) {
     if (p == nullptr || kMaxCopiedSize < newSz) {
       return Realloc(p, newSz);
     }
-    void *newP = allocate(newSz);
+    void* newP = allocate(newSz);
     std::memcpy(newP, p, oldSz < newSz ? oldSz : newSz);
     std::free(p);
     return newP;
   }
 
-  void deallocate(void *p, std::size_t) { std::free(p); }
+  void deallocate(void* p, std::size_t) { std::free(p); }
 
   /// Largest number of bytes of a block reallocated by a copy rather than by 'realloc'.
   static constexpr std::size_t kMaxCopiedSize = 1024;
 
  private:
   /// Kept out of 'reallocate' for GCC to inline 'reallocate' into the growth of the vectors (20 % faster).
-  static void *Realloc(void *p, std::size_t newSz) {
+  static void* Realloc(void* p, std::size_t newSz) {
     p = std::realloc(p, newSz);
     if (AMC_UNLIKELY(!p)) {
       throw std::bad_alloc();
