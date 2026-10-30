@@ -1612,6 +1612,69 @@ TEST(VectorTest, ThrowingMoveDoesNotLeak) {
   EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations);
 }
 
+// Elements whose moves cannot throw are relocated in a single pass, each one being destroyed right after its move: at
+// most one extra element is alive at a time. Otherwise, all the elements are moved before any of them is destroyed: if
+// a move throws, the source keeps all of them (ThrowingMoveType copies its value when moved).
+TEST(VectorTest, UninitializedRelocateNonTriviallyRelocatable) {
+  constexpr std::size_t kNbElems = 3;
+  {
+    using Type = NothrowMoveType;
+    const int nbLive = Type::NbLive();
+    std::allocator<Type> alloc;
+    Type* src = alloc.allocate(2U * kNbElems);
+    Type* dst = src + kNbElems;
+    for (std::size_t i = 0; i < kNbElems; ++i) {
+      amc::construct_at(src + i, static_cast<int32_t>(i + 1U));
+    }
+    Type::MaxNbLive() = Type::NbLive();
+    EXPECT_EQ(amc::uninitialized_relocate_n(src, kNbElems, dst), std::make_pair(src + kNbElems, dst + kNbElems));
+    EXPECT_EQ(Type::MaxNbLive(), nbLive + static_cast<int>(kNbElems) + 1);
+    EXPECT_EQ(Type::NbLive(), nbLive + static_cast<int>(kNbElems));
+    for (std::size_t i = 0; i < kNbElems; ++i) {
+      EXPECT_EQ(static_cast<int32_t>(dst[i]), static_cast<int32_t>(i + 1U));
+    }
+
+    Type::MaxNbLive() = Type::NbLive();
+    EXPECT_EQ(amc::uninitialized_relocate(dst, dst + kNbElems, src), src + kNbElems);
+    EXPECT_EQ(Type::MaxNbLive(), nbLive + static_cast<int>(kNbElems) + 1);
+    EXPECT_EQ(Type::NbLive(), nbLive + static_cast<int>(kNbElems));
+    for (std::size_t i = 0; i < kNbElems; ++i) {
+      EXPECT_EQ(static_cast<int32_t>(src[i]), static_cast<int32_t>(i + 1U));
+    }
+    amc::destroy_n(src, kNbElems);
+    alloc.deallocate(src, 2U * kNbElems);
+    EXPECT_EQ(Type::NbLive(), nbLive);
+  }
+  {
+    using Type = ThrowingMoveType;
+    const int nbLive = Type::NbLive();
+    std::allocator<Type> alloc;
+    Type* src = alloc.allocate(2U * kNbElems);
+    Type* dst = src + kNbElems;
+    for (std::size_t i = 0; i < kNbElems; ++i) {
+      amc::construct_at(src + i, static_cast<int32_t>(i + 1U));
+    }
+    Type::NbMovesBeforeThrow() = 1;
+    EXPECT_THROW(amc::uninitialized_relocate_n(src, kNbElems, dst), MoveForbiddenException);
+    Type::NbMovesBeforeThrow() = 1;
+    EXPECT_THROW(amc::uninitialized_relocate(src, src + kNbElems, dst), MoveForbiddenException);
+    Type::NbMovesBeforeThrow() = -1;
+    EXPECT_EQ(Type::NbLive(), nbLive + static_cast<int>(kNbElems));
+    for (std::size_t i = 0; i < kNbElems; ++i) {
+      EXPECT_EQ(static_cast<int32_t>(src[i]), static_cast<int32_t>(i + 1U));
+    }
+
+    EXPECT_EQ(amc::uninitialized_relocate_n(src, kNbElems, dst), std::make_pair(src + kNbElems, dst + kNbElems));
+    EXPECT_EQ(Type::NbLive(), nbLive + static_cast<int>(kNbElems));
+    for (std::size_t i = 0; i < kNbElems; ++i) {
+      EXPECT_EQ(static_cast<int32_t>(dst[i]), static_cast<int32_t>(i + 1U));
+    }
+    amc::destroy_n(dst, kNbElems);
+    alloc.deallocate(src, 2U * kNbElems);
+    EXPECT_EQ(Type::NbLive(), nbLive);
+  }
+}
+
 // Same for the rvalue overload when moving the inserted element throws (elements are shifted with memmove here)
 TEST(VectorTest, InsertMoveThrowsKeepsElements) {
   using VectorType = vector<MoveForbidden<true>>;

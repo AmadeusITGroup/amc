@@ -424,6 +424,23 @@ inline std::pair<InputIt, OutputIt> uninitialized_move_n(InputIt first, Size cou
 /// Relocate elements in [first, last) to another raw memory starting at dest, according to the traits of T.
 
 namespace memory_details {
+/// Relocation of elements which are not trivially relocatable, but whose move construction and destruction cannot
+/// throw: each element is moved then destroyed right away, in a single pass over both ranges.
+struct NothrowMoveAndDestroy {};
+
+/// Relocation mode: 'Default' (all elements moved, then all destroyed) is kept for moves which may throw, as the
+/// source elements have to stay alive until all of them have been moved.
+template <class InputIt, class OutputIt>
+struct RelocateImplModeFactory {
+  using InputType = typename std::iterator_traits<InputIt>::value_type;
+  using OutputType = typename std::iterator_traits<OutputIt>::value_type;
+  typedef typename ImplModeFactory<InputIt, OutputIt, amc::is_trivially_relocatable<InputType>::value>::type BaseMode;
+  typedef typename std::conditional<std::is_same<BaseMode, Default>::value &&
+                                        std::is_nothrow_constructible<OutputType, InputType&&>::value &&
+                                        std::is_nothrow_destructible<InputType>::value,
+                                    NothrowMoveAndDestroy, BaseMode>::type type;
+};
+
 /// Relocate element pointed by 'elem' at a raw memory location 'dest'
 template <class T>
 inline T* relocate_at_impl(T* elem, T* dest, Default) {
@@ -446,10 +463,20 @@ inline T* relocate_at_impl(T* elem, T* dest, MemMove) {
   return dest;
 }
 
+/// If a move throws, the elements constructed at 'dest' are destroyed and all the source elements stay alive.
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputIt dest, Default) {
   dest = amc::uninitialized_move(first, last, dest);
   amc::destroy(first, last);
+  return dest;
+}
+
+template <class InputIt, class OutputIt>
+inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputIt dest, NothrowMoveAndDestroy) {
+  for (; first != last; ++dest, void(), ++first) {
+    amc::construct_at(std::addressof(*dest), ::std::move(*first));
+    amc::destroy_at(std::addressof(*first));
+  }
   return dest;
 }
 
@@ -479,11 +506,22 @@ inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputI
   return dest + count;
 }
 
+/// If a move throws, the elements constructed at 'dest' are destroyed and all the source elements stay alive.
 template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first, Size count, OutputIt dest, Default) {
   std::pair<InputIt, OutputIt> p = amc::uninitialized_move_n(first, count, dest);
   amc::destroy_n(first, count);
   return p;
+}
+
+template <class InputIt, class Size, class OutputIt>
+inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first, Size count, OutputIt dest,
+                                                                  NothrowMoveAndDestroy) {
+  for (; count > 0; ++dest, void(), ++first, --count) {
+    amc::construct_at(std::addressof(*dest), ::std::move(*first));
+    amc::destroy_at(std::addressof(*first));
+  }
+  return std::pair<InputIt, OutputIt>(first, dest);
 }
 
 template <class InputIt, class Size, class OutputIt>
@@ -514,19 +552,20 @@ inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first,
 }
 }  // namespace memory_details
 
+/// Relocates [first, last) to the raw memory starting at 'dest'.
+/// If a move throws, the elements constructed at 'dest' are destroyed and all the source elements stay alive (some of
+/// them moved from).
 template <class InputIt, class OutputIt>
 inline OutputIt uninitialized_relocate(InputIt first, InputIt last, OutputIt dest) {
-  typedef typename memory_details::ImplModeFactory<
-      InputIt, OutputIt, amc::is_trivially_relocatable<typename std::iterator_traits<InputIt>::value_type>::value>::type
-      ImplMode;
+  typedef typename memory_details::RelocateImplModeFactory<InputIt, OutputIt>::type ImplMode;
   return memory_details::uninitialized_relocate_impl(first, last, dest, ImplMode());
 }
 
+/// Relocates the 'count' elements starting at 'first' to the raw memory starting at 'dest', see
+/// 'uninitialized_relocate'.
 template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_relocate_n(InputIt first, Size count, OutputIt dest) {
-  typedef typename memory_details::ImplModeFactory<
-      InputIt, OutputIt, amc::is_trivially_relocatable<typename std::iterator_traits<InputIt>::value_type>::value>::type
-      ImplMode;
+  typedef typename memory_details::RelocateImplModeFactory<InputIt, OutputIt>::type ImplMode;
   return memory_details::uninitialized_relocate_n_impl(first, count, dest, ImplMode());
 }
 
