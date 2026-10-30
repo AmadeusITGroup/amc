@@ -78,9 +78,21 @@ class FlatSet : private Compare {
     node_type() noexcept = default;
 
     node_type(const node_type&) = delete;
-    node_type(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value) = default;
+    /// Like the standard node handles, a moved from node is empty.
+    node_type(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value)
+        : Alloc(std::move(static_cast<Alloc&>(o))), _optV(std::move(o._optV)) {
+      o._optV.reset();
+    }
     node_type& operator=(const node_type&) = delete;
-    node_type& operator=(node_type&& o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
+    node_type& operator=(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
+                                                 std::is_nothrow_move_assignable<value_type>::value) {
+      if (this != &o) {
+        static_cast<Alloc&>(*this) = std::move(static_cast<Alloc&>(o));
+        _optV = std::move(o._optV);
+        o._optV.reset();
+      }
+      return *this;
+    }
 
     ~node_type() = default;
 
@@ -234,7 +246,7 @@ class FlatSet : private Compare {
   void insert(std::initializer_list<value_type> ilist) { insert(ilist.begin(), ilist.end()); }
 
 #ifdef AMC_CXX17
-  /// If the insertion fails (equivalent element already present), the returned node keeps its value.
+  /// 'nh' is left empty. If the insertion fails (equivalent element already present), the returned node owns its value.
   insert_return_type insert(node_type&& nh) {
     insert_return_type irt{end(), false, std::move(nh)};
     if (irt.node) {

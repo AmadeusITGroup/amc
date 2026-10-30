@@ -562,7 +562,10 @@ TYPED_TEST(SetListExtractTest, Extract) {
   ref.emplace(2);
   ref.emplace(17);
   EXPECT_EQ(s, ref);
-  s.insert(std::move(nh));
+  auto irt = s.insert(std::move(nh));
+  EXPECT_TRUE(irt.inserted);
+  EXPECT_TRUE(irt.node.empty());
+  EXPECT_TRUE(nh.empty());  // a successful insertion consumes the node
   ref.clear();
   ref.emplace(2);
   ref.emplace(17);
@@ -595,6 +598,34 @@ TYPED_TEST(SetListExtractTest, Extract) {
   ref.clear();
   ref.emplace(1);
   EXPECT_EQ(s, ref);
+
+  // moving a node handle empties the source
+  auto nh2 = std::move(nh);
+  EXPECT_TRUE(nh.empty());
+  EXPECT_FALSE(nh);
+  ASSERT_FALSE(nh2.empty());
+  EXPECT_EQ(nh2.value(), ValueType(4));
+  nh = s.extract(1);
+  nh = std::move(nh2);  // move assignment to a non empty node
+  EXPECT_TRUE(nh2.empty());
+  ASSERT_FALSE(nh.empty());
+  EXPECT_EQ(nh.value(), ValueType(4));
+  nh2 = std::move(nh);  // move assignment to an empty node
+  EXPECT_TRUE(nh.empty());
+  ASSERT_FALSE(nh2.empty());
+  EXPECT_EQ(nh2.value(), ValueType(4));
+  nh2 = std::move(nh);  // move assignment from an empty node
+  EXPECT_TRUE(nh.empty());
+  EXPECT_TRUE(nh2.empty());
+  nh = s.extract(42);  // move assignment from an empty node, to an empty node
+  EXPECT_TRUE(nh.empty());
+
+  s.emplace(5);
+  nh2 = s.extract(5);
+  auto& self = nh2;  // assignment through a reference, avoiding self move warnings
+  nh2 = std::move(self);
+  ASSERT_FALSE(nh2.empty());
+  EXPECT_EQ(nh2.value(), ValueType(5));
 }
 
 // Inserting a node whose value is already present fails and leaves the node untouched: it keeps its value.
@@ -610,7 +641,9 @@ TYPED_TEST(SetListExtractTest, InsertNodeAlreadyPresent) {
     SetType o;
     o.emplace(1);
 
-    auto irt = s.insert(o.extract(1));
+    auto nh = o.extract(1);
+    auto irt = s.insert(std::move(nh));
+    EXPECT_TRUE(nh.empty());  // the value has been transferred to the returned node
     EXPECT_FALSE(irt.inserted);
     ASSERT_FALSE(irt.node.empty());
     EXPECT_EQ(irt.node.value(), ValueType(1));
