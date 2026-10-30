@@ -152,6 +152,7 @@ template <class T, std::uintmax_t N, class Compare = std::less<T>, class Alloc =
 class SmallSet {
  private:
   using VecType = FixedCapacityVector<T, N, vec::UncheckedGrowingPolicy>;
+  using VecIt = typename VecType::const_iterator;
   using SetIt = typename SetType::const_iterator;
 
   static_assert(N <= 64, "N should be small as search has linear complexity for small sets");
@@ -477,13 +478,12 @@ class SmallSet {
 
   node_type extract(const_iterator position) {
     if (isSmall()) {
-      auto vecIt = position.toVecIt();
-      node_type nt(std::move(*const_cast<typename VecType::iterator>(vecIt)), get_allocator());
+      auto vecIt = ToVecIt(position);
+      node_type nt(std::move(*const_cast<miterator>(vecIt)), get_allocator());
       _vec.erase(vecIt);
       return nt;
     }
-    auto setIt = position.toSetIt();
-    auto setNt = _set.extract(setIt);
+    auto setNt = _set.extract(ToSetIt(position));
     node_type nt(std::move(setNt.value()), setNt.get_allocator());
     return nt;
   }
@@ -645,6 +645,15 @@ class SmallSet {
   template <class I>
   static inline SetIt ToSetIt(I it, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
     return it.toSetIt();
+  }
+
+  template <class I>
+  static inline VecIt ToVecIt(I it, typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
+    return it;
+  }
+  template <class I>
+  static inline VecIt ToVecIt(I it, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
+    return it.toVecIt();
   }
 
   /// Converts the iterator returned by an erase in the set. If the set has become empty, 'this' is small again (see
