@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "config.hpp"
+#include "hasreallocate.hpp"
 #include "memory.hpp"
 #include "type_traits.hpp"
 #include "utility.hpp"
@@ -706,6 +707,9 @@ class StdVectorBase : private Alloc {
 
   void grow(std::uintmax_t minSize, bool exact = false);
 
+  template <class... Args>
+  T* growEmplace(SizeType pos, Args&&... args);
+
   void shrink_impl(SizeType) {
     if (_size != _capa) {
       shrink();
@@ -891,6 +895,9 @@ class SmallVectorBase : private Alloc {
   }
 
   void grow(std::uintmax_t minSize, bool exact = false);
+
+  template <class... Args>
+  T* growEmplace(SizeType pos, Args&&... args);
 
   void shrink_impl(SizeType inplaceCapa) {
     if (!isSmall()) {
@@ -1155,6 +1162,13 @@ struct DynamicVectorBaseTypeDispatcher {
                                          StdVectorBase<T, Alloc, SizeType> >::type;
 };
 
+/// Tells whether the vectors grow their dynamic storage with the 'reallocate' method of their allocator (which may
+/// extend it in place), rather than by allocating a new one and relocating the elements into it.
+template <class Alloc>
+struct CanReallocate
+    : public std::integral_constant<bool, is_trivially_relocatable<typename Alloc::value_type>::value &&
+                                              has_reallocate<Alloc>::value> {};
+
 template <class T, class Alloc, class SizeType, bool WithInlineElements>
 class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType, WithInlineElements>::type {
  public:
@@ -1175,19 +1189,13 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   template <class... Args>
   iterator emplace(const_iterator position, Args&&... args) {
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
-    SizeType nElemsToShift = static_cast<SizeType>(this->size() - (position - this->begin()));
     iterator pos;
     if (this->isFull()) {
-      // construct before possible iterator invalidation from grow in constructor arguments
-      TemporaryElem<T> e(std::forward<Args>(args)...);
-      SizeType idx = static_cast<SizeType>(position - this->begin());
-      this->grow(this->size() + 1U);
-      pos = this->begin() + idx;
-      relocate_insert_n(pos, nElemsToShift, e.ptr());
-      e.release();
+      pos = emplaceGrowing(typename CanReallocate<Alloc>::type(), static_cast<SizeType>(position - this->begin()),
+                           std::forward<Args>(args)...);
     } else {
       pos = const_cast<iterator>(position);
-      emplace_n(pos, nElemsToShift, std::forward<Args>(args)...);
+      emplace_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::forward<Args>(args)...);
     }
     this->incrSize();
     return pos;
@@ -1197,12 +1205,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   reference emplace_back(Args&&... args) {
     iterator endIt;
     if (this->isFull()) {
-      // construct before possible iterator invalidation from grow in constructor arguments
-      TemporaryElem<T> e(std::forward<Args>(args)...);
-      this->grow(this->size() + 1U);
-      endIt = this->dynStorage() + this->size();
-      amc::relocate_at(e.ptr(), endIt);
-      e.release();
+      endIt = emplaceBackGrowing(typename CanReallocate<Alloc>::type(), std::forward<Args>(args)...);
     } else {
       endIt = this->begin() + this->size();
       amc::construct_at(endIt, std::forward<Args&&>(args)...);
@@ -1302,6 +1305,42 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
       }
     }
     return v;
+  }
+
+ private:
+  // The arguments of the emplace methods may reference elements of the vector, so the new element is constructed while
+  // they are still in place. 'reallocate' may extend the storage in place: the new element is then constructed in a
+  // temporary storage before growing, and relocated into the vector afterwards.
+  template <class... Args>
+  iterator emplaceBackGrowing(std::true_type, Args&&... args) {
+    TemporaryElem<T> e(std::forward<Args>(args)...);
+    this->grow(static_cast<std::uintmax_t>(this->size()) + 1U);
+    iterator endIt = this->dynStorage() + this->size();
+    amc::relocate_at(e.ptr(), endIt);
+    e.release();
+    return endIt;
+  }
+
+  // Otherwise the new element is constructed directly in the new storage, before the elements are relocated into it
+  // around the new one (like the standard library implementations): no temporary to relocate, and no element to shift.
+  template <class... Args>
+  iterator emplaceBackGrowing(std::false_type, Args&&... args) {
+    return this->growEmplace(this->size(), std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  iterator emplaceGrowing(std::true_type, SizeType idx, Args&&... args) {
+    TemporaryElem<T> e(std::forward<Args>(args)...);
+    this->grow(static_cast<std::uintmax_t>(this->size()) + 1U);
+    iterator pos = this->begin() + idx;
+    relocate_insert_n(pos, static_cast<SizeType>(this->size() - idx), e.ptr());
+    e.release();
+    return pos;
+  }
+
+  template <class... Args>
+  iterator emplaceGrowing(std::false_type, SizeType idx, Args&&... args) {
+    return this->growEmplace(idx, std::forward<Args>(args)...);
   }
 };
 

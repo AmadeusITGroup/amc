@@ -1227,7 +1227,7 @@ TYPED_TEST(VectorTest, EmplaceSelfReference) {
       vec.push_back(Type(i + 1));  // {1, 2, 3, 4, 5, 6}
     }
     if (inplace) {
-      vec.reserve(vec.size() + 3U);  // no reallocation will happen during emplace
+      vec.reserve(vec.size() + 4U);  // no reallocation will happen during emplace
     } else {
       vec.shrink_to_fit();  // force a reallocation during first emplace for growable vectors
     }
@@ -1243,8 +1243,13 @@ TYPED_TEST(VectorTest, EmplaceSelfReference) {
     // Emplace a copy of element #0 (value 1) at the end, without any element to shift
     p = vec.emplace(vec.end(), vec[0]);
     EXPECT_EQ(*p, Type(1));
-    EXPECT_EQ(static_cast<uint32_t>(vec.size()), 9U);
-    const Type kExpected[] = {Type(1), Type(2), Type(2), Type(5), Type(3), Type(4), Type(5), Type(6), Type(1)};
+    if (!inplace) {
+      vec.shrink_to_fit();  // force a reallocation during emplace_back for growable vectors
+    }
+    // Emplace back a copy of element #3 (value 5)
+    EXPECT_EQ(vec.emplace_back(vec[3]), Type(5));
+    EXPECT_EQ(static_cast<uint32_t>(vec.size()), 10U);
+    const Type kExpected[] = {Type(1), Type(2), Type(2), Type(5), Type(3), Type(4), Type(5), Type(6), Type(1), Type(5)};
     EXPECT_TRUE(std::equal(vec.begin(), vec.end(), kExpected));
   }
 }
@@ -1269,8 +1274,9 @@ TEST(VectorTest, EmplaceFromPointerToShiftedElement) {
   CheckEmplaceFromPointerToShiftedElement<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 4>>();
 }
 
-// When the vector is full, emplace methods construct the new element in a temporary storage before growing (as
-// arguments may reference elements of the vector). This element must be destroyed if the growth throws.
+// When the vector is full, emplace methods construct the new element before relocating the elements (arguments may
+// reference them): in a temporary storage when the allocator may reallocate the storage in place, directly in the new
+// storage otherwise. This element must be destroyed if the growth throws.
 template <class VectorType>
 void CheckEmplaceGrowFailureDoesNotLeak() {
   static_assert(std::is_same<typename VectorType::size_type, uint8_t>::value, "growing beyond 255 elements throws");
@@ -1296,6 +1302,118 @@ TEST(VectorTest, EmplaceGrowFailureDoesNotLeak) {
   CheckEmplaceGrowFailureDoesNotLeak<vector<TrivRelocType, std::allocator<TrivRelocType>, uint8_t>>();
   CheckEmplaceGrowFailureDoesNotLeak<SmallVector<NonTrivRelocType, 4, std::allocator<NonTrivRelocType>, uint8_t>>();
   CheckEmplaceGrowFailureDoesNotLeak<SmallVector<TrivRelocType, 4, std::allocator<TrivRelocType>, uint8_t>>();
+  // With 'reallocate': temporary storage
+  CheckEmplaceGrowFailureDoesNotLeak<vector<TrivRelocType, amc::allocator<TrivRelocType>, uint8_t>>();
+  CheckEmplaceGrowFailureDoesNotLeak<SmallVector<TrivRelocType, 4, amc::allocator<TrivRelocType>, uint8_t>>();
+}
+
+/// Checks the operations on the elements of 'emplace_back' ('method' 0) or 'emplace' ('method' 1) at each position of
+/// full vectors of a few sizes.
+template <class VectorType>
+void CheckEmplaceGrowthOperations() {
+  using Type = typename VectorType::value_type;
+  const std::size_t nbMovesPerElem = is_trivially_relocatable<Type>::value ? 0U : 1U;
+  TypeStats& stats = TypeStats::_stats;
+  for (int method = 0; method < 2; ++method) {
+    for (uint32_t nbElems : {0U, 1U, 2U, 5U}) {
+      for (uint32_t pos = method == 0 ? nbElems : 0U; pos <= nbElems; ++pos) {
+        VectorType v;
+        for (uint32_t i = 0; i < nbElems; ++i) {
+          v.emplace_back(i + 1U);
+        }
+        v.shrink_to_fit();
+        if (static_cast<uint32_t>(v.capacity()) != nbElems) {
+          continue;  // room left in the inline storage
+        }
+        std::vector<Type> expected(v.begin(), v.end());
+        expected.insert(expected.begin() + pos, Type(42U));
+
+        stats = TypeStats();
+        stats.start();
+        const Type* newElem = method == 0 ? &v.emplace_back(42U) : &*v.emplace(v.begin() + pos, 42U);
+        stats.end();
+
+        EXPECT_EQ(newElem, v.data() + pos);
+        EXPECT_EQ(stats._nbConstructs, 1U);
+        EXPECT_EQ(stats._nbMoveConstructs, nbMovesPerElem * nbElems);
+        EXPECT_EQ(stats._nbDestructs, nbMovesPerElem * nbElems);
+        EXPECT_EQ(stats._nbCopyConstructs + stats._nbCopyAssignments + stats._nbMoveAssignments, 0U);
+        EXPECT_TRUE(std::equal(v.begin(), v.end(), expected.begin(), expected.end()));
+      }
+    }
+  }
+}
+
+// When the vector is full, the emplace methods construct the new element once, like std::vector: directly in the new
+// storage when the allocator cannot reallocate it in place, the elements being relocated around it afterwards. They
+// neither relocate a temporary element (a move and a destruction), nor shift the next elements (move assignments).
+TEST(VectorTest, EmplaceGrowthOperations) {
+  using NonTrivRelocType = ComplexNonTriviallyRelocatableType;
+  using TrivRelocType = ComplexTriviallyRelocatableType;
+  CheckEmplaceGrowthOperations<vector<NonTrivRelocType>>();
+  // From the inline storage, then from a dynamic storage
+  CheckEmplaceGrowthOperations<SmallVector<NonTrivRelocType, 2>>();
+  CheckEmplaceGrowthOperations<vector<TrivRelocType, std::allocator<TrivRelocType>>>();
+  // With 'reallocate': temporary storage, relocated with memmove
+  CheckEmplaceGrowthOperations<vector<TrivRelocType>>();
+  CheckEmplaceGrowthOperations<SmallVector<TrivRelocType, 2>>();
+}
+
+/// The emplace methods of a full vector throw when constructing the new element or when relocating an element.
+template <class VectorType>
+void CheckEmplaceGrowthThrowsKeepsElements() {
+  using Type = typename VectorType::value_type;
+  for (int method = 0; method < 2; ++method) {
+    for (uint32_t nbElems : {0U, 2U, 5U}) {
+      for (uint32_t pos = method == 0 ? nbElems : 0U; pos <= nbElems; ++pos) {
+        // The new element is move constructed first, then the elements are moved: the move after the 'nbMoves' first
+        // ones throws
+        for (int nbMoves = 0; nbMoves <= static_cast<int>(nbElems); ++nbMoves) {
+          VectorType v;
+          for (uint32_t i = 0; i < nbElems; ++i) {
+            v.emplace_back(static_cast<int32_t>(i + 1U));
+          }
+          v.shrink_to_fit();
+          if (static_cast<uint32_t>(v.capacity()) != nbElems) {
+            continue;  // room left in the inline storage
+          }
+          const VectorType expected = v;
+          const Type* data = v.data();
+          Type value(42);
+          const int nbLive = Type::NbLive();
+          const int64_t nbLiveAllocations = CountingAllocator::NbLiveAllocations();
+
+          Type::NbMovesBeforeThrow() = nbMoves;
+          if (method == 0) {
+            EXPECT_THROW(v.emplace_back(std::move(value)), MoveForbiddenException);
+          } else {
+            EXPECT_THROW(v.emplace(v.begin() + pos, std::move(value)), MoveForbiddenException);
+          }
+          Type::NbMovesBeforeThrow() = -1;
+
+          EXPECT_EQ(v, expected);  // ThrowingMoveType copies its value when moved
+          EXPECT_EQ(v.data(), data);
+          EXPECT_EQ(static_cast<uint32_t>(v.capacity()), nbElems);
+          EXPECT_EQ(Type::NbLive(), nbLive);
+          EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations);
+        }
+      }
+    }
+  }
+}
+
+// When constructing the new element or relocating an element into the new storage throws, the vector keeps its
+// elements and its storage, without any leak.
+TEST(VectorTest, EmplaceGrowthThrowsKeepsElements) {
+  using Type = ThrowingMoveType;
+  using Alloc = BasicAllocatorWrapper<Type, CountingAllocator>;
+  const int nbLive = Type::NbLive();
+  const int64_t nbLiveAllocations = CountingAllocator::NbLiveAllocations();
+  CheckEmplaceGrowthThrowsKeepsElements<vector<Type, Alloc>>();
+  // From the inline storage, then from a dynamic storage
+  CheckEmplaceGrowthThrowsKeepsElements<SmallVector<Type, 2, Alloc>>();
+  EXPECT_EQ(Type::NbLive(), nbLive);
+  EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations);
 }
 
 // When copying the inserted element throws, the elements shifted to make room for it are shifted back: the vector keeps
@@ -1345,6 +1463,9 @@ void CheckInsertUndoShiftThrowsDoesNotLeak() {
   const int nbLive = Type::NbLive();
   for (int method = 0; method < 3; ++method) {
     for (bool grow : {false, true}) {
+      if (grow && method == 2) {
+        continue;  // emplace constructs the new element in the new storage, then relocates the elements around it
+      }
       for (int pos = 0; pos < 4; ++pos) {  // inserting at the end shifts nothing
         const int nbShifted = 4 - pos;
         // Undoing the shift move assigns the 'nbShifted' elements back: the 'nbUndoMoves' first ones succeed, the next
@@ -1425,6 +1546,7 @@ void CheckGrowAllocationFailureKeepsElements() {
     const auto capacity = v.capacity();
     const Type value(42);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.push_back(value); }), std::bad_alloc);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.emplace_back(42); }), std::bad_alloc);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.emplace(v.begin(), 42); }), std::bad_alloc);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.insert(v.begin(), 3U, value); }), std::bad_alloc);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.reserve(capacity + 10U); }), std::bad_alloc);
@@ -1614,7 +1736,8 @@ TEST(VectorTest, ThrowingMoveDoesNotLeak) {
 
 // Elements whose moves cannot throw are relocated in a single pass, each one being destroyed right after its move: at
 // most one extra element is alive at a time. Otherwise, all the elements are moved before any of them is destroyed: if
-// a move throws, the source keeps all of them (ThrowingMoveType copies its value when moved).
+// a move throws, the source keeps all of them (ThrowingMoveType copies its value when moved). A single element is
+// relocated by a move then a destruction: if the move throws, the element stays alive.
 TEST(VectorTest, UninitializedRelocateNonTriviallyRelocatable) {
   constexpr std::size_t kNbElems = 3;
   {
@@ -1641,6 +1764,12 @@ TEST(VectorTest, UninitializedRelocateNonTriviallyRelocatable) {
     for (std::size_t i = 0; i < kNbElems; ++i) {
       EXPECT_EQ(static_cast<int32_t>(src[i]), static_cast<int32_t>(i + 1U));
     }
+
+    EXPECT_EQ(amc::relocate_at(src + 1, dst), dst);
+    EXPECT_EQ(Type::NbLive(), nbLive + static_cast<int>(kNbElems));
+    EXPECT_EQ(static_cast<int32_t>(*dst), 2);
+    EXPECT_EQ(amc::relocate_at(dst, src + 1), src + 1);
+    EXPECT_EQ(static_cast<int32_t>(src[1]), 2);
     amc::destroy_n(src, kNbElems);
     alloc.deallocate(src, 2U * kNbElems);
     EXPECT_EQ(Type::NbLive(), nbLive);
@@ -1658,6 +1787,8 @@ TEST(VectorTest, UninitializedRelocateNonTriviallyRelocatable) {
     EXPECT_THROW(amc::uninitialized_relocate_n(src, kNbElems, dst), MoveForbiddenException);
     Type::NbMovesBeforeThrow() = 1;
     EXPECT_THROW(amc::uninitialized_relocate(src, src + kNbElems, dst), MoveForbiddenException);
+    Type::NbMovesBeforeThrow() = 0;
+    EXPECT_THROW(amc::relocate_at(src, dst), MoveForbiddenException);
     Type::NbMovesBeforeThrow() = -1;
     EXPECT_EQ(Type::NbLive(), nbLive + static_cast<int>(kNbElems));
     for (std::size_t i = 0; i < kNbElems; ++i) {
