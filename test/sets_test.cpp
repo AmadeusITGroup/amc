@@ -551,6 +551,7 @@ TYPED_TEST_SUITE(SetListExtractTest, SetsExtractType, );
 
 TYPED_TEST(SetListExtractTest, Extract) {
   using SetType = TypeParam;
+  using ValueType = typename SetType::value_type;
   SetType s;
   s.emplace(3);
   s.emplace(17);
@@ -568,6 +569,31 @@ TYPED_TEST(SetListExtractTest, Extract) {
   ref.emplace(16);
   EXPECT_EQ(s, ref);
   EXPECT_TRUE(s.extract(5).empty());  // absent key, smaller than some present ones
+  EXPECT_EQ(s, ref);
+
+  // extraction by iterator until the set is empty (a large SmallSet becomes small again)
+  nh = s.extract(s.find(16));
+  ASSERT_FALSE(nh.empty());
+  EXPECT_EQ(nh.value(), ValueType(16));
+  ref.erase(16);
+  EXPECT_EQ(s, ref);
+  while (!s.empty()) {
+    const int first = *s.begin();
+    nh = s.extract(s.begin());
+    ASSERT_FALSE(nh.empty());
+    EXPECT_EQ(nh.value(), ValueType(first));
+    EXPECT_FALSE(s.contains(first));
+  }
+  EXPECT_EQ(s.begin(), s.end());
+
+  // extraction by iterator in the small state of all SmallSets
+  s.emplace(4);
+  s.emplace(1);
+  nh = s.extract(s.find(4));
+  ASSERT_FALSE(nh.empty());
+  EXPECT_EQ(nh.value(), ValueType(4));
+  ref.clear();
+  ref.emplace(1);
   EXPECT_EQ(s, ref);
 }
 
