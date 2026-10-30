@@ -17,7 +17,7 @@ namespace typetraits_details {
 using std::swap;
 
 struct do_is_swappable_impl {
-  template <typename T, typename = decltype(swap(std::declval<T &>(), std::declval<T &>()))>
+  template <typename T, typename = decltype(swap(std::declval<T&>(), std::declval<T&>()))>
   static std::true_type test(int);
 
   template <typename>
@@ -26,7 +26,7 @@ struct do_is_swappable_impl {
 
 struct do_is_nothrow_swappable_impl {
   template <typename T>
-  static std::integral_constant<bool, noexcept(swap(std::declval<T &>(), std::declval<T &>()))> test(int);
+  static std::integral_constant<bool, noexcept(swap(std::declval<T&>(), std::declval<T&>()))> test(int);
 
   template <typename>
   static std::false_type test(...);

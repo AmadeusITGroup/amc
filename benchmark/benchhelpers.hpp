@@ -9,8 +9,8 @@
 namespace amc {
 constexpr uint32_t kMaxValue = 1000U;
 
-void PrintStats(benchmark::State &state) {
-  const TypeStats &stats = TypeStats::_stats;
+void PrintStats(benchmark::State& state) {
+  const TypeStats& stats = TypeStats::_stats;
 
   const auto nbIt = static_cast<double>(state.iterations());
   state.counters["Cons"] = static_cast<double>(stats._nbConstructs) / nbIt;

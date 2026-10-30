@@ -77,10 +77,10 @@ class FlatSet : private Compare {
 
     node_type() noexcept = default;
 
-    node_type(const node_type &) = delete;
-    node_type(node_type &&o) noexcept(std::is_nothrow_move_constructible<value_type>::value) = default;
-    node_type &operator=(const node_type &) = delete;
-    node_type &operator=(node_type &&o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
+    node_type(const node_type&) = delete;
+    node_type(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value) = default;
+    node_type& operator=(const node_type&) = delete;
+    node_type& operator=(node_type&& o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
 
     ~node_type() = default;
 
@@ -88,10 +88,10 @@ class FlatSet : private Compare {
     explicit operator bool() const noexcept { return _optV.has_value(); }
     allocator_type get_allocator() const { return static_cast<allocator_type>(*this); }
 
-    value_type &value() { return _optV.value(); }
-    const value_type &value() const { return _optV.value(); }
+    value_type& value() { return _optV.value(); }
+    const value_type& value() const { return _optV.value(); }
 
-    void swap(node_type &o) noexcept(std::is_nothrow_move_constructible<T>::value &&
+    void swap(node_type& o) noexcept(std::is_nothrow_move_constructible<T>::value &&
                                      amc::is_nothrow_swappable<T>::value) {
       _optV.swap(o._optV);
     }
@@ -101,7 +101,7 @@ class FlatSet : private Compare {
     friend class FlatSet;
 
     explicit node_type(Alloc alloc) : Alloc(alloc) {}
-    explicit node_type(value_type &&v, Alloc alloc = Alloc()) : Alloc(alloc), _optV(std::move(v)) {}
+    explicit node_type(value_type&& v, Alloc alloc = Alloc()) : Alloc(alloc), _optV(std::move(v)) {}
 
     std::optional<value_type> _optV;
   };
@@ -124,43 +124,43 @@ class FlatSet : private Compare {
   FlatSet() noexcept(std::is_nothrow_default_constructible<Compare>::value &&
                      std::is_nothrow_default_constructible<VecType>::value) = default;
 
-  explicit FlatSet(const Compare &comp, const Alloc &alloc = Alloc()) : Compare(comp), _sortedVector(alloc) {}
+  explicit FlatSet(const Compare& comp, const Alloc& alloc = Alloc()) : Compare(comp), _sortedVector(alloc) {}
 
-  explicit FlatSet(const Alloc &alloc) : _sortedVector(alloc) {}
+  explicit FlatSet(const Alloc& alloc) : _sortedVector(alloc) {}
 
   template <class InputIt>
-  FlatSet(InputIt first, InputIt last, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
+  FlatSet(InputIt first, InputIt last, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(first, last, alloc) {
     std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
     eraseDuplicates();
   }
 
   template <class InputIt>
-  FlatSet(InputIt first, InputIt last, const Alloc &alloc) : FlatSet(first, last, Compare(), alloc) {}
+  FlatSet(InputIt first, InputIt last, const Alloc& alloc) : FlatSet(first, last, Compare(), alloc) {}
 
-  FlatSet(const FlatSet &o, const Alloc &alloc) : Compare(o.key_comp()), _sortedVector(o._sortedVector, alloc) {}
+  FlatSet(const FlatSet& o, const Alloc& alloc) : Compare(o.key_comp()), _sortedVector(o._sortedVector, alloc) {}
 
-  FlatSet(FlatSet &&o, const Alloc &alloc) : Compare(o.key_comp()), _sortedVector(std::move(o._sortedVector), alloc) {}
+  FlatSet(FlatSet&& o, const Alloc& alloc) : Compare(o.key_comp()), _sortedVector(std::move(o._sortedVector), alloc) {}
 
-  FlatSet(std::initializer_list<value_type> list, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
+  FlatSet(std::initializer_list<value_type> list, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(alloc) {
     insert(list.begin(), list.end());
   }
 
-  FlatSet(std::initializer_list<value_type> list, const Alloc &alloc) : FlatSet(list, Compare(), alloc) {}
+  FlatSet(std::initializer_list<value_type> list, const Alloc& alloc) : FlatSet(list, Compare(), alloc) {}
 
 #ifdef AMC_NONSTD_FEATURES
   using vector_type = VecType;
 
   /// Non standard constructor of a FlatSet from a Vector, stealing its dynamic memory.
-  explicit FlatSet(vector_type &&v, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
+  explicit FlatSet(vector_type&& v, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(std::move(v), alloc) {
     std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
     eraseDuplicates();
   }
 
   /// If the comparator or a move of an element throws, the set is emptied.
-  FlatSet &operator=(vector_type &&v) {
+  FlatSet& operator=(vector_type&& v) {
     _sortedVector = std::move(v);
     try {
       std::sort(_sortedVector.begin(), _sortedVector.end(), compRef());
@@ -174,7 +174,7 @@ class FlatSet : private Compare {
 #endif
 
   /// If an exception is thrown, the set is emptied.
-  FlatSet &operator=(std::initializer_list<value_type> list) {
+  FlatSet& operator=(std::initializer_list<value_type> list) {
     _sortedVector.clear();
     insert(list.begin(), list.end());
     return *this;
@@ -215,13 +215,13 @@ class FlatSet : private Compare {
 
   void clear() noexcept { _sortedVector.clear(); }
 
-  std::pair<iterator, bool> insert(const T &v) { return insert_val(v); }
+  std::pair<iterator, bool> insert(const T& v) { return insert_val(v); }
 
-  std::pair<iterator, bool> insert(T &&v) { return insert_val(std::move(v)); }
+  std::pair<iterator, bool> insert(T&& v) { return insert_val(std::move(v)); }
 
-  iterator insert(const_iterator hint, const T &v) { return insert_hint(hint, v); }
+  iterator insert(const_iterator hint, const T& v) { return insert_hint(hint, v); }
 
-  iterator insert(const_iterator hint, T &&v) { return insert_hint(hint, std::move(v)); }
+  iterator insert(const_iterator hint, T&& v) { return insert_hint(hint, std::move(v)); }
 
   /// If an exception is thrown (by the comparator, or by a copy or a move of an element), the set either keeps only its
   /// previous elements, or is emptied.
@@ -235,7 +235,7 @@ class FlatSet : private Compare {
 
 #ifdef AMC_CXX17
   /// If the insertion fails (equivalent element already present), the returned node keeps its value.
-  insert_return_type insert(node_type &&nh) {
+  insert_return_type insert(node_type&& nh) {
     insert_return_type irt{end(), false, std::move(nh)};
     if (irt.node) {
       // the value is only moved from if it is inserted
@@ -248,7 +248,7 @@ class FlatSet : private Compare {
   }
 
   /// If the insertion fails (equivalent element already present), 'nh' is unchanged.
-  iterator insert(const_iterator hint, node_type &&nh) {
+  iterator insert(const_iterator hint, node_type&& nh) {
     if (!nh) {
       return end();
     }
@@ -266,7 +266,7 @@ class FlatSet : private Compare {
   /// 'rg' may not be common (its end may be a sentinel of another type than its iterator).
   /// Same exception guarantee as the insertion of a range of iterators.
   template <class R>
-  void insert_range(R &&rg) {
+  void insert_range(R&& rg) {
     if constexpr (std::ranges::common_range<R> && std::ranges::forward_range<R>) {
       insert(std::ranges::begin(rg), std::ranges::end(rg));
     } else {
@@ -281,13 +281,13 @@ class FlatSet : private Compare {
 #endif
 
   template <class... Args>
-  std::pair<iterator, bool> emplace(Args &&...args) {
-    return insert(T(std::forward<Args &&>(args)...));
+  std::pair<iterator, bool> emplace(Args&&... args) {
+    return insert(T(std::forward<Args&&>(args)...));
   }
 
   template <class... Args>
-  iterator emplace_hint(const_iterator hint, Args &&...args) {
-    return insert(hint, T(std::forward<Args &&>(args)...));
+  iterator emplace_hint(const_iterator hint, Args&&... args) {
+    return insert(hint, T(std::forward<Args&&>(args)...));
   }
 
   const_iterator find(const_reference k) const {
@@ -302,20 +302,20 @@ class FlatSet : private Compare {
 #ifdef AMC_CXX14
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  const_iterator find(const K &k) const {
+  const_iterator find(const K& k) const {
     const_iterator lbIt = lower_bound(k);
     return lbIt == cend() || compRef()(k, *lbIt) ? cend() : lbIt;
   }
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  bool contains(const K &k) const {
+  bool contains(const K& k) const {
     return find(k) != end();
   }
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  size_type count(const K &k) const {
+  size_type count(const K& k) const {
     return contains(k);
   }
 #endif
@@ -332,22 +332,22 @@ class FlatSet : private Compare {
   iterator erase(const_iterator position) { return _sortedVector.erase(position); }
   iterator erase(const_iterator first, const_iterator last) { return _sortedVector.erase(first, last); }
 
-  bool operator==(const FlatSet &o) const { return _sortedVector == o._sortedVector; }
-  bool operator!=(const FlatSet &o) const { return !(*this == o); }
+  bool operator==(const FlatSet& o) const { return _sortedVector == o._sortedVector; }
+  bool operator!=(const FlatSet& o) const { return !(*this == o); }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const FlatSet &o) const { return _sortedVector <=> o._sortedVector; }
+  auto operator<=>(const FlatSet& o) const { return _sortedVector <=> o._sortedVector; }
 #else
-  bool operator<(const FlatSet &o) const { return _sortedVector < o._sortedVector; }
+  bool operator<(const FlatSet& o) const { return _sortedVector < o._sortedVector; }
 
-  bool operator<=(const FlatSet &o) const { return !(o < *this); }
-  bool operator>(const FlatSet &o) const { return o < *this; }
-  bool operator>=(const FlatSet &o) const { return !(*this < o); }
+  bool operator<=(const FlatSet& o) const { return !(o < *this); }
+  bool operator>(const FlatSet& o) const { return o < *this; }
+  bool operator>=(const FlatSet& o) const { return !(*this < o); }
 #endif
 
-  void swap(FlatSet &o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType &>())) &&
+  void swap(FlatSet& o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType&>())) &&
                                  amc::is_nothrow_swappable<Compare>::value) {
-    std::swap(static_cast<Compare &>(*this), static_cast<Compare &>(o));
+    std::swap(static_cast<Compare&>(*this), static_cast<Compare&>(o));
     _sortedVector.swap(o._sortedVector);
   }
 
@@ -358,7 +358,7 @@ class FlatSet : private Compare {
     return nt;
   }
 
-  node_type extract(const key_type &key) {
+  node_type extract(const key_type& key) {
     miterator it = mfind(key);
     node_type nh(get_allocator());
     if (it != _sortedVector.end()) {
@@ -370,11 +370,11 @@ class FlatSet : private Compare {
 #endif
 
   template <class C2, typename std::enable_if<!std::is_same<Compare, C2>::value, bool>::type = true>
-  void merge(FlatSet<T, C2, Alloc, VecType> &o) {
+  void merge(FlatSet<T, C2, Alloc, VecType>& o) {
     mergeOneByOne(o);
   }
 
-  void merge(FlatSet &o) {
+  void merge(FlatSet& o) {
     // The linear merge below requires 'o' to be ordered by our comparator. This is always the case for stateless
     // comparators, but stateful ones of the same type may define different orderings (and equivalences).
     if (!o.isStrictlySortedBy(compRef(), std::is_empty<Compare>())) {
@@ -406,7 +406,7 @@ class FlatSet : private Compare {
   }
 
   /// Like std::set, the range of an absent key is empty and positioned where the key would be inserted.
-  std::pair<const_iterator, const_iterator> equal_range(const key_type &key) const {
+  std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const {
     const_iterator first = lower_bound(key);
     // keys are unique: the range holds at most the element found by lower_bound
     const_iterator second = first == end() || compRef()(key, *first) ? first : std::next(first);
@@ -419,13 +419,13 @@ class FlatSet : private Compare {
 #ifdef AMC_CXX14
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  const_iterator lower_bound(const K &k) const {
+  const_iterator lower_bound(const K& k) const {
     return std::lower_bound(begin(), end(), k, compRef());
   }
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  const_iterator upper_bound(const K &k) const {
+  const_iterator upper_bound(const K& k) const {
     return std::upper_bound(begin(), end(), k, compRef());
   }
 #endif
@@ -442,7 +442,7 @@ class FlatSet : private Compare {
 
 #ifdef AMC_CXX20
   template <class Pred>
-  friend size_type erase_if(FlatSet &c, Pred pred) {
+  friend size_type erase_if(FlatSet& c, Pred pred) {
     return erase_if(c._sortedVector, pred);
   }
 #endif
@@ -466,7 +466,7 @@ class FlatSet : private Compare {
   }
 
   template <class V>
-  std::pair<iterator, bool> insert_val(V &&v) {
+  std::pair<iterator, bool> insert_val(V&& v) {
     miterator insertIt = std::lower_bound(mbegin(), mend(), v, compRef());
     bool newValue = insertIt == mend() || compRef()(v, *insertIt);
     if (newValue) {
@@ -476,7 +476,7 @@ class FlatSet : private Compare {
   }
 
   template <class V>
-  iterator insert_hint(const_iterator hint, V &&v) {
+  iterator insert_hint(const_iterator hint, V&& v) {
     const_iterator b = begin();
     const_iterator e = end();
     assert(hint >= b && hint <= e);
@@ -539,13 +539,13 @@ class FlatSet : private Compare {
     }
   }
 
-  Compare &compRef() { return static_cast<Compare &>(*this); }
-  const Compare &compRef() const { return static_cast<const Compare &>(*this); }
+  Compare& compRef() { return static_cast<Compare&>(*this); }
+  const Compare& compRef() const { return static_cast<const Compare&>(*this); }
 
   /// Moves each element of 'o' which is not already present in 'this' at its position according to our comparator,
   /// whatever the order of 'o'.
   template <class C2>
-  void mergeOneByOne(FlatSet<T, C2, Alloc, VecType> &o) {
+  void mergeOneByOne(FlatSet<T, C2, Alloc, VecType>& o) {
     for (miterator oit = o.mbegin(); oit != o.mend();) {
       miterator lbIt = std::lower_bound(mbegin(), mend(), *oit, compRef());
       if (lbIt == mend()) {
@@ -562,7 +562,7 @@ class FlatSet : private Compare {
   }
 
   /// Tells whether each element is strictly less than its successor according to 'comp'.
-  bool isStrictlySortedBy(const Compare &comp) const {
+  bool isStrictlySortedBy(const Compare& comp) const {
     return std::adjacent_find(begin(), end(),
                               [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); }) == end();
   }
@@ -570,8 +570,8 @@ class FlatSet : private Compare {
   /// Tells whether 'this' is strictly sorted by 'comp', another instance of our comparator type.
   /// Stateless comparators all define the same ordering, so no check is needed.
   /// Tag dispatch (instead of a constant condition) keeps C++11 compatibility without triggering MSVC C4127.
-  bool isStrictlySortedBy(const Compare &, std::true_type /*isEmptyCompare*/) const { return true; }
-  bool isStrictlySortedBy(const Compare &comp, std::false_type /*isEmptyCompare*/) const {
+  bool isStrictlySortedBy(const Compare&, std::true_type /*isEmptyCompare*/) const { return true; }
+  bool isStrictlySortedBy(const Compare& comp, std::false_type /*isEmptyCompare*/) const {
     return isStrictlySortedBy(comp);
   }
 
@@ -580,7 +580,7 @@ class FlatSet : private Compare {
   /// As elements are sorted, an element is equivalent to its predecessor 'p' if and only if it is not greater than 'p':
   /// a single comparison per element is needed (std::unique would require a symmetric equivalence predicate).
   void eraseDuplicates() {
-    const Compare &comp = compRef();
+    const Compare& comp = compRef();
     const miterator last = mend();
     miterator dest =
         std::adjacent_find(mbegin(), last, [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); });
@@ -598,7 +598,7 @@ class FlatSet : private Compare {
 };
 
 template <class T, class Compare, class Alloc, class VecType>
-inline void swap(FlatSet<T, Compare, Alloc, VecType> &lhs, FlatSet<T, Compare, Alloc, VecType> &rhs) {
+inline void swap(FlatSet<T, Compare, Alloc, VecType>& lhs, FlatSet<T, Compare, Alloc, VecType>& rhs) {
   lhs.swap(rhs);
 }
 

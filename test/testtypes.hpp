@@ -21,18 +21,18 @@ namespace amc {
 struct Foo {
   Foo(int32_t i = 0) : _ptr(malloc(i)), _c(0U), _i(static_cast<int16_t>(i)) {}
 
-  Foo(const Foo &foo) : _ptr(malloc(foo._i)), _c(foo._c), _i(foo._i) {}
+  Foo(const Foo& foo) : _ptr(malloc(foo._i)), _c(foo._c), _i(foo._i) {}
 
-  Foo &operator=(const Foo &foo) {
+  Foo& operator=(const Foo& foo) {
     _ptr = realloc(_ptr, foo._i);
     _c = foo._c;
     _i = foo._i;
     return *this;
   }
 
-  Foo(Foo &&foo) noexcept : _ptr(foo._ptr), _c(foo._c), _i(foo._i) { foo._ptr = nullptr; }
+  Foo(Foo&& foo) noexcept : _ptr(foo._ptr), _c(foo._c), _i(foo._i) { foo._ptr = nullptr; }
 
-  Foo &operator=(Foo &&foo) noexcept {
+  Foo& operator=(Foo&& foo) noexcept {
     std::swap(_ptr, foo._ptr);
     std::swap(_c, foo._c);
     std::swap(_i, foo._i);
@@ -44,10 +44,10 @@ struct Foo {
   operator int32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const Foo &o) const { return _i <=> o._i; }
+  auto operator<=>(const Foo& o) const { return _i <=> o._i; }
 #endif
 
-  void *_ptr;
+  void* _ptr;
   int8_t _c;
   int16_t _i;
 };
@@ -58,7 +58,7 @@ struct TriviallyCopyableType {
   operator int32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const TriviallyCopyableType &o) const { return _i <=> o._i; }
+  auto operator<=>(const TriviallyCopyableType& o) const { return _i <=> o._i; }
 #endif
 
   int8_t _c;
@@ -68,22 +68,22 @@ struct TriviallyCopyableType {
 struct NonCopyableType {
   NonCopyableType(int i = 7) : _i(i) {}
 
-  NonCopyableType(const NonCopyableType &) = delete;
-  NonCopyableType &operator=(const NonCopyableType &) = delete;
+  NonCopyableType(const NonCopyableType&) = delete;
+  NonCopyableType& operator=(const NonCopyableType&) = delete;
 
-  NonCopyableType(NonCopyableType &&o) noexcept : _i(o._i) {}
+  NonCopyableType(NonCopyableType&& o) noexcept : _i(o._i) {}
 
-  NonCopyableType &operator=(NonCopyableType &&o) noexcept {
+  NonCopyableType& operator=(NonCopyableType&& o) noexcept {
     if (this != &o) {
       _i = o._i;
     }
     return *this;
   }
 
-  bool operator==(const NonCopyableType &o) const { return _i == o._i; }
+  bool operator==(const NonCopyableType& o) const { return _i == o._i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const NonCopyableType &o) const = default;
+  auto operator<=>(const NonCopyableType& o) const = default;
 #endif
 
   operator int32_t() const { return _i; }
@@ -96,12 +96,12 @@ struct SimpleNonTriviallyCopyableType {
 
   ~SimpleNonTriviallyCopyableType() {}
 
-  bool operator==(const SimpleNonTriviallyCopyableType &o) const { return _i == o._i; }
+  bool operator==(const SimpleNonTriviallyCopyableType& o) const { return _i == o._i; }
 
   operator int32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const SimpleNonTriviallyCopyableType &o) const = default;
+  auto operator<=>(const SimpleNonTriviallyCopyableType& o) const = default;
 #endif
 
   int _i;
@@ -113,7 +113,7 @@ struct NonTrivialType {
   operator uint32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const NonTrivialType &o) const = default;
+  auto operator<=>(const NonTrivialType& o) const = default;
 #endif
 
   uint32_t _i;
@@ -126,7 +126,7 @@ struct alignas(64) OverAlignedType {
   operator int32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const OverAlignedType &o) const = default;
+  auto operator<=>(const OverAlignedType& o) const = default;
 #endif
 
   int32_t _i;
@@ -146,12 +146,12 @@ struct SelfMoveUnsafeType {
 
   SelfMoveUnsafeType(int32_t i = 0) : _i(i) {}
 
-  SelfMoveUnsafeType(const SelfMoveUnsafeType &) = default;
-  SelfMoveUnsafeType &operator=(const SelfMoveUnsafeType &) = default;
+  SelfMoveUnsafeType(const SelfMoveUnsafeType&) = default;
+  SelfMoveUnsafeType& operator=(const SelfMoveUnsafeType&) = default;
 
-  SelfMoveUnsafeType(SelfMoveUnsafeType &&o) noexcept : _i(o._i) { o._i = kMovedFromValue; }
+  SelfMoveUnsafeType(SelfMoveUnsafeType&& o) noexcept : _i(o._i) { o._i = kMovedFromValue; }
 
-  SelfMoveUnsafeType &operator=(SelfMoveUnsafeType &&o) noexcept {
+  SelfMoveUnsafeType& operator=(SelfMoveUnsafeType&& o) noexcept {
     _i = o._i;
     o._i = kMovedFromValue;
     return *this;
@@ -180,13 +180,13 @@ struct CompareException {};
 /// Comparator of integers with operator<, which throws CompareException once 'NbComparisonsBeforeThrow()' comparisons
 /// have been done (never if negative).
 struct ThrowingCompare {
-  static int &NbComparisonsBeforeThrow() {
+  static int& NbComparisonsBeforeThrow() {
     static int nbComparisonsBeforeThrow = -1;
     return nbComparisonsBeforeThrow;
   }
 
   bool operator()(int32_t lhs, int32_t rhs) const {
-    int &nbComparisonsBeforeThrow = NbComparisonsBeforeThrow();
+    int& nbComparisonsBeforeThrow = NbComparisonsBeforeThrow();
     if (nbComparisonsBeforeThrow >= 0 && nbComparisonsBeforeThrow-- == 0) {
       throw CompareException();
     }
@@ -199,8 +199,8 @@ struct ThrowingCompare {
 struct LessComparableType {
   LessComparableType(int32_t i = 0) : _i(i) {}
 
-  bool operator==(const LessComparableType &o) const { return _i == o._i; }
-  bool operator<(const LessComparableType &o) const { return _i < o._i; }
+  bool operator==(const LessComparableType& o) const { return _i == o._i; }
+  bool operator<(const LessComparableType& o) const { return _i < o._i; }
 
   int32_t _i;
 };
@@ -297,7 +297,7 @@ struct ComplexType {
     }
   }
 
-  explicit ComplexType(const ComplexType *p) : _ptr(malloc(p->_i % kMaxMallocSize)), _c(0U), _i(p->_i) {
+  explicit ComplexType(const ComplexType* p) : _ptr(malloc(p->_i % kMaxMallocSize)), _c(0U), _i(p->_i) {
     if (p->_i % kMaxMallocSize != 0 && !_ptr) {
       throw std::bad_alloc();
     }
@@ -307,14 +307,14 @@ struct ComplexType {
     }
   }
 
-  ComplexType(const ComplexType &o) : _ptr(MallocCopy(o)), _c(o._c), _i(o._i) {
+  ComplexType(const ComplexType& o) : _ptr(MallocCopy(o)), _c(o._c), _i(o._i) {
     TypeStats::_stats.copyConstruct();
     if (_ptr) {
       TypeStats::_stats.malloc();
     }
   }
 
-  ComplexType &operator=(const ComplexType &o) {
+  ComplexType& operator=(const ComplexType& o) {
     if (this != &o) {
       TypeStats::_stats.copy();
       if (o._i > _i) {
@@ -323,7 +323,7 @@ struct ComplexType {
         } else {
           TypeStats::_stats.malloc();
         }
-        void *newPtr = realloc(_ptr, o._i % kMaxMallocSize);
+        void* newPtr = realloc(_ptr, o._i % kMaxMallocSize);
         if (!newPtr) {
           throw std::bad_alloc();
         }
@@ -336,13 +336,13 @@ struct ComplexType {
     return *this;
   }
 
-  ComplexType(ComplexType &&o) noexcept : _ptr(o._ptr), _c(o._c), _i(o._i) {
+  ComplexType(ComplexType&& o) noexcept : _ptr(o._ptr), _c(o._c), _i(o._i) {
     o._ptr = nullptr;
     o._i = 0;
     TypeStats::_stats.moveConstruct();
   }
 
-  ComplexType &operator=(ComplexType &&o) noexcept {
+  ComplexType& operator=(ComplexType&& o) noexcept {
     if (this != &o) {
       if (_ptr) {
         TypeStats::_stats.free();
@@ -368,22 +368,22 @@ struct ComplexType {
   operator uint32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const ComplexType &o) const { return _i <=> o._i; }
+  auto operator<=>(const ComplexType& o) const { return _i <=> o._i; }
 #else
-  bool operator==(const ComplexType &o) const { return _i == o._i; }
-  bool operator<(const ComplexType &o) const { return _i < o._i; }
-  bool operator>(const ComplexType &o) const { return _i > o._i; }
+  bool operator==(const ComplexType& o) const { return _i == o._i; }
+  bool operator<(const ComplexType& o) const { return _i < o._i; }
+  bool operator>(const ComplexType& o) const { return _i > o._i; }
 #endif
 
   using trivially_relocatable =
       typename std::conditional<IsTriviallyRelocatable, std::true_type, std::false_type>::type;
 
-  void *_ptr;
+  void* _ptr;
   int8_t _c;
   uint32_t _i;
 
  private:
-  static void *MallocCopy(const ComplexType &o) {
+  static void* MallocCopy(const ComplexType& o) {
     TypeStats::_stats.copy();
     return malloc(o._i % kMaxMallocSize);
   }
@@ -409,10 +409,10 @@ template <bool IsTriviallyRelocatable>
 struct MoveForbidden {
   MoveForbidden() = default;
 
-  MoveForbidden(const MoveForbidden &) = delete;
-  MoveForbidden &operator=(const MoveForbidden &) = delete;
-  MoveForbidden(MoveForbidden &&) { throw MoveForbiddenException(); }
-  MoveForbidden &operator=(MoveForbidden &&) { throw MoveForbiddenException(); }
+  MoveForbidden(const MoveForbidden&) = delete;
+  MoveForbidden& operator=(const MoveForbidden&) = delete;
+  MoveForbidden(MoveForbidden&&) { throw MoveForbiddenException(); }
+  MoveForbidden& operator=(MoveForbidden&&) { throw MoveForbiddenException(); }
 
   using trivially_relocatable =
       typename std::conditional<IsTriviallyRelocatable, std::true_type, std::false_type>::type;
@@ -423,23 +423,23 @@ struct MoveForbidden {
 /// the inline storage of a SmallVector, which shares its first bytes with the pointer to its dynamic storage, then
 /// overwrites this pointer. Counts its live objects, to detect leaks.
 struct ThrowingMoveType {
-  static int &NbMovesBeforeThrow() {
+  static int& NbMovesBeforeThrow() {
     static int nbMovesBeforeThrow = -1;
     return nbMovesBeforeThrow;
   }
-  static int &NbLive() {
+  static int& NbLive() {
     static int nbLive = 0;
     return nbLive;
   }
 
   ThrowingMoveType(int32_t i = 0) : _i(i) { ++NbLive(); }
-  ThrowingMoveType(const ThrowingMoveType &o) : _i(o._i) { ++NbLive(); }
-  ThrowingMoveType(ThrowingMoveType &&o) : _i(o._i) {
+  ThrowingMoveType(const ThrowingMoveType& o) : _i(o._i) { ++NbLive(); }
+  ThrowingMoveType(ThrowingMoveType&& o) : _i(o._i) {
     Move();
     ++NbLive();
   }
-  ThrowingMoveType &operator=(const ThrowingMoveType &o) = default;
-  ThrowingMoveType &operator=(ThrowingMoveType &&o) {
+  ThrowingMoveType& operator=(const ThrowingMoveType& o) = default;
+  ThrowingMoveType& operator=(ThrowingMoveType&& o) {
     _i = o._i;
     Move();
     return *this;
@@ -449,7 +449,7 @@ struct ThrowingMoveType {
   operator int32_t() const { return _i; }
 
   static void Move() {
-    int &nbMovesBeforeThrow = NbMovesBeforeThrow();
+    int& nbMovesBeforeThrow = NbMovesBeforeThrow();
     if (nbMovesBeforeThrow >= 0 && nbMovesBeforeThrow-- == 0) {
       throw MoveForbiddenException();
     }
@@ -468,39 +468,39 @@ struct AssignmentException {};
 /// throwing only once): the operation undoing a failed one may throw as well. Its moves construct without throwing.
 /// Counts its live objects and its throws, a leaked object also leaking its value for the sanitizers.
 struct ThrowingAssignmentType {
-  static int &NbAssignmentsBeforeThrow() {
+  static int& NbAssignmentsBeforeThrow() {
     static int nbAssignmentsBeforeThrow = -1;
     return nbAssignmentsBeforeThrow;
   }
-  static int &NbAssignmentsBeforeNextThrow() {
+  static int& NbAssignmentsBeforeNextThrow() {
     static int nbAssignmentsBeforeNextThrow = -1;
     return nbAssignmentsBeforeNextThrow;
   }
-  static int &NbThrows() {
+  static int& NbThrows() {
     static int nbThrows = 0;
     return nbThrows;
   }
-  static int &NbLive() {
+  static int& NbLive() {
     static int nbLive = 0;
     return nbLive;
   }
 
   ThrowingAssignmentType(int32_t i = 0) : _p(new int32_t(i)) { ++NbLive(); }
-  ThrowingAssignmentType(const ThrowingAssignmentType &o) : _p(o._p ? new int32_t(*o._p) : nullptr) { ++NbLive(); }
-  ThrowingAssignmentType(ThrowingAssignmentType &&o) noexcept : _p(o._p) {
+  ThrowingAssignmentType(const ThrowingAssignmentType& o) : _p(o._p ? new int32_t(*o._p) : nullptr) { ++NbLive(); }
+  ThrowingAssignmentType(ThrowingAssignmentType&& o) noexcept : _p(o._p) {
     o._p = nullptr;
     ++NbLive();
   }
-  ThrowingAssignmentType &operator=(const ThrowingAssignmentType &o) {
+  ThrowingAssignmentType& operator=(const ThrowingAssignmentType& o) {
     Assign();
     if (this != &o) {
-      int32_t *p = o._p ? new int32_t(*o._p) : nullptr;
+      int32_t* p = o._p ? new int32_t(*o._p) : nullptr;
       delete _p;
       _p = p;
     }
     return *this;
   }
-  ThrowingAssignmentType &operator=(ThrowingAssignmentType &&o) {
+  ThrowingAssignmentType& operator=(ThrowingAssignmentType&& o) {
     Assign();
     if (this != &o) {
       delete _p;
@@ -518,7 +518,7 @@ struct ThrowingAssignmentType {
   operator int32_t() const { return _p != nullptr ? *_p : -1; }
 
   static void Assign() {
-    int &nbAssignmentsBeforeThrow = NbAssignmentsBeforeThrow();
+    int& nbAssignmentsBeforeThrow = NbAssignmentsBeforeThrow();
     if (nbAssignmentsBeforeThrow >= 0 && nbAssignmentsBeforeThrow-- == 0) {
       nbAssignmentsBeforeThrow = NbAssignmentsBeforeNextThrow();
       ++NbThrows();
@@ -526,7 +526,7 @@ struct ThrowingAssignmentType {
     }
   }
 
-  int32_t *_p;
+  int32_t* _p;
 };
 
 static_assert(!amc::is_trivially_relocatable<ThrowingAssignmentType>::value, "");
@@ -564,14 +564,14 @@ struct UnalignedToPtr2 {
 
 class TestAllocator {
  public:
-  void *allocate(size_t n) {
+  void* allocate(size_t n) {
     if (n > 20) {
       throw std::bad_alloc();
     }
     return bytes;
   }
 
-  void deallocate(void *, size_t) {}
+  void deallocate(void*, size_t) {}
 
  private:
   char bytes[20];
@@ -580,13 +580,13 @@ class TestAllocator {
 /// Basic allocator counting its live allocations, to detect memory leaks without relying on sanitizers.
 class CountingAllocator {
  public:
-  static int64_t &NbLiveAllocations() {
+  static int64_t& NbLiveAllocations() {
     static int64_t nbLiveAllocations = 0;
     return nbLiveAllocations;
   }
 
-  void *allocate(size_t n) {
-    void *p = malloc(n);
+  void* allocate(size_t n) {
+    void* p = malloc(n);
     if (!p) {
       throw std::bad_alloc();
     }
@@ -594,8 +594,8 @@ class CountingAllocator {
     return p;
   }
 
-  void *reallocate(void *p, size_t, size_t newSz) {
-    void *newPtr = realloc(p, newSz);
+  void* reallocate(void* p, size_t, size_t newSz) {
+    void* newPtr = realloc(p, newSz);
     if (!newPtr) {
       throw std::bad_alloc();
     }
@@ -605,7 +605,7 @@ class CountingAllocator {
     return newPtr;
   }
 
-  void deallocate(void *p, size_t) {
+  void deallocate(void* p, size_t) {
     if (p) {
       --NbLiveAllocations();
     }
@@ -617,19 +617,19 @@ class CountingAllocator {
 /// arena of its allocator, to count the blocks deallocated by an allocator of another arena, which must never happen.
 class ArenaAllocator {
  public:
-  static int64_t &NbLiveAllocations() {
+  static int64_t& NbLiveAllocations() {
     static int64_t nbLiveAllocations = 0;
     return nbLiveAllocations;
   }
-  static int64_t &NbArenaMismatches() {
+  static int64_t& NbArenaMismatches() {
     static int64_t nbArenaMismatches = 0;
     return nbArenaMismatches;
   }
 
   explicit ArenaAllocator(int arena = 0) noexcept : _arena(arena) {}
 
-  void *allocate(size_t n) {
-    char *block = static_cast<char *>(malloc(n + kHeaderSize));
+  void* allocate(size_t n) {
+    char* block = static_cast<char*>(malloc(n + kHeaderSize));
     if (!block) {
       throw std::bad_alloc();
     }
@@ -638,32 +638,32 @@ class ArenaAllocator {
     return block + kHeaderSize;
   }
 
-  void *reallocate(void *p, size_t, size_t newSz) {
+  void* reallocate(void* p, size_t, size_t newSz) {
     if (!p) {
       return allocate(newSz);
     }
-    char *block = checkArena(p);
-    block = static_cast<char *>(realloc(block, newSz + kHeaderSize));
+    char* block = checkArena(p);
+    block = static_cast<char*>(realloc(block, newSz + kHeaderSize));
     if (!block) {
       throw std::bad_alloc();
     }
     return block + kHeaderSize;
   }
 
-  void deallocate(void *p, size_t) {
+  void deallocate(void* p, size_t) {
     if (p) {
       free(checkArena(p));
       --NbLiveAllocations();
     }
   }
 
-  bool operator==(const ArenaAllocator &o) const { return _arena == o._arena; }
+  bool operator==(const ArenaAllocator& o) const { return _arena == o._arena; }
 
  private:
   static constexpr size_t kHeaderSize = alignof(std::max_align_t);
 
-  char *checkArena(void *p) const {
-    char *block = static_cast<char *>(p) - kHeaderSize;
+  char* checkArena(void* p) const {
+    char* block = static_cast<char*>(p) - kHeaderSize;
     int arena;
     std::memcpy(&arena, block, sizeof(arena));
     if (arena != _arena) {
@@ -695,11 +695,11 @@ class PropagatingArenaAllocator : public BasicAllocatorWrapper<T, ArenaAllocator
   PropagatingArenaAllocator() = default;
 
   // ::amc::ArenaAllocator, as MSVC would find the inaccessible name of the private base of BasicAllocatorWrapper
-  explicit PropagatingArenaAllocator(const ::amc::ArenaAllocator &arenaAllocator)
+  explicit PropagatingArenaAllocator(const ::amc::ArenaAllocator& arenaAllocator)
       : BasicAllocatorWrapper<T, ::amc::ArenaAllocator>(arenaAllocator) {}
 
   template <class U>
-  PropagatingArenaAllocator(const PropagatingArenaAllocator<U> &o)
+  PropagatingArenaAllocator(const PropagatingArenaAllocator<U>& o)
       : BasicAllocatorWrapper<T, ::amc::ArenaAllocator>(o) {}
 };
 
@@ -707,14 +707,14 @@ class PropagatingArenaAllocator : public BasicAllocatorWrapper<T, ArenaAllocator
 /// as its copies and moves update its address, but a memcpy does not. Counts its uses at a stale address.
 class SelfAddressCheck {
  public:
-  static int64_t &NbStaleAddresses() {
+  static int64_t& NbStaleAddresses() {
     static int64_t nbStaleAddresses = 0;
     return nbStaleAddresses;
   }
 
   SelfAddressCheck() noexcept : _self(this) {}
-  SelfAddressCheck(const SelfAddressCheck &) noexcept : _self(this) {}
-  SelfAddressCheck &operator=(const SelfAddressCheck &) noexcept { return *this; }
+  SelfAddressCheck(const SelfAddressCheck&) noexcept : _self(this) {}
+  SelfAddressCheck& operator=(const SelfAddressCheck&) noexcept { return *this; }
   ~SelfAddressCheck() { checkAddress(); }
 
   void checkAddress() const noexcept {
@@ -724,7 +724,7 @@ class SelfAddressCheck {
   }
 
  private:
-  const SelfAddressCheck *_self;
+  const SelfAddressCheck* _self;
 };
 
 template <class T>
@@ -735,25 +735,25 @@ class SelfAddressAllocator : private SelfAddressCheck {
   SelfAddressAllocator() noexcept = default;
 
   template <class U>
-  SelfAddressAllocator(const SelfAddressAllocator<U> &) noexcept {}
+  SelfAddressAllocator(const SelfAddressAllocator<U>&) noexcept {}
 
-  T *allocate(std::size_t n) {
+  T* allocate(std::size_t n) {
     checkAddress();
     return std::allocator<T>().allocate(n);
   }
 
-  void deallocate(T *p, std::size_t n) {
+  void deallocate(T* p, std::size_t n) {
     checkAddress();
     std::allocator<T>().deallocate(p, n);
   }
 
   template <class U>
-  bool operator==(const SelfAddressAllocator<U> &) const noexcept {
+  bool operator==(const SelfAddressAllocator<U>&) const noexcept {
     return true;
   }
 
   template <class U>
-  bool operator!=(const SelfAddressAllocator<U> &) const noexcept {
+  bool operator!=(const SelfAddressAllocator<U>&) const noexcept {
     return false;
   }
 };
@@ -761,22 +761,22 @@ class SelfAddressAllocator : private SelfAddressCheck {
 /// Basic allocator knowing its own address (see SelfAddressCheck): it is not trivially relocatable.
 class SelfAddressBasicAllocator : private SelfAddressCheck {
  public:
-  void *allocate(std::size_t n) {
+  void* allocate(std::size_t n) {
     checkAddress();
     return SimpleAllocator().allocate(n);
   }
 
-  void *reallocate(void *p, std::size_t oldSz, std::size_t newSz) {
+  void* reallocate(void* p, std::size_t oldSz, std::size_t newSz) {
     checkAddress();
     return SimpleAllocator().reallocate(p, oldSz, newSz);
   }
 
-  void deallocate(void *p, std::size_t n) {
+  void deallocate(void* p, std::size_t n) {
     checkAddress();
     SimpleAllocator().deallocate(p, n);
   }
 
-  bool operator==(const SelfAddressBasicAllocator &) const noexcept { return true; }
+  bool operator==(const SelfAddressBasicAllocator&) const noexcept { return true; }
 };
 
 /// Basic allocator which is not trivially copyable, but declared trivially relocatable.
@@ -785,8 +785,8 @@ class TriviallyRelocatableBasicAllocator : public SimpleAllocator {
   using trivially_relocatable = std::true_type;
 
   TriviallyRelocatableBasicAllocator() noexcept = default;
-  TriviallyRelocatableBasicAllocator(const TriviallyRelocatableBasicAllocator &) noexcept {}
-  TriviallyRelocatableBasicAllocator &operator=(const TriviallyRelocatableBasicAllocator &) noexcept { return *this; }
+  TriviallyRelocatableBasicAllocator(const TriviallyRelocatableBasicAllocator&) noexcept {}
+  TriviallyRelocatableBasicAllocator& operator=(const TriviallyRelocatableBasicAllocator&) noexcept { return *this; }
 };
 
 struct BiggerAllocateException {};
@@ -796,14 +796,14 @@ struct NullReallocateException {};
 /// pointer, which is slower with 'realloc'.
 class TestReallocateAllocator {
  public:
-  void *allocate(size_t n) {
+  void* allocate(size_t n) {
     if (n > 10) {
       throw BiggerAllocateException();
     }
     return bytes;
   }
 
-  void *reallocate(void *p, size_t, size_t newSz) {
+  void* reallocate(void* p, size_t, size_t newSz) {
     if (!p) {
       throw NullReallocateException();
     }
@@ -812,7 +812,7 @@ class TestReallocateAllocator {
     }
     return bytes;
   }
-  void deallocate(void *, size_t) {}
+  void deallocate(void*, size_t) {}
 
  private:
   char bytes[20];

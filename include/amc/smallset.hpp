@@ -38,7 +38,7 @@ namespace amc {
 template <class T, class SetItType>
 class SmallSetIteratorCommon {
  private:
-  using VecItType = const T *;
+  using VecItType = const T*;
   using IteratorVariant = std::variant<SetItType, VecItType>;
 
   IteratorVariant _iter;
@@ -51,16 +51,16 @@ class SmallSetIteratorCommon {
   explicit SmallSetIteratorCommon(VecItType it) noexcept : _iter(it) {}
 
   void incr() noexcept {
-    std::visit([](auto &&it) { ++it; }, _iter);
+    std::visit([](auto&& it) { ++it; }, _iter);
   }
   void decr() noexcept {
-    std::visit([](auto &&it) { --it; }, _iter);
+    std::visit([](auto&& it) { --it; }, _iter);
   }
-  const T &get() const noexcept {
-    return std::visit([](auto &&it) -> const T & { return *it; }, _iter);
+  const T& get() const noexcept {
+    return std::visit([](auto&& it) -> const T& { return *it; }, _iter);
   }
-  const T &getPrev() const noexcept {
-    return std::visit([](auto &&it) -> const T & { return *std::prev(it, 1); }, _iter);
+  const T& getPrev() const noexcept {
+    return std::visit([](auto&& it) -> const T& { return *std::prev(it, 1); }, _iter);
   }
 
   SetItType toSetIt() const noexcept { return std::get<SetItType>(_iter); }
@@ -76,15 +76,15 @@ class SmallSetIteratorCommon {
   using iterator_category = std::bidirectional_iterator_tag;
   using value_type = T;
   using difference_type = std::ptrdiff_t;
-  using pointer = const T *;
-  using reference = const T &;
+  using pointer = const T*;
+  using reference = const T&;
 
   // For a set, only equality and un-equality operators are defined
 #ifdef AMC_CXX20
-  bool operator==(const SmallSetIteratorCommon &) const noexcept = default;
+  bool operator==(const SmallSetIteratorCommon&) const noexcept = default;
 #else
-  bool operator==(const SmallSetIteratorCommon &o) const noexcept { return _iter == o._iter; }
-  bool operator!=(const SmallSetIteratorCommon &o) const noexcept { return !(*this == o); }
+  bool operator==(const SmallSetIteratorCommon& o) const noexcept { return _iter == o._iter; }
+  bool operator!=(const SmallSetIteratorCommon& o) const noexcept { return !(*this == o); }
 #endif
 };
 
@@ -103,12 +103,12 @@ class SmallSetIterator : public SmallSetIteratorCommon<T, SetItType> {
   SmallSetIterator(typename SmallSetIteratorCommon<T, SetItType>::VecItType it) noexcept
       : SmallSetIteratorCommon<T, SetItType>(it) {}
 
-  SmallSetIterator &operator++() noexcept {  // Prefix increment
+  SmallSetIterator& operator++() noexcept {  // Prefix increment
     Reversed ? this->decr() : this->incr();
     return *this;
   }
 
-  SmallSetIterator &operator--() noexcept {  // Prefix decrement
+  SmallSetIterator& operator--() noexcept {  // Prefix decrement
     Reversed ? this->incr() : this->decr();
     return *this;
   }
@@ -125,8 +125,8 @@ class SmallSetIterator : public SmallSetIteratorCommon<T, SetItType> {
     return oldSelf;
   }
 
-  const T &operator*() const noexcept { return Reversed ? this->getPrev() : this->get(); }
-  const T *operator->() const noexcept { return &static_cast<const SmallSetIterator *>(this)->operator*(); }
+  const T& operator*() const noexcept { return Reversed ? this->getPrev() : this->get(); }
+  const T* operator->() const noexcept { return &static_cast<const SmallSetIterator*>(this)->operator*(); }
 };
 
 template <class T, class Compare, class Alloc, class VecType>
@@ -169,22 +169,22 @@ class SmallSet {
 
   // Optim: If Set iterator type is a pointer, do not use SmallSetIterator but a pointer instead.
   // This is possible for SetType = FlatSet for instance.
-  using iterator = typename std::conditional<std::is_same<SetIt, const T *>::value, const T *,
+  using iterator = typename std::conditional<std::is_same<SetIt, const T*>::value, const T*,
                                              SmallSetIterator<T, SetIt, false>>::type;
   using reverse_iterator =
-      typename std::conditional<std::is_same<SetIt, const T *>::value, std::reverse_iterator<const T *>,
+      typename std::conditional<std::is_same<SetIt, const T*>::value, std::reverse_iterator<const T*>,
                                 SmallSetIterator<T, SetIt, true>>::type;
   using const_iterator = iterator;
   using const_reverse_iterator = reverse_iterator;
-  using reference = const T &;
+  using reference = const T&;
   using const_reference = reference;
   using size_type = typename std::conditional<sizeof(typename VecType::size_type) < sizeof(typename SetType::size_type),
                                               typename SetType::size_type, typename VecType::size_type>::type;
 
   using key_compare = Compare;
   using value_compare = Compare;
-  using pointer = const T *;
-  using const_pointer = const T *;
+  using pointer = const T*;
+  using const_pointer = const T*;
 
   class node_type : private Alloc {
    public:
@@ -193,10 +193,10 @@ class SmallSet {
 
     node_type() noexcept = default;
 
-    node_type(const node_type &) = delete;
-    node_type(node_type &&o) noexcept(std::is_nothrow_move_constructible<value_type>::value) = default;
-    node_type &operator=(const node_type &) = delete;
-    node_type &operator=(node_type &&o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
+    node_type(const node_type&) = delete;
+    node_type(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value) = default;
+    node_type& operator=(const node_type&) = delete;
+    node_type& operator=(node_type&& o) noexcept(std::is_nothrow_move_assignable<value_type>::value) = default;
 
     ~node_type() = default;
 
@@ -206,10 +206,10 @@ class SmallSet {
 
     allocator_type get_allocator() const { return static_cast<allocator_type>(*this); }
 
-    value_type &value() { return _optV.value(); }
-    const value_type &value() const { return _optV.value(); }
+    value_type& value() { return _optV.value(); }
+    const value_type& value() const { return _optV.value(); }
 
-    void swap(node_type &o) noexcept(std::is_nothrow_move_constructible<T>::value &&
+    void swap(node_type& o) noexcept(std::is_nothrow_move_constructible<T>::value &&
                                      amc::is_nothrow_swappable<T>::value) {
       _optV.swap(o._optV);
     }
@@ -219,7 +219,7 @@ class SmallSet {
     friend class SmallSet;
 
     explicit node_type(Alloc alloc) : Alloc(alloc) {}
-    explicit node_type(value_type &&v, Alloc alloc = Alloc()) : Alloc(alloc), _optV(std::move(v)) {}
+    explicit node_type(value_type&& v, Alloc alloc = Alloc()) : Alloc(alloc), _optV(std::move(v)) {}
 
     std::optional<value_type> _optV;
   };
@@ -242,29 +242,29 @@ class SmallSet {
   SmallSet() noexcept(std::is_nothrow_default_constructible<VecType>::value &&
                       std::is_nothrow_default_constructible<SetType>::value) = default;
 
-  explicit SmallSet(const Compare &comp, const Alloc &alloc = Alloc()) : _set(comp, alloc) {}
+  explicit SmallSet(const Compare& comp, const Alloc& alloc = Alloc()) : _set(comp, alloc) {}
 
-  explicit SmallSet(const Alloc &alloc) : _set(alloc) {}
+  explicit SmallSet(const Alloc& alloc) : _set(alloc) {}
 
   template <class InputIt>
-  SmallSet(InputIt first, InputIt last, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
+  SmallSet(InputIt first, InputIt last, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : _set(comp, alloc) {
     insert(first, last);
   }
 
   template <class InputIt>
-  SmallSet(InputIt first, InputIt last, const Alloc &alloc) : SmallSet(first, last, Compare(), alloc) {}
+  SmallSet(InputIt first, InputIt last, const Alloc& alloc) : SmallSet(first, last, Compare(), alloc) {}
 
-  SmallSet(const SmallSet &o, const Alloc &alloc) : _vec(o._vec), _set(o._set, alloc) {}
+  SmallSet(const SmallSet& o, const Alloc& alloc) : _vec(o._vec), _set(o._set, alloc) {}
 
-  SmallSet(SmallSet &&o, const Alloc &alloc) : _vec(std::move(o._vec)), _set(std::move(o._set), alloc) {}
+  SmallSet(SmallSet&& o, const Alloc& alloc) : _vec(std::move(o._vec)), _set(std::move(o._set), alloc) {}
 
-  SmallSet(std::initializer_list<T> list, const Compare &comp = Compare(), const Alloc &alloc = Alloc())
+  SmallSet(std::initializer_list<T> list, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : SmallSet(list.begin(), list.end(), comp, alloc) {}
 
-  SmallSet(std::initializer_list<T> list, const Alloc &alloc) : SmallSet(list, Compare(), alloc) {}
+  SmallSet(std::initializer_list<T> list, const Alloc& alloc) : SmallSet(list, Compare(), alloc) {}
 
-  SmallSet &operator=(std::initializer_list<T> list) {
+  SmallSet& operator=(std::initializer_list<T> list) {
     clear();
     insert(list.begin(), list.end());
     return *this;
@@ -303,9 +303,9 @@ class SmallSet {
     }
   }
 
-  std::pair<iterator, bool> insert(const T &v) { return isSmall() ? insert_small(v) : insert_set(v); }
+  std::pair<iterator, bool> insert(const T& v) { return isSmall() ? insert_small(v) : insert_set(v); }
 
-  std::pair<iterator, bool> insert(T &&v) { return isSmall() ? insert_small(std::move(v)) : insert_set(std::move(v)); }
+  std::pair<iterator, bool> insert(T&& v) { return isSmall() ? insert_small(std::move(v)) : insert_set(std::move(v)); }
 
   template <class InputIt>
   void insert(InputIt first, InputIt last) {
@@ -322,18 +322,18 @@ class SmallSet {
 
   // We keep elements unsorted in the vector, we cannot have any value from hint
 
-  iterator insert(const_iterator hint, const T &v) {
+  iterator insert(const_iterator hint, const T& v) {
     return isSmall() ? insert_small(v).first : iterator(_set.insert(ToSetIt(hint), v));
   }
 
-  iterator insert(const_iterator hint, T &&v) {
+  iterator insert(const_iterator hint, T&& v) {
     return isSmall() ? insert_small(std::move(v)).first : _set.insert(ToSetIt(hint), std::move(v));
   }
 
   void insert(std::initializer_list<value_type> ilist) { insert(ilist.begin(), ilist.end()); }
 
   /// If the insertion fails (equivalent element already present), the returned node keeps its value.
-  insert_return_type insert(node_type &&nh) {
+  insert_return_type insert(node_type&& nh) {
     insert_return_type irt{end(), false, std::move(nh)};
     if (irt.node) {
       // the value is only moved from if it is inserted
@@ -346,7 +346,7 @@ class SmallSet {
   }
 
   /// If the insertion fails (equivalent element already present), 'nh' is unchanged.
-  iterator insert(const_iterator hint, node_type &&nh) {
+  iterator insert(const_iterator hint, node_type&& nh) {
     if (!nh) {
       return end();
     }
@@ -362,7 +362,7 @@ class SmallSet {
 #ifdef AMC_CXX23
   /// 'rg' may not be common (its end may be a sentinel of another type than its iterator).
   template <class R>
-  void insert_range(R &&rg) {
+  void insert_range(R&& rg) {
     if constexpr (std::ranges::common_range<R> && std::ranges::forward_range<R>) {
       insert(std::ranges::begin(rg), std::ranges::end(rg));
     } else {
@@ -375,15 +375,15 @@ class SmallSet {
 #endif
 
   template <class... Args>
-  std::pair<iterator, bool> emplace(Args &&...args) {
+  std::pair<iterator, bool> emplace(Args&&... args) {
     if (!isSmall()) {
-      return _set.emplace(std::forward<Args &&>(args)...);
+      return _set.emplace(std::forward<Args&&>(args)...);
     }
     if (isSmallContFull()) {
-      return insert(T(std::forward<Args &&>(args)...));
+      return insert(T(std::forward<Args&&>(args)...));
     }
     // The element is constructed in place before being compared, to avoid a temporary.
-    miterator elIt = std::addressof(_vec.emplace_back(std::forward<Args &&>(args)...));
+    miterator elIt = std::addressof(_vec.emplace_back(std::forward<Args&&>(args)...));
     miterator it;
     try {
       it = std::find_if(_vec.begin(), elIt, FindFunctor<T>(key_comp(), *elIt));
@@ -401,12 +401,12 @@ class SmallSet {
   }
 
   template <class... Args>
-  iterator emplace_hint(const_iterator hint, Args &&...args) {
+  iterator emplace_hint(const_iterator hint, Args&&... args) {
     if (!isSmall()) {
-      return _set.emplace_hint(ToSetIt(hint), std::forward<Args &&>(args)...);
+      return _set.emplace_hint(ToSetIt(hint), std::forward<Args&&>(args)...);
     }
     // We cannot use any hint when we are small
-    return emplace(std::forward<Args &&>(args)...).first;
+    return emplace(std::forward<Args&&>(args)...).first;
   }
 
   const_iterator find(const_reference k) const {
@@ -415,7 +415,7 @@ class SmallSet {
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  const_iterator find(const K &k) const {
+  const_iterator find(const K& k) const {
     return isSmall() ? const_iterator(find_small(k)) : const_iterator(_set.find(k));
   }
 
@@ -423,7 +423,7 @@ class SmallSet {
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  bool contains(const K &k) const {
+  bool contains(const K& k) const {
     return isSmall() ? find_small(k) != _vec.end() : _set.count(k);
   }
 
@@ -431,7 +431,7 @@ class SmallSet {
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
-  size_type count(const K &k) const {
+  size_type count(const K& k) const {
     return contains(k);
   }
 
@@ -448,30 +448,30 @@ class SmallSet {
   }
 
   template <class I = const_iterator>
-  iterator erase(const_iterator pos, typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
+  iterator erase(const_iterator pos, typename std::enable_if<std::is_same<I, const T*>::value>::type* = 0) {
     return isSmall() ? _vec.erase(pos) : afterSetErase(_set.erase(pos));
   }
 
   template <class I = const_iterator>
-  iterator erase(const_iterator pos, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
+  iterator erase(const_iterator pos, typename std::enable_if<!std::is_same<I, const T*>::value>::type* = 0) {
     return isSmall() ? iterator(_vec.erase(pos.toVecIt())) : afterSetErase(_set.erase(pos.toSetIt()));
   }
 
   template <class I = const_iterator>
   iterator erase(const_iterator first, const_iterator last,
-                 typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
+                 typename std::enable_if<std::is_same<I, const T*>::value>::type* = 0) {
     return isSmall() ? _vec.erase(first, last) : afterSetErase(_set.erase(first, last));
   }
 
   template <class I = const_iterator>
   iterator erase(const_iterator first, const_iterator last,
-                 typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
+                 typename std::enable_if<!std::is_same<I, const T*>::value>::type* = 0) {
     return isSmall() ? iterator(_vec.erase(first.toVecIt(), last.toVecIt()))
                      : afterSetErase(_set.erase(first.toSetIt(), last.toSetIt()));
   }
 
-  void swap(SmallSet &o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType &>())) &&
-                                  noexcept(std::declval<SetType>().swap(std::declval<SetType &>()))) {
+  void swap(SmallSet& o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType&>())) &&
+                                  noexcept(std::declval<SetType>().swap(std::declval<SetType&>()))) {
     _vec.swap(o._vec);
     _set.swap(o._set);
   }
@@ -488,7 +488,7 @@ class SmallSet {
     return nt;
   }
 
-  node_type extract(const key_type &key) {
+  node_type extract(const key_type& key) {
     if (isSmall()) {
       auto vecIt = mfind_small(key);
       node_type nh(get_allocator());
@@ -510,7 +510,7 @@ class SmallSet {
   /// If the merge can occur without grow, 'this' will stay small.
   /// No grow is performed on 'o'.
   template <std::uintmax_t N2, class C2, class SetType2>
-  void merge(SmallSet<T, N2, C2, Alloc, SetType2> &o) {
+  void merge(SmallSet<T, N2, C2, Alloc, SetType2>& o) {
     if (!o.isSmall()) {
       if (isSmall()) {
         grow();
@@ -544,7 +544,7 @@ class SmallSet {
     }
   }
 
-  bool operator==(const SmallSet &o) const {
+  bool operator==(const SmallSet& o) const {
     if (size() != o.size()) {
       return false;
     }
@@ -556,10 +556,10 @@ class SmallSet {
     return std::is_permutation(begin(), end(), o.begin(), o.end());
   }
 
-  bool operator!=(const SmallSet &o) const { return !(*this == o); }
+  bool operator!=(const SmallSet& o) const { return !(*this == o); }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const SmallSet &o) const {
+  auto operator<=>(const SmallSet& o) const {
     struct Comp {
       auto operator()(const_pointer pLhs, const_pointer pRhs) const { return amc::synth_three_way()(*pLhs, *pRhs); }
       auto operator()(const_pointer pLhs, const_reference rhs) const { return amc::synth_three_way()(*pLhs, rhs); }
@@ -588,7 +588,7 @@ class SmallSet {
   }
 
   template <class Pred>
-  friend size_type erase_if(SmallSet &c, Pred pred) {
+  friend size_type erase_if(SmallSet& c, Pred pred) {
     auto oldSize = c.size();
     for (auto i = c.begin(); i != c.end();) {
       if (pred(*i)) {
@@ -604,7 +604,7 @@ class SmallSet {
 
   // Comparison operators are provided for compliance with std::set but could be painful for performances
   // as we keep elements unsorted in the 'small' container.
-  bool operator<(const SmallSet &o) const {
+  bool operator<(const SmallSet& o) const {
     struct Comp {
       bool operator()(const_pointer pLhs, const_pointer pRhs) const { return *pLhs < *pRhs; }
       bool operator()(const_pointer pLhs, const_reference rhs) const { return *pLhs < rhs; }
@@ -630,29 +630,29 @@ class SmallSet {
     return _set < o._set;
   }
 
-  bool operator<=(const SmallSet &o) const { return !(o < *this); }
-  bool operator>(const SmallSet &o) const { return o < *this; }
-  bool operator>=(const SmallSet &o) const { return !(*this < o); }
+  bool operator<=(const SmallSet& o) const { return !(o < *this); }
+  bool operator>(const SmallSet& o) const { return o < *this; }
+  bool operator>=(const SmallSet& o) const { return !(*this < o); }
 #endif
 
  private:
   using miterator = typename VecType::iterator;  // Custom iterator to allow modification of content (when small)
 
   template <class I>
-  static inline SetIt ToSetIt(I it, typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
+  static inline SetIt ToSetIt(I it, typename std::enable_if<std::is_same<I, const T*>::value>::type* = 0) {
     return it;
   }
   template <class I>
-  static inline SetIt ToSetIt(I it, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
+  static inline SetIt ToSetIt(I it, typename std::enable_if<!std::is_same<I, const T*>::value>::type* = 0) {
     return it.toSetIt();
   }
 
   template <class I>
-  static inline VecIt ToVecIt(I it, typename std::enable_if<std::is_same<I, const T *>::value>::type * = 0) {
+  static inline VecIt ToVecIt(I it, typename std::enable_if<std::is_same<I, const T*>::value>::type* = 0) {
     return it;
   }
   template <class I>
-  static inline VecIt ToVecIt(I it, typename std::enable_if<!std::is_same<I, const T *>::value>::type * = 0) {
+  static inline VecIt ToVecIt(I it, typename std::enable_if<!std::is_same<I, const T*>::value>::type* = 0) {
     return it.toVecIt();
   }
 
@@ -661,7 +661,7 @@ class SmallSet {
   iterator afterSetErase(SetIt it) const noexcept { return _set.empty() ? end() : iterator(it); }
 
   template <class V>
-  std::pair<iterator, bool> insert_small(V &&v) {
+  std::pair<iterator, bool> insert_small(V&& v) {
     miterator insertIt = mfind_small(v);
     bool newValue = insertIt == _vec.end();
     if (newValue) {
@@ -675,27 +675,27 @@ class SmallSet {
   }
 
   template <class V>
-  std::pair<iterator, bool> insert_set(V &&v) {
+  std::pair<iterator, bool> insert_set(V&& v) {
     return _set.insert(std::forward<V>(v));
   }
 
   template <class K>
   struct FindFunctor {
-    FindFunctor(Compare &&comp, const K &k) : _comp(std::move(comp)), _k(k) {}
+    FindFunctor(Compare&& comp, const K& k) : _comp(std::move(comp)), _k(k) {}
 
     bool operator()(const_reference o) const { return !_comp(_k, o) && !_comp(o, _k); }
 
     Compare _comp;
-    const K &_k;
+    const K& _k;
   };
 
   template <class K>
-  miterator mfind_small(const K &k) {
+  miterator mfind_small(const K& k) {
     return std::find_if(_vec.begin(), _vec.end(), FindFunctor<K>(key_comp(), k));
   }
 
   template <class K>
-  typename VecType::const_iterator find_small(const K &k) const {
+  typename VecType::const_iterator find_small(const K& k) const {
     return std::find_if(_vec.begin(), _vec.end(), FindFunctor<K>(key_comp(), k));
   }
 
@@ -710,7 +710,7 @@ class SmallSet {
 
   /// The insertion of a range in a set such as std::set inserts the elements one by one.
   template <class S>
-  void moveToEmptySet(S &set) {
+  void moveToEmptySet(S& set) {
     try {
       set.insert(std::make_move_iterator(_vec.begin()), std::make_move_iterator(_vec.end()));
     } catch (...) {
@@ -718,7 +718,7 @@ class SmallSet {
       // are moved from in the vector. As the vector is unordered, they can be moved back in any order.
       miterator vecIt = _vec.begin();
       for (auto setIt = set.begin(); setIt != set.end(); ++setIt, (void)++vecIt) {
-        *vecIt = std::move(const_cast<T &>(*setIt));  // the set is cleared just after, it does not need to stay sorted
+        *vecIt = std::move(const_cast<T&>(*setIt));  // the set is cleared just after, it does not need to stay sorted
       }
       set.clear();
       throw;
@@ -730,19 +730,19 @@ class SmallSet {
   /// them: nothing to undo if it throws), then appended in this order to the vector of the FlatSet without comparing
   /// them again, after a single allocation: then, only a move of an element can throw.
   template <class V>
-  void moveToEmptySet(FlatSet<T, Compare, Alloc, V> &set) {
+  void moveToEmptySet(FlatSet<T, Compare, Alloc, V>& set) {
     const PtrVec sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
-    V &setVec = set._sortedVector;
+    V& setVec = set._sortedVector;
     try {
       setVec.reserve(static_cast<typename V::size_type>(sortedPtrs.size()));
       for (const_pointer ptr : sortedPtrs) {
-        setVec.emplace_back(std::move(const_cast<T &>(*ptr)));
+        setVec.emplace_back(std::move(const_cast<T&>(*ptr)));
       }
     } catch (...) {
       // The vector of the set contains the elements pointed to by the first pointers of 'sortedPtrs', in this order.
       auto ptrIt = sortedPtrs.begin();
-      for (T &v : setVec) {
-        const_cast<T &>(**ptrIt++) = std::move(v);
+      for (T& v : setVec) {
+        const_cast<T&>(**ptrIt++) = std::move(v);
       }
       setVec.clear();
       throw;
@@ -755,7 +755,7 @@ class SmallSet {
   using PtrVec = FixedCapacityVector<const_pointer, N, vec::UncheckedGrowingPolicy>;
 
   /// Pointers to the elements of 'c', sorted with comparator object 'comp' (which may hold a state).
-  static PtrVec ComputeSortedPtrVec(const VecType &c, const Compare &comp) {
+  static PtrVec ComputeSortedPtrVec(const VecType& c, const Compare& comp) {
     PtrVec sortedPtrs;
     std::transform(c.begin(), c.end(), std::back_inserter(sortedPtrs),
                    [](const_reference r) { return std::addressof(r); });
@@ -772,7 +772,7 @@ class SmallSet {
 };
 
 template <class T, std::uintmax_t N, class Compare, class Alloc, class SetType>
-inline void swap(SmallSet<T, N, Compare, Alloc, SetType> &lhs, SmallSet<T, N, Compare, Alloc, SetType> &rhs) {
+inline void swap(SmallSet<T, N, Compare, Alloc, SetType>& lhs, SmallSet<T, N, Compare, Alloc, SetType>& rhs) {
   lhs.swap(rhs);
 }
 
