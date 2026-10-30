@@ -460,6 +460,40 @@ struct ThrowingMoveType {
 
 static_assert(!amc::is_trivially_relocatable<ThrowingMoveType>::value, "");
 
+/// Non trivially relocatable type with a value, whose moves cannot throw (-1 for a moved from object). Counts its live
+/// objects, and their maximum number since 'MaxNbLive()' was last reset.
+struct NothrowMoveType {
+  static int& NbLive() {
+    static int nbLive = 0;
+    return nbLive;
+  }
+  static int& MaxNbLive() {
+    static int maxNbLive = 0;
+    return maxNbLive;
+  }
+
+  NothrowMoveType(int32_t i = 0) noexcept : _i(i) { Construct(); }
+  NothrowMoveType(NothrowMoveType&& o) noexcept : _i(o._i) {
+    o._i = -1;
+    Construct();
+  }
+  ~NothrowMoveType() { --NbLive(); }
+
+  operator int32_t() const { return _i; }
+
+  static void Construct() noexcept {
+    const int nbLive = ++NbLive();
+    if (MaxNbLive() < nbLive) {
+      MaxNbLive() = nbLive;
+    }
+  }
+
+  int32_t _i;
+};
+
+static_assert(!amc::is_trivially_relocatable<NothrowMoveType>::value, "");
+static_assert(std::is_nothrow_move_constructible<NothrowMoveType>::value, "");
+
 struct AssignmentException {};
 
 /// Non trivially relocatable type owning a heap allocated value, whose copy and move assignments throw
