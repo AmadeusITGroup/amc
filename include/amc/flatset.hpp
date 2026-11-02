@@ -242,7 +242,7 @@ class FlatSet : private Compare {
   FlatSet(InputIt first, InputIt last, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(first, last, alloc) {
     std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
-    eraseDuplicates();
+    eraseDuplicates(mbegin());
   }
 
   template <class InputIt>
@@ -266,7 +266,7 @@ class FlatSet : private Compare {
   explicit FlatSet(vector_type&& v, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(std::move(v), alloc) {
     std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
-    eraseDuplicates();
+    eraseDuplicates(mbegin());
   }
 
   /// If the comparator or a move of an element throws, the set is emptied.
@@ -274,7 +274,7 @@ class FlatSet : private Compare {
     _sortedVector = std::move(v);
     try {
       std::sort(_sortedVector.begin(), _sortedVector.end(), compRef());
-      eraseDuplicates();
+      eraseDuplicates(mbegin());
     } catch (...) {
       _sortedVector.clear();
       throw;
@@ -647,23 +647,34 @@ class FlatSet : private Compare {
   }
 
   /// Appends elements to the sorted vector with 'append', then sorts them and merges them with the previous ones.
-  /// If 'append' or the sort of the appended elements throws, the appended elements are erased: the previous ones are
-  /// kept. If the merge or the erasure of duplicates throws, the elements may not be sorted anymore: the set is
-  /// cleared.
+  /// Only the previous elements which are not less than the smallest appended one are merged and checked for
+  /// duplicates: appending k elements greater than all the n previous ones costs O(log(n) + k log(k)).
+  /// If 'append', the sort of the appended elements or the search of their merge position throws, the appended elements
+  /// are erased: the previous ones are kept. If the merge or the erasure of duplicates throws, the elements may not be
+  /// sorted anymore: the set is cleared.
   template <class Append>
   void appendAndMerge(Append append) {
     const difference_type oldSize = static_cast<difference_type>(size());
+    miterator first{};
     try {
       append();
+      const miterator middle = mbegin() + oldSize;
+      if (middle == mend()) {
+        return;
+      }
       // sort appended elements only (beginning is already sorted)
-      std::sort(mbegin() + oldSize, mend(), compRef());
+      std::sort(middle, mend(), compRef());
+      // The previous elements before 'first' are less than all the appended ones: they keep their positions, and none
+      // is equivalent to its successor. The merge being stable, a previous element equivalent to an appended one stays
+      // before it, and is the one kept by the erasure of duplicates.
+      first = mbegin() + (lowerBound(begin(), middle, *middle) - begin());
     } catch (...) {
       _sortedVector.erase(mbegin() + oldSize, mend());
       throw;
     }
     try {
-      std::inplace_merge(mbegin(), mbegin() + oldSize, mend(), compRef());
-      eraseDuplicates();
+      std::inplace_merge(first, mbegin() + oldSize, mend(), compRef());
+      eraseDuplicates(first);
     } catch (...) {
       _sortedVector.clear();
       throw;
@@ -794,15 +805,15 @@ class FlatSet : private Compare {
     return isStrictlySortedBy(comp);
   }
 
-  /// Erase consecutive equivalent elements, keeping the first one of each group, according to our comparator object
-  /// (which may hold a state).
+  /// Erase consecutive equivalent elements of [first, end()), keeping the first one of each group, according to our
+  /// comparator object (which may hold a state). The elements before 'first' must be less than it.
   /// As elements are sorted, an element is equivalent to its predecessor 'p' if and only if it is not greater than 'p':
   /// a single comparison per element is needed (std::unique would require a symmetric equivalence predicate).
-  void eraseDuplicates() {
+  void eraseDuplicates(miterator first) {
     const Compare& comp = compRef();
     const miterator last = mend();
     miterator dest =
-        std::adjacent_find(mbegin(), last, [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); });
+        std::adjacent_find(first, last, [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); });
     if (dest != last) {
       for (miterator it = std::next(dest); ++it != last;) {
         if (comp(*dest, *it)) {
