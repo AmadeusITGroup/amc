@@ -3,6 +3,7 @@
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
 #include <amc/smallvector.hpp>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -162,6 +163,35 @@ void LookUpChained(benchmark::State& state) {
   LookUpImpl<SetType, true>(state);
 }
 
+/// Merges a set of state.range(0) values into another one of as many values, each element of one being between two
+/// elements of the other. Only the merge is measured (manual time), not the copies of the sets that it modifies, which
+/// are much slower for node based sets.
+template <class SetType>
+void MergeInterleaved(benchmark::State& state) {
+  const auto size = static_cast<uint32_t>(state.range(0));
+  std::vector<uint32_t> evens(size);
+  std::vector<uint32_t> odds(size);
+  for (uint32_t i = 0; i < size; ++i) {
+    evens[i] = 2 * i;
+    odds[i] = 2 * i + 1;
+  }
+  const SetType elems1(evens.begin(), evens.end());
+  const SetType elems2(odds.begin(), odds.end());
+  TypeStats::_stats = TypeStats();
+  for (auto _ : state) {
+    SetType s1(elems1);
+    SetType s2(elems2);
+    TypeStats::_stats.start();
+    const auto start = std::chrono::steady_clock::now();
+    s1.merge(s2);
+    benchmark::DoNotOptimize(s1);
+    const auto end = std::chrono::steady_clock::now();
+    TypeStats::_stats.end();
+    state.SetIterationTime(std::chrono::duration<double>(end - start).count());
+  }
+  PrintStats(state);
+}
+
 template <class SetType, unsigned TypicalMaxSize>
 void CommonUsage(benchmark::State& state) {
   TypeStats::_stats = TypeStats();
@@ -223,6 +253,9 @@ BENCHMARK_TEMPLATE(LookUp, AMCInt)->RangeMultiplier(10)->Range(100, 10000000);
 BENCHMARK_TEMPLATE(LookUpChained, REFInt)->RangeMultiplier(10)->Range(100, 10000000);
 BENCHMARK_TEMPLATE(LookUpChained, REFUnoInt)->RangeMultiplier(10)->Range(100, 10000000);
 BENCHMARK_TEMPLATE(LookUpChained, AMCInt)->RangeMultiplier(10)->Range(100, 10000000);
+
+BENCHMARK_TEMPLATE(MergeInterleaved, REFInt)->RangeMultiplier(10)->Range(1000, 100000)->UseManualTime();
+BENCHMARK_TEMPLATE(MergeInterleaved, AMCInt)->RangeMultiplier(10)->Range(1000, 100000)->UseManualTime();
 
 #ifdef AMC_SMALLSET
 BENCHMARK_TEMPLATE(CommonUsage, amc::SmallSet<uint32_t, 50>, 50);

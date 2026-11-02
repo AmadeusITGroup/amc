@@ -307,6 +307,41 @@ TYPED_TEST(SetListTest, Swap) {
   EXPECT_EQ(s2, TypeParam({1, 2, 3, 4}));
 }
 
+// Like std::set, merge moves the elements which are not already present, the other ones stay in the source set.
+// The elements of the merged sets have all the relative positions (interleaved, equivalent, before or after all the
+// other ones), in vectors which stay inline or grow. The sizes of the last merged sets add up to more than the capacity
+// of the FixedCapacityVector (20), but not their union.
+TYPED_TEST(SetListTest, Merge) {
+  using SetType = TypeParam;
+  using ValueType = typename SetType::value_type;
+  using RefSetType = std::set<ValueType, typename SetType::key_compare>;
+  using Values = std::vector<ValueType>;
+  const std::pair<Values, Values> merges[] = {
+      {{2, 4, 5, 8, 10, 11, 14}, {0, 1, 4, 6, 8, 9, 11, 15, 16}},
+      {{0, 1, 4, 6, 8, 9, 11, 15, 16}, {2, 4, 5, 8, 10, 11, 14}},
+      {{1, 3}, {2, 3}},
+      {{10, 11, 12}, {1, 2}},
+      {{10, 11, 12}, {13, 15}},
+      {{1, 2, 3}, {1, 2, 3}},
+      {{}, {1, 2, 3}},
+      {{1, 2, 3}, {}},
+      {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}}};
+  for (const std::pair<Values, Values>& values : merges) {
+    SetType s1(values.first.begin(), values.first.end());
+    SetType s2(values.second.begin(), values.second.end());
+    RefSetType ref1(values.first.begin(), values.first.end());
+    RefSetType ref2(values.second.begin(), values.second.end());
+    s1.merge(s2);
+    ref1.merge(ref2);
+    EXPECT_EQ(s1, SetType(ref1.begin(), ref1.end()));
+    EXPECT_EQ(s2, SetType(ref2.begin(), ref2.end()));
+  }
+
+  SetType s{1, 2, 3};
+  s.merge(s);
+  EXPECT_EQ(s, SetType({1, 2, 3}));
+}
+
 TYPED_TEST(SetListTest, ReturnedIteratorsInsertErase) {
   TypeParam s{1, 2, 4};
   auto itInsertedPair = s.insert(3);
@@ -516,6 +551,30 @@ TEST(SetTest, FlatSetInsertAllocationFailureKeepsElements) {
   EXPECT_THROW(CallWithFailingMalloc([&] { s.insert(std::istream_iterator<int>(ss), std::istream_iterator<int>()); }),
                std::bad_alloc);
   EXPECT_EQ(s, SetType({1, 2, 3}));
+}
+
+// If the vector of the destination set cannot grow, merge leaves both sets unchanged: it grows it before moving any
+// element.
+template <class SetType>
+void ExpectMergeAllocationFailureKeepsSets() {
+  const SetType init1{1, 3, 5};
+  const SetType init2{2, 3, 4};
+  SetType s1(init1);
+  SetType s2(init2);
+  EXPECT_THROW(CallWithFailingMalloc([&] { s1.merge(s2); }), std::bad_alloc);
+  EXPECT_EQ(s1, init1);
+  EXPECT_EQ(s2, init2);
+}
+
+TEST(SetTest, FlatSetMergeAllocationFailureKeepsSets) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  using T = ComplexTriviallyRelocatableType;
+  // full vector, reallocated with realloc
+  ExpectMergeAllocationFailureKeepsSets<FlatSet<T>>();
+  // inline vector, which has room for the first new element only: merging elements one by one would move it
+  ExpectMergeAllocationFailureKeepsSets<FlatSet<T, std::less<T>, amc::allocator<T>, SmallVector<T, 4>>>();
 }
 
 TEST(SetTest, Relocatibility) {
@@ -782,6 +841,15 @@ typedef ::testing::Types<FlatSet<int32_t, ThrowingCompare>,
 
 TYPED_TEST_SUITE(SetThrowingCompareTest, SetsThrowingCompareTypes, );
 
+/// Tells whether the merge of two large SmallSets merges their std::set.
+template <class SetType>
+struct MergesStdSets : std::false_type {};
+
+#ifdef AMC_SMALLSET
+template <class T, std::uintmax_t N, class Compare, class Alloc>
+struct MergesStdSets<SmallSet<T, N, Compare, Alloc, std::set<T, Compare, Alloc>>> : std::true_type {};
+#endif
+
 // If a comparison throws during the insertion of a range, the set stays valid (sorted, without duplicates, without
 // moved from elements): it keeps all its previous elements, or it is emptied.
 TYPED_TEST(SetThrowingCompareTest, InsertRangeComparisonThrowKeepsValidSet) {
@@ -810,6 +878,48 @@ TYPED_TEST(SetThrowingCompareTest, InsertRangeComparisonThrowKeepsValidSet) {
     EXPECT_TRUE(s.empty() || (s.contains(1) && s.contains(4))) << "throw at comparison " << nbComparisons;
     for (int32_t v : elems) {
       EXPECT_TRUE(expected.contains(v)) << "throw at comparison " << nbComparisons;
+    }
+  }
+}
+
+// If a comparison throws during a merge, both sets stay valid (sorted, without duplicates, without moved from
+// elements), and each element is in exactly one of them.
+TYPED_TEST(SetThrowingCompareTest, MergeComparisonThrowKeepsValidSets) {
+  using SetType = TypeParam;
+  using Values = std::vector<int32_t>;
+  if (MergesStdSets<SetType>::value) {
+    GTEST_SKIP() << "std::set::merge is noexcept in libstdc++: a throwing comparator terminates the program";
+  }
+  int& nbComparisonsBeforeThrow = ThrowingCompare::NbComparisonsBeforeThrow();
+  // interleaved, with equivalent elements, and elements before and after all those of the other set
+  const Values values1{2, 4, 5, 8, 10};
+  const Values values2{0, 1, 4, 6, 8, 9, 11};
+  Values allValues(values1);
+  allValues.insert(allValues.end(), values2.begin(), values2.end());
+  std::sort(allValues.begin(), allValues.end());
+  for (int nbComparisons = 0;; ++nbComparisons) {
+    SetType s1(values1.begin(), values1.end());
+    SetType s2(values2.begin(), values2.end());
+    nbComparisonsBeforeThrow = nbComparisons;
+    bool thrown = false;
+    try {
+      s1.merge(s2);
+    } catch (const CompareException&) {
+      thrown = true;
+    }
+    nbComparisonsBeforeThrow = -1;
+    const Values elems1(s1.begin(), s1.end());
+    const Values elems2(s2.begin(), s2.end());
+    EXPECT_EQ(s1, SetType(elems1.begin(), elems1.end())) << "throw at comparison " << nbComparisons;
+    EXPECT_EQ(s2, SetType(elems2.begin(), elems2.end())) << "throw at comparison " << nbComparisons;
+    Values elems(elems1);
+    elems.insert(elems.end(), elems2.begin(), elems2.end());
+    std::sort(elems.begin(), elems.end());
+    EXPECT_EQ(elems, allValues) << "throw at comparison " << nbComparisons;
+    if (!thrown) {
+      EXPECT_EQ(s1, SetType({0, 1, 2, 4, 5, 6, 8, 9, 10, 11}));
+      EXPECT_EQ(s2, SetType({4, 8}));
+      break;
     }
   }
 }
