@@ -1898,6 +1898,9 @@ struct SanitizeInlineSize : std::integral_constant<SizeType, static_cast<SizeTyp
 };
 }  // namespace vec
 
+template <class T, class Compare, class Alloc, class VecType>
+class FlatSet;
+
 /// Allocators are handled like in the standard containers: copy construction calls
 /// 'select_on_container_copy_construction', move construction moves the allocator, and assignments and swap propagate
 /// it according to the 'propagate_on_container_*' traits. Memory is only exchanged between containers of equal
@@ -2023,6 +2026,11 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 #endif
 
  private:
+  // FlatSet::merge relocates elements in and out of the storages itself: it grows them with 'adjustCapacity', and
+  // updates their sizes with 'setSize', which neither constructs nor destroys elements.
+  template <class, class, class, class>
+  friend class FlatSet;
+
   void moveConstruct(Vector& o, std::true_type) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) {
     this->move_construct(o, N);
   }

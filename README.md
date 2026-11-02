@@ -515,6 +515,7 @@ Also sometimes called `SortedVector`, it uses a sorted `amc::vector` as storage 
 It can be used as a drop-in replacement for `std::set` especially when the read operations occur much frequently than the writes.
 Even if there are a lot of writes, it is still very efficient for *trivially relocatable* types as it uses `amc::vector` by default which relocates elements very efficiently.
 Lookups (`find`, `lower_bound`, `insert`...) of scalar types ordered by `std::less` or `std::greater` use a branchless binary search, which prefetches its next steps in large sets (see [Sets](#sets)).
+`merge` of trivially relocatable types stored in the amc vectors is linear: the elements are relocated from the ends of both sets to the storage of the destination set, instead of being inserted one by one.
 
 Besides, the vector container is templated and thus can be combined with above vectors variations to optimize memory allocations (`SmallVector` or `FixedCapacityVector`).
 

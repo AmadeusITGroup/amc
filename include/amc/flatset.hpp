@@ -13,6 +13,7 @@
 
 #include "allocator.hpp"
 #include "config.hpp"
+#include "memory.hpp"
 #include "type_traits.hpp"
 #include "vector.hpp"
 
@@ -112,6 +113,14 @@ RandomIt BranchlessPartitionPoint(RandomIt first, std::size_t n, Pred pred) {
   }
   return first;
 }
+
+/// Tells whether 'VecType' is one of the amc vectors (amc::vector, SmallVector, FixedCapacityVector), whose storage
+/// FlatSet can fill itself (see Vector).
+template <class VecType>
+struct IsAmcVector : std::false_type {};
+
+template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N>
+struct IsAmcVector<Vector<T, Alloc, SizeType, GrowingPolicy, N>> : std::true_type {};
 
 }  // namespace flatset_details
 
@@ -475,35 +484,23 @@ class FlatSet : private Compare {
     mergeOneByOne(o);
   }
 
+  /// Moves the elements of 'o' which are not already present in 'this': like with std::set, the ones equivalent to an
+  /// element of 'this' stay in 'o'.
+  /// If 'o' is ordered by our comparator (always the case for a stateless one) and the sum of both sizes does not
+  /// exceed max_size(), the merge of trivially relocatable elements stored in an amc vector is linear, and an
+  /// allocation failure leaves both sets unchanged. If the comparator throws, the elements already moved stay in 'this'
+  /// and the other ones in 'o': both sets are valid.
   void merge(FlatSet& o) {
-    // The linear merge below requires 'o' to be ordered by our comparator. This is always the case for stateless
+    if (this == &o) {
+      return;  // all the elements are already present
+    }
+    // The merges of sorted sets require 'o' to be ordered by our comparator. This is always the case for stateless
     // comparators, but stateful ones of the same type may define different orderings (and equivalences).
     if (!o.isStrictlySortedBy(compRef(), std::is_empty<Compare>())) {
       mergeOneByOne(o);
       return;
     }
-    // Do not use std::inplace_merge to avoid allocating memory if not needed
-    miterator first1 = mbegin(), last1 = mend();
-    miterator first2 = o.mbegin(), last2 = o.mend();
-    while (first2 != last2) {
-      if (first1 == last1) {
-        _sortedVector.insert(last1, std::make_move_iterator(first2), std::make_move_iterator(last2));
-        o._sortedVector.erase(first2, last2);
-        break;
-      }
-      if (compRef()(*first1, *first2)) {
-        ++first1;
-      } else if (compRef()(*first2, *first1)) {
-        first1 = std::next(_sortedVector.insert(first1, std::move(*first2)));
-        last1 = mend();
-        first2 = o._sortedVector.erase(first2);
-        --last2;
-      } else {
-        // equal
-        ++first1;
-        ++first2;
-      }
-    }
+    mergeSorted(o, RelocatingMerge());
   }
 
   /// Like std::set, the range of an absent key is empty and positioned where the key would be inserted.
@@ -693,6 +690,94 @@ class FlatSet : private Compare {
         ++oit;
       }
     }
+  }
+
+  /// Whether the merge of a sorted set relocates the elements itself, with memcpy, in the storages of the vectors.
+  using RelocatingMerge =
+      std::integral_constant<bool, is_trivially_relocatable<T>::value && flatset_details::IsAmcVector<VecType>::value>;
+
+  /// Merges 'o', ordered by our comparator, by inserting each of its new elements in our vector and erasing it from
+  /// 'o': both shift the next elements.
+  void mergeSorted(FlatSet& o, std::false_type) {
+    // Do not use std::inplace_merge to avoid allocating memory if not needed
+    miterator first1 = mbegin(), last1 = mend();
+    miterator first2 = o.mbegin(), last2 = o.mend();
+    while (first2 != last2) {
+      if (first1 == last1) {
+        _sortedVector.insert(last1, std::make_move_iterator(first2), std::make_move_iterator(last2));
+        o._sortedVector.erase(first2, last2);
+        break;
+      }
+      if (compRef()(*first1, *first2)) {
+        ++first1;
+      } else if (compRef()(*first2, *first1)) {
+        first1 = std::next(_sortedVector.insert(first1, std::move(*first2)));
+        last1 = mend();
+        first2 = o._sortedVector.erase(first2);
+        last2 = o.mend();  // the erasure invalidates the end iterator
+      } else {
+        // equal
+        ++first1;
+        ++first2;
+      }
+    }
+  }
+
+  /// Merges 'o', ordered by our comparator, in linear time and in place. Our vector first grows to the sum of both
+  /// sizes (if it throws, nothing changes). Then, from the ends of both sets, the greatest remaining element is
+  /// relocated before the merged ones, at the end of our storage, and an element of 'o' equivalent to one of ours
+  /// before the kept ones, at the end of the storage of 'o'. The merged elements are finally relocated after our
+  /// remaining ones (if there are equivalent elements), and the kept ones after the remaining ones of 'o'. Relocations
+  /// cannot throw: if the comparator throws, this last step leaves both sets valid.
+  void mergeSorted(FlatSet& o, std::true_type) {
+    const size_type size1 = size();
+    const size_type size2 = o.size();
+    const std::uintmax_t maxMergedSize = static_cast<std::uintmax_t>(size1) + static_cast<std::uintmax_t>(size2);
+    if (maxMergedSize > static_cast<std::uintmax_t>(max_size())) {
+      // Both sets do not fit in our storage, but their union may
+      mergeSorted(o, std::false_type());
+      return;
+    }
+    _sortedVector.adjustCapacity(maxMergedSize);
+    T* const first1 = _sortedVector.data();
+    T* const first2 = o._sortedVector.data();
+    T* last1 = first1 + size1;  // end of our elements not merged yet
+    T* const end1 = last1 + size2;
+    T* const end2 = first2 + size2;
+    T* last2 = end2;   // end of the elements of 'o' not merged yet
+    T* merged = end1;  // merged elements are [merged, end1)
+    T* kept = end2;    // elements kept in 'o' are [kept, end2)
+    auto commit = [&]() noexcept {
+      if (merged != last1) {
+        amc::uninitialized_relocate(merged, end1, last1);
+      }
+      if (kept != last2) {
+        amc::uninitialized_relocate(kept, end2, last2);
+      }
+      _sortedVector.setSize(static_cast<size_type>((last1 - first1) + (end1 - merged)));
+      o._sortedVector.setSize(static_cast<size_type>((last2 - first2) + (end2 - kept)));
+    };
+    const Compare& comp = compRef();
+    try {
+      while (last1 != first1 && last2 != first2) {
+        if (comp(last1[-1], last2[-1])) {
+          amc::relocate_at(--last2, --merged);
+        } else {
+          if (!comp(last2[-1], last1[-1])) {
+            amc::relocate_at(--last2, --kept);  // equivalent elements
+          }
+          amc::relocate_at(--last1, --merged);
+        }
+      }
+    } catch (...) {
+      commit();
+      throw;
+    }
+    // the remaining elements of 'o' are less than all the merged ones
+    merged -= last2 - first2;
+    amc::uninitialized_relocate(first2, last2, merged);
+    last2 = first2;
+    commit();
   }
 
   /// Tells whether each element is strictly less than its successor according to 'comp'.
