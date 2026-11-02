@@ -707,6 +707,9 @@ class StdVectorBase : private Alloc {
 
   void grow(std::uintmax_t minSize, bool exact = false);
 
+  template <class Construct>
+  void assignInNewStorage(std::uintmax_t n, Construct construct);
+
   template <class... Args>
   T* growEmplace(SizeType pos, Args&&... args);
 
@@ -895,6 +898,9 @@ class SmallVectorBase : private Alloc {
   }
 
   void grow(std::uintmax_t minSize, bool exact = false);
+
+  template <class Construct>
+  void assignInNewStorage(std::uintmax_t n, Construct construct);
 
   template <class... Args>
   T* growEmplace(SizeType pos, Args&&... args);
@@ -1139,6 +1145,13 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
   void adjustCapacity(std::uintmax_t neededCapacity) const { GrowingPolicy::Check(neededCapacity, this->capacity()); }
+
+  /// Counterpart of DynamicVector's 'assignInNewStorage', for 'n' larger than the capacity: a FixedCapacityVector
+  /// cannot grow, its growing policy handles the overflow (UncheckedGrowingPolicy returns, the behavior is undefined).
+  template <class Construct>
+  void assignInNewStorage(std::uintmax_t n, Construct) const {
+    adjustCapacity(n);
+  }
 
   T* adjustCapacity(std::uintmax_t neededCapacity, const T* position) const {
     adjustCapacity(neededCapacity);
@@ -1504,8 +1517,14 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   void assign(size_type count, const_reference v) {
     if (this->size() < count) {
-      const_reference newV = this->adjustCapacity(count, v);
-      fill(this->begin(), this->size(), count, newV);
+      if (this->capacity() < count) {
+        // 'v' may refer to an element (or to an object owned by one): it is not copied, as the elements are only
+        // destroyed once its copies are constructed in the new storage
+        this->assignInNewStorage(static_cast<std::uintmax_t>(count),
+                                 [&v, count](T* storage) { std::uninitialized_fill_n(storage, count, v); });
+      } else {
+        fill(this->begin(), this->size(), count, v);
+      }
     } else {
       // copy to already existing elements and destroy remaining ones
       std::fill_n(this->begin(), count, v);
@@ -1775,8 +1794,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class ForwardIt>
   void assignN(ForwardIt first, std::uintmax_t count) {
     if (static_cast<std::uintmax_t>(this->size()) < count) {
-      this->adjustCapacity(count);
-      assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
+      if (static_cast<std::uintmax_t>(this->capacity()) < count) {
+        this->assignInNewStorage(count, [&first, count](T* storage) {
+          amc::uninitialized_copy_n(first, static_cast<SizeType>(count), storage);
+        });
+      } else {
+        assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
+      }
     } else {
       // copy to already existing elements and destroy remaining ones
       amc::destroy(std::copy_n(first, static_cast<SizeType>(count), this->begin()), end());

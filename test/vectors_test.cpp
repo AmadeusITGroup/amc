@@ -282,12 +282,27 @@ TYPED_TEST(VectorTest, Shrink) {
 
 TYPED_TEST(VectorTest, SelfAssignment) {
   using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
   VectorType v{1, 2, 3};
   VectorType& self = v;  // assignment through a reference, avoiding self assignment warnings
   v = self;
   EXPECT_EQ(v, VectorType({1, 2, 3}));
   v = std::move(self);
   EXPECT_EQ(v, VectorType({1, 2, 3}));
+
+  // Copies of one of its elements: beyond the capacity (except for FixedCapacityVector), where the elements are
+  // destroyed before the copies are constructed in a new storage, beyond the size, then within the size
+  const SzType capacity = v.capacity();
+  const SzType count = capacity < v.max_size() ? static_cast<SzType>(capacity + 1) : capacity;
+  v.assign(count, v[2]);
+  EXPECT_EQ(v, VectorType(count, Type(3)));
+  v.assign({1, 2, 3});
+  v.assign(SzType(4), v[0]);
+  EXPECT_EQ(v, VectorType({1, 1, 1, 1}));
+  v.assign({1, 2, 3});
+  v.assign(SzType(2), v[1]);
+  EXPECT_EQ(v, VectorType({2, 2}));
 }
 
 TYPED_TEST(VectorTest, InsertEmptyRange) {
@@ -1550,6 +1565,11 @@ void CheckGrowAllocationFailureKeepsElements() {
     EXPECT_THROW(CallWithFailingMalloc([&] { v.emplace(v.begin(), 42); }), std::bad_alloc);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.insert(v.begin(), 3U, value); }), std::bad_alloc);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.reserve(capacity + 10U); }), std::bad_alloc);
+    // assignments beyond the capacity allocate their new storage before destroying the elements
+    const VectorType larger(capacity + 1U, value);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.assign(capacity + 1U, value); }), std::bad_alloc);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v.assign(larger.begin(), larger.end()); }), std::bad_alloc);
+    EXPECT_THROW(CallWithFailingMalloc([&] { v = larger; }), std::bad_alloc);
     EXPECT_EQ(v, expected);
     EXPECT_EQ(v.capacity(), capacity);
   }
@@ -1609,14 +1629,15 @@ TEST(VectorTest, ShrinkAllocationFailureKeepsElements) {
 
 // When copying one of several inserted elements throws, the elements constructed past the end of the vector are
 // destroyed (no leak) and its size is unchanged. Trivially relocatable elements are even shifted back: the vector keeps
-// its elements. Same for assign of more copies of a value than the size of the vector.
+// its elements. Same for the assignments of more elements than the size of the vector, which even keep the elements
+// beyond the capacity: the new ones are constructed in a new storage before the elements are destroyed.
 template <class VectorType>
 void CheckInsertSeveralCopiesThrowsDoesNotLeak() {
   using Type = typename VectorType::value_type;
   const Type value(5);
   const std::vector<Type> values{5, 6, 7, 8, 9, 10};
   TypeStats& stats = TypeStats::_stats;
-  for (int method = 0; method < 3; ++method) {
+  for (int method = 0; method < 4; ++method) {
     for (int pos = 0; pos <= 4; ++pos) {
       for (int count : {1, 3, 6}) {  // fewer or more inserted elements than shifted ones
         for (int nbCopies = 0; nbCopies < count; ++nbCopies) {
@@ -1624,21 +1645,24 @@ void CheckInsertSeveralCopiesThrowsDoesNotLeak() {
           stats.start();
           {
             VectorType v{1, 2, 3, 4};
+            const bool assignReallocates = method >= 2 && static_cast<int>(v.capacity()) < count;
             stats._nbCopiesBeforeThrow = nbCopies;
             if (method == 0) {
               EXPECT_THROW(v.insert(v.begin() + pos, static_cast<typename VectorType::size_type>(count), value),
                            CopyException);
             } else if (method == 1) {
               EXPECT_THROW(v.insert(v.begin() + pos, values.begin(), values.begin() + count), CopyException);
-            } else if (count > 4) {
-              EXPECT_THROW(v.assign(static_cast<typename VectorType::size_type>(count), value), CopyException);
-            } else {
+            } else if (count <= 4) {
               stats._nbCopiesBeforeThrow = -1;
               continue;
+            } else if (method == 2) {
+              EXPECT_THROW(v.assign(static_cast<typename VectorType::size_type>(count), value), CopyException);
+            } else {
+              EXPECT_THROW(v.assign(values.begin(), values.begin() + count), CopyException);
             }
             stats._nbCopiesBeforeThrow = -1;
             EXPECT_EQ(v.size(), 4U);
-            if (method != 2 && is_trivially_relocatable<Type>::value) {
+            if ((method < 2 && is_trivially_relocatable<Type>::value) || assignReallocates) {
               EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
             }
           }
@@ -1889,6 +1913,10 @@ void CheckGrowBeyondMaxSizeThrows() {
   const int kTab[] = {1, 2, 3, 4, 5, 6};
   EXPECT_THROW(v.insert(v.begin() + 1, kTab, kTab + 6), ExceptionType);
   EXPECT_EQ(v.size(), static_cast<SizeType>(maxSize - 5U));
+  // an assignment beyond the capacity throws before destroying the elements
+  const std::vector<int> tooMany(static_cast<std::size_t>(maxSize) + 1U, 7);
+  EXPECT_THROW(v.assign(tooMany.begin(), tooMany.end()), ExceptionType);
+  EXPECT_EQ(v, IntVector(static_cast<SizeType>(maxSize - 5U)));
   v.resize(maxSize);
 #ifdef AMC_NONSTD_FEATURES
   EXPECT_THROW(v.append(1U, 0), ExceptionType);
@@ -1939,6 +1967,57 @@ TEST(VectorTest, GrowthFactor) {
   EXPECT_EQ(GrowthCapacities<vector<Elem1500>>(10), Sizes({0, 1, 2, 4, 6, 9, 14}));
   // Without 'reallocate' in the allocator
   EXPECT_EQ(GrowthCapacities<Elem5000StdVector>(5), Sizes({0, 1, 2, 3, 5}));
+}
+
+// An assignment beyond the capacity allocates exactly the assigned number of elements, like std::vector. As they would
+// all be overwritten, the elements are destroyed, neither relocated to the new storage nor assigned. The assigned
+// value is not copied either when it is one of the elements: the copies are constructed before they are destroyed.
+template <class VectorType>
+void CheckAssignBeyondCapacity() {
+  using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
+  std::vector<Type> values;
+  for (int i = 0; i < 20; ++i) {
+    values.emplace_back(static_cast<uint32_t>(i + 10));
+  }
+  TypeStats& stats = TypeStats::_stats;
+  for (int method = 0; method < 3; ++method) {
+    for (int nbElems : {0, 1, 3, 6}) {  // from the inline storage of a SmallVector, then from a dynamic one
+      VectorType v;
+      for (int i = 0; i < nbElems; ++i) {
+        v.emplace_back(static_cast<uint32_t>(i + 1));
+      }
+      const SzType count = static_cast<SzType>(v.capacity() + 1U);
+      const auto last = values.begin() + static_cast<std::ptrdiff_t>(count);
+      const Type& value = v.empty() ? values[0] : v.back();
+      const VectorType expected = method == 0 ? VectorType(count, value) : VectorType(values.begin(), last);
+      stats = TypeStats();
+      stats.start();
+      if (method == 0) {
+        v.assign(count, value);
+      } else if (method == 1) {
+        v.assign(values.begin(), last);
+      } else {
+        v = expected;
+      }
+      stats.end();
+      EXPECT_EQ(v, expected);
+      EXPECT_EQ(v.capacity(), count);
+      EXPECT_EQ(stats._nbCopyConstructs, static_cast<std::size_t>(count));
+      EXPECT_EQ(stats._nbMoveConstructs + stats._nbMoveAssignments + stats._nbCopyAssignments, 0U);
+    }
+  }
+}
+
+TEST(VectorTest, AssignBeyondCapacity) {
+  using NonTrivRelocType = ComplexNonTriviallyRelocatableType;
+  using TrivRelocType = ComplexTriviallyRelocatableType;
+  CheckAssignBeyondCapacity<vector<NonTrivRelocType>>();
+  CheckAssignBeyondCapacity<SmallVector<NonTrivRelocType, 2>>();
+  // Not reallocated, even with 'reallocate'
+  CheckAssignBeyondCapacity<vector<TrivRelocType>>();
+  CheckAssignBeyondCapacity<SmallVector<TrivRelocType, 2>>();
+  CheckAssignBeyondCapacity<vector<TrivRelocType, std::allocator<TrivRelocType>>>();
 }
 
 // The basic allocator of amc::allocator reallocates small blocks by a copy and larger ones with 'realloc': both keep

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -27,7 +28,7 @@ constexpr std::uintmax_t MaxDoublingCapacity() {
 
 // New capacity for at least 'newSize' elements, not exceeding 'maxCapa' (see MaxCapacity).
 // Capacities below 'maxDoublingCapa' double, larger ones grow by a factor of 1.5.
-// 'exact' is only set by 'reserve', which allocates exactly the requested capacity.
+// 'exact' is only set by 'reserve' and the assignments, which allocate exactly the requested capacity.
 template <class SizeType>
 inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::uintmax_t maxCapa,
                                  std::uintmax_t maxDoublingCapa, bool exact) {
@@ -145,6 +146,55 @@ inline void StdVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool
   _storage = _capa == 0U ? this->allocate(static_cast<std::size_t>(newCapa))
                          : vec::Reallocate(static_cast<Alloc&>(*this), _storage, _capa, newCapa, _size);
   _capa = newCapa;
+}
+
+// Replaces the elements by the 'n' ones that 'construct(storage)' constructs in a new storage of exactly 'n' elements,
+// 'n' exceeding the capacity, for the assignments. The elements would all be overwritten: they are not relocated to
+// the new storage (which is not reallocated either: 'reallocate' copies them when it cannot extend it in place), but
+// destroyed after the new ones are constructed, like libstdc++ does. Hence the source of the new elements may refer
+// to them (or to objects owned by them, 'assign(count, v)' needs no copy of 'v'), and if anything throws (capacity
+// exceeding the maximum, allocation, construction of an element), the vector is unchanged.
+// 'construct' destroys the elements it constructed if it throws, like std::uninitialized_fill_n.
+template <class T, class Alloc, class SizeType>
+template <class Construct>
+void SmallVectorBase<T, Alloc, SizeType>::assignInNewStorage(std::uintmax_t n, Construct construct) {
+  // larger than the capacity, hence than the inline capacity, as required in the large state
+  assert(static_cast<std::uintmax_t>(capacity()) < n);
+  const SizeType capa = SafeNextCapacity(capacity(), n, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)),
+                                         MaxDoublingCapacity<T>(), true);
+  T* dynStorage = this->allocate(static_cast<std::size_t>(capa));
+  try {
+    construct(dynStorage);
+  } catch (...) {
+    this->deallocate(dynStorage, static_cast<std::size_t>(capa));
+    throw;
+  }
+  destroyFreeStorage();
+  _storage.setDyn(dynStorage);
+  _capa = capa;
+  _size = capa;
+}
+
+template <class T, class Alloc, class SizeType>
+template <class Construct>
+void StdVectorBase<T, Alloc, SizeType>::assignInNewStorage(std::uintmax_t n, Construct construct) {
+  assert(static_cast<std::uintmax_t>(_capa) < n);
+  const SizeType capa = SafeNextCapacity(_capa, n, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)),
+                                         MaxDoublingCapacity<T>(), true);
+  T* storage = this->allocate(static_cast<std::size_t>(capa));
+  try {
+    construct(storage);
+  } catch (...) {
+    this->deallocate(storage, static_cast<std::size_t>(capa));
+    throw;
+  }
+  if (_capa != 0U) {
+    amc::destroy_n(_storage, _size);
+    freeStorage();
+  }
+  _storage = storage;
+  _capa = capa;
+  _size = capa;
 }
 
 // Grows to a new dynamic storage, in which the element at index 'pos' is constructed from 'args' before the elements

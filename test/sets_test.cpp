@@ -11,6 +11,7 @@
 #include <list>
 #include <set>
 #include <sstream>
+#include <type_traits>
 #include <vector>
 #ifdef AMC_SMALLSET
 #include <amc/smallset.hpp>
@@ -560,6 +561,42 @@ TYPED_TEST(SetListTest, EraseIf) {
   EXPECT_EQ(erase_if(s4, [](const ValueType& v) { return v > ValueType{2}; }), SizeType{2});
   EXPECT_EQ(s4, TypeParam({1, 2, 1, 2}));
 }
+
+#ifdef AMC_SMALLSET
+// erase_if does not erase the elements one by one, which would shift the next ones at each erase in the vector of the
+// small state, or in the one of a FlatSet: each kept element is moved at most once. Like the iterators of a set, the
+// predicate only has a const access to the elements.
+template <class SetType>
+void CheckSmallSetEraseIfIsLinear() {
+  using Type = typename SetType::value_type;
+  constexpr uint32_t kNbElems = 16;
+  SetType s;
+  SetType expected;
+  for (uint32_t i = 0; i < kNbElems; ++i) {
+    s.insert(Type(i));
+    if (i % 2U != 0) {
+      expected.insert(Type(i));
+    }
+  }
+  TypeStats& stats = TypeStats::_stats;
+  stats = TypeStats();
+  stats.start();
+  const auto nbErased = erase_if(s, [](auto& v) {
+    static_assert(std::is_const_v<std::remove_reference_t<decltype(v)>>);
+    return v % 2U == 0;
+  });
+  stats.end();
+  EXPECT_EQ(nbErased, kNbElems / 2U);
+  EXPECT_EQ(s, expected);
+  EXPECT_LE(stats._nbMoveAssignments, kNbElems / 2U);
+}
+
+TEST(SetTest, SmallSetEraseIfIsLinear) {
+  using Type = ComplexNonTriviallyRelocatableType;
+  CheckSmallSetEraseIfIsLinear<SmallSet<Type, 16>>();
+  CheckSmallSetEraseIfIsLinear<SmallSet<Type, 4, std::less<Type>, amc::allocator<Type>, FlatSet<Type>>>();
+}
+#endif
 #endif
 
 #ifdef AMC_SMALLSET
