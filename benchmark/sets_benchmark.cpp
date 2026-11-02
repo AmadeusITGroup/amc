@@ -1,5 +1,6 @@
 #include <benchmark/benchmark.h>
 
+#include <algorithm>
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
 #include <amc/smallvector.hpp>
@@ -225,6 +226,29 @@ void InsertSortedBatches(benchmark::State& state) {
   PrintStats(state);
 }
 
+/// Constructs a set from a range of state.range(0) random values, whose first state.range(1) percent are sorted by the
+/// comparator of the set (0: random input, 100: sorted input).
+template <class SetType>
+void ConstructFromRange(benchmark::State& state) {
+  const auto size = static_cast<uint32_t>(state.range(0));
+  const auto nbSorted = static_cast<std::ptrdiff_t>(state.range(0) * state.range(1) / 100);
+  using ValueType = typename SetType::value_type;
+  std::vector<ValueType> values;
+  values.reserve(size);
+  for (uint32_t i = 0; i < size; ++i) {
+    values.emplace_back(RandomValue(i));
+  }
+  std::sort(values.begin(), values.begin() + nbSorted, typename SetType::key_compare());
+  TypeStats::_stats = TypeStats();
+  TypeStats::_stats.start();
+  for (auto _ : state) {
+    SetType s(values.begin(), values.end());
+    benchmark::DoNotOptimize(s);
+  }
+  TypeStats::_stats.end();
+  PrintStats(state);
+}
+
 template <class SetType, unsigned TypicalMaxSize>
 void CommonUsage(benchmark::State& state) {
   TypeStats::_stats = TypeStats();
@@ -294,6 +318,12 @@ BENCHMARK_TEMPLATE(InsertSortedBatches, REFInt)->RangeMultiplier(10)->Range(1000
 BENCHMARK_TEMPLATE(InsertSortedBatches, AMCInt)->RangeMultiplier(10)->Range(1000, 100000);
 BENCHMARK_TEMPLATE(InsertSortedBatches, REFRelocType)->Arg(100000);
 BENCHMARK_TEMPLATE(InsertSortedBatches, AMCRelocType)->Arg(100000);
+
+// Random input, sorted prefix of half and of 90 % of the elements, sorted input
+BENCHMARK_TEMPLATE(ConstructFromRange, REFInt)
+    ->ArgsProduct({benchmark::CreateRange(1000, 1000000, 10), {0, 50, 90, 100}});
+BENCHMARK_TEMPLATE(ConstructFromRange, AMCInt)
+    ->ArgsProduct({benchmark::CreateRange(1000, 1000000, 10), {0, 50, 90, 100}});
 
 #ifdef AMC_SMALLSET
 BENCHMARK_TEMPLATE(CommonUsage, amc::SmallSet<uint32_t, 50>, 50);

@@ -59,6 +59,11 @@ constexpr std::size_t kPrefetchMinRangeBytes = 64U * 1024U;
 /// loaded.
 constexpr std::size_t kPrefetchStopRangeBytes = 256U;
 
+/// Unsorted input starting with a sorted prefix of at least two thirds of its elements is not sorted at once: the other
+/// elements are sorted, then merged with the prefix. Smaller input is always sorted at once: std::sort is then faster
+/// than the allocation of the buffer of std::inplace_merge.
+constexpr std::size_t kMinSizeToMergeSortedPrefix = 32U;
+
 /// Returns 'it + offset' if 'cond', 'it' otherwise, without a branch, which would be mispredicted half of the time on a
 /// random condition.
 template <class RandomIt>
@@ -238,11 +243,11 @@ class FlatSet : private Compare {
 
   explicit FlatSet(const Alloc& alloc) : _sortedVector(alloc) {}
 
+  /// Linear time if [first, last) is already sorted by 'comp': it is not sorted again.
   template <class InputIt>
   FlatSet(InputIt first, InputIt last, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(first, last, alloc) {
-    std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
-    eraseDuplicates(mbegin());
+    eraseDuplicates(sortIfUnsorted(mbegin()));
   }
 
   template <class InputIt>
@@ -263,18 +268,18 @@ class FlatSet : private Compare {
   using vector_type = VecType;
 
   /// Non standard constructor of a FlatSet from a Vector, stealing its dynamic memory.
+  /// Linear time if 'v' is already sorted by 'comp': it is not sorted again.
   explicit FlatSet(vector_type&& v, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(std::move(v), alloc) {
-    std::sort(_sortedVector.begin(), _sortedVector.end(), comp);
-    eraseDuplicates(mbegin());
+    eraseDuplicates(sortIfUnsorted(mbegin()));
   }
 
+  /// Linear time if 'v' is already sorted: it is not sorted again.
   /// If the comparator or a move of an element throws, the set is emptied.
   FlatSet& operator=(vector_type&& v) {
     _sortedVector = std::move(v);
     try {
-      std::sort(_sortedVector.begin(), _sortedVector.end(), compRef());
-      eraseDuplicates(mbegin());
+      eraseDuplicates(sortIfUnsorted(mbegin()));
     } catch (...) {
       _sortedVector.clear();
       throw;
@@ -333,6 +338,7 @@ class FlatSet : private Compare {
 
   iterator insert(const_iterator hint, T&& v) { return insert_hint(hint, std::move(v)); }
 
+  /// The inserted elements are not sorted if they already are.
   /// If an exception is thrown (by the comparator, or by a copy or a move of an element), the set either keeps only its
   /// previous elements, or is emptied.
   template <class InputIt>
@@ -646,9 +652,10 @@ class FlatSet : private Compare {
     return insert(std::forward<V>(v)).first;
   }
 
-  /// Appends elements to the sorted vector with 'append', then sorts them and merges them with the previous ones.
-  /// Only the previous elements which are not less than the smallest appended one are merged and checked for
-  /// duplicates: appending k elements greater than all the n previous ones costs O(log(n) + k log(k)).
+  /// Appends elements to the sorted vector with 'append', then sorts them (unless they already are) and merges them
+  /// with the previous ones. Only the previous elements which are not less than the smallest appended one are merged
+  /// and checked for duplicates: appending k elements greater than all the n previous ones costs O(log(n) + k log(k)),
+  /// and O(log(n) + k) if they are already sorted.
   /// If 'append', the sort of the appended elements or the search of their merge position throws, the appended elements
   /// are erased: the previous ones are kept. If the merge or the erasure of duplicates throws, the elements may not be
   /// sorted anymore: the set is cleared.
@@ -656,14 +663,16 @@ class FlatSet : private Compare {
   void appendAndMerge(Append append) {
     const difference_type oldSize = static_cast<difference_type>(size());
     miterator first{};
+    miterator middle{};
+    miterator firstDuplicateCandidate{};
     try {
       append();
-      const miterator middle = mbegin() + oldSize;
+      middle = mbegin() + oldSize;
       if (middle == mend()) {
         return;
       }
       // sort appended elements only (beginning is already sorted)
-      std::sort(middle, mend(), compRef());
+      firstDuplicateCandidate = sortIfUnsorted(middle);
       // The previous elements before 'first' are less than all the appended ones: they keep their positions, and none
       // is equivalent to its successor. The merge being stable, a previous element equivalent to an appended one stays
       // before it, and is the one kept by the erasure of duplicates.
@@ -673,8 +682,10 @@ class FlatSet : private Compare {
       throw;
     }
     try {
-      std::inplace_merge(first, mbegin() + oldSize, mend(), compRef());
-      eraseDuplicates(first);
+      std::inplace_merge(first, middle, mend(), compRef());
+      // If the appended elements are all greater than the previous ones, the merge leaves them in place: only those
+      // from 'firstDuplicateCandidate' may be equivalent to their successor.
+      eraseDuplicates(first == middle ? firstDuplicateCandidate : first);
     } catch (...) {
       _sortedVector.clear();
       throw;
@@ -792,10 +803,7 @@ class FlatSet : private Compare {
   }
 
   /// Tells whether each element is strictly less than its successor according to 'comp'.
-  bool isStrictlySortedBy(const Compare& comp) const {
-    return std::adjacent_find(begin(), end(),
-                              [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); }) == end();
-  }
+  bool isStrictlySortedBy(const Compare& comp) const { return findNotLessThanNext(begin(), end(), comp) == end(); }
 
   /// Tells whether 'this' is strictly sorted by 'comp', another instance of our comparator type.
   /// Stateless comparators all define the same ordering, so no check is needed.
@@ -805,6 +813,41 @@ class FlatSet : private Compare {
     return isStrictlySortedBy(comp);
   }
 
+  /// First element of [first, last) which is not less than its successor according to 'comp', either equivalent to it
+  /// or out of order (last if there is none).
+  template <class It>
+  static It findNotLessThanNext(It first, It last, const Compare& comp) {
+    return std::adjacent_find(first, last, [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); });
+  }
+
+  /// Sorts [first, end()) by our comparator, unless it is already sorted, and returns the element from which its
+  /// duplicates must be erased (see eraseDuplicates): the elements before it are strictly increasing.
+  /// The first element which is not less than its successor is searched first: if there is none (sorted input without
+  /// duplicates), a single pass is enough. Otherwise, the end of the sorted prefix is searched from it. Both searches
+  /// stop at the first pair out of order: on random input, they only cost a few comparisons.
+  /// If the sorted prefix holds at least two thirds of the elements, only the other ones are sorted, then merged with
+  /// the prefix elements which are not less than their smallest one (see kMinSizeToMergeSortedPrefix).
+  miterator sortIfUnsorted(miterator first) {
+    const Compare& comp = compRef();
+    const miterator last = mend();
+    const miterator notLess = findNotLessThanNext(first, last, comp);
+    const miterator sortedLast = std::is_sorted_until(notLess, last, comp);
+    if (sortedLast == last) {
+      return notLess;
+    }
+    const auto nbSorted = static_cast<std::size_t>(sortedLast - first);
+    const auto nbUnsorted = static_cast<std::size_t>(last - sortedLast);
+    if (nbSorted + nbUnsorted < flatset_details::kMinSizeToMergeSortedPrefix || nbSorted < 2U * nbUnsorted) {
+      std::sort(first, last, comp);
+      return first;
+    }
+    std::sort(sortedLast, last, comp);
+    // the prefix elements before 'mergeFirst' are less than all the other elements: they keep their positions
+    const miterator mergeFirst = mbegin() + (lowerBound(first, sortedLast, *sortedLast) - begin());
+    std::inplace_merge(mergeFirst, sortedLast, last, comp);
+    return std::min(notLess, mergeFirst);
+  }
+
   /// Erase consecutive equivalent elements of [first, end()), keeping the first one of each group, according to our
   /// comparator object (which may hold a state). The elements before 'first' must be less than it.
   /// As elements are sorted, an element is equivalent to its predecessor 'p' if and only if it is not greater than 'p':
@@ -812,8 +855,7 @@ class FlatSet : private Compare {
   void eraseDuplicates(miterator first) {
     const Compare& comp = compRef();
     const miterator last = mend();
-    miterator dest =
-        std::adjacent_find(first, last, [&comp](const_reference v1, const_reference v2) { return !comp(v1, v2); });
+    miterator dest = findNotLessThanNext(first, last, comp);
     if (dest != last) {
       for (miterator it = std::next(dest); ++it != last;) {
         if (comp(*dest, *it)) {

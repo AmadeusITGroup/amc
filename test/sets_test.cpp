@@ -353,6 +353,31 @@ TYPED_TEST(SetListTest, ReturnedIteratorsInsertErase) {
   EXPECT_EQ(s, TypeParam({1, 2, 4}));
 }
 
+/// Values 1 to 'n' (at most 127, the maximum of a char), in the order of the comparator of 'SetType'.
+template <class SetType>
+std::vector<typename SetType::value_type> SortedValues(std::size_t n) {
+  using ValueType = typename SetType::value_type;
+  std::vector<ValueType> values;
+  for (std::size_t i = 1; i <= n; ++i) {
+    // an unsigned char converts to all the element types without sign or narrowing conversion
+    values.push_back(static_cast<ValueType>(static_cast<unsigned char>(i)));
+  }
+  std::sort(values.begin(), values.end(), typename SetType::key_compare());
+  return values;
+}
+
+using Indexes = std::vector<std::size_t>;
+
+/// Elements of 'values' at 'indexes'.
+template <class ValueType>
+std::vector<ValueType> ValuesAt(const std::vector<ValueType>& values, const Indexes& indexes) {
+  std::vector<ValueType> ret;
+  for (std::size_t i : indexes) {
+    ret.push_back(values[i]);
+  }
+  return ret;
+}
+
 TYPED_TEST(SetListTest, InsertIterators) {
   using value_type = typename TypeParam::value_type;
   const value_type kNewEls[] = {18, 4, 3, 6, 4};
@@ -373,6 +398,20 @@ TYPED_TEST(SetListTest, InsertIterators) {
   const value_type kLessEls[] = {0, 0};
   s.insert(std::begin(kLessEls), std::end(kLessEls));
   EXPECT_EQ(s, TypeParam({0, 1, 2, 3, 4, 6, 18, 19, 20}));
+
+  // Ranges sorted by the comparator of the set, which are not sorted again: after all the elements of the set (in an
+  // empty set, strictly sorted, with a duplicate) and before or equivalent to some of them.
+  const std::vector<value_type> sorted = SortedValues<TypeParam>(8);
+  TypeParam s2;
+  TypeParam expected;
+  for (const Indexes& indexes : {Indexes{1, 3}, Indexes{4, 5}, Indexes{6, 7, 7}, Indexes{0, 2, 2, 3}}) {
+    const std::vector<value_type> inserted = ValuesAt(sorted, indexes);
+    s2.insert(inserted.begin(), inserted.end());
+    for (const value_type& v : inserted) {
+      expected.insert(v);
+    }
+    EXPECT_EQ(s2, expected);
+  }
 }
 
 #ifdef AMC_CXX23
@@ -398,11 +437,60 @@ TYPED_TEST(SetListTest, InsertRange) {
 
 #endif
 
+// Input in the order of the comparator of the set: sorted (strictly, or with duplicates), which is not sorted again,
+// sorted up to a duplicate or to its last element, unsorted from its beginning, or reversed.
 TYPED_TEST(SetListTest, RangeConstructor) {
   using value_type = typename TypeParam::value_type;
-  const value_type kNewEls[] = {1, 2, 3, 4};
-  TypeParam s(std::begin(kNewEls), std::end(kNewEls));
-  EXPECT_EQ(s, TypeParam({1, 2, 3, 4}));
+  const std::vector<value_type> sorted = SortedValues<TypeParam>(4);
+  TypeParam expected;
+  for (const value_type& v : sorted) {
+    expected.insert(v);
+  }
+  for (const Indexes& indexes :
+       {Indexes{0, 1, 2, 3}, Indexes{0, 0, 1, 2, 3}, Indexes{0, 1, 2, 2, 3, 3}, Indexes{0, 1, 1, 3, 2},
+        Indexes{0, 1, 3, 2}, Indexes{1, 0, 2, 3}, Indexes{3, 2, 1, 0}}) {
+    const std::vector<value_type> input = ValuesAt(sorted, indexes);
+    EXPECT_EQ(TypeParam(input.begin(), input.end()), expected);
+  }
+  EXPECT_TRUE(TypeParam(sorted.begin(), sorted.begin()).empty());
+
+  // Input of at least 32 elements (kMinSizeToMergeSortedPrefix), starting with a sorted prefix of at least two thirds
+  // of them: only the other ones are sorted, then merged with the end of the prefix. Duplicates are erased from the
+  // first duplicate of the prefix, or from the first merged element. The last input has a too short sorted prefix.
+  const std::vector<value_type> sorted48 = SortedValues<TypeParam>(48);
+  Indexes evens;  // 0, 2, ..., 46
+  for (std::size_t i = 0; i < 48; i += 2) {
+    evens.push_back(i);
+  }
+  const auto concat = [](Indexes lhs, const Indexes& rhs) {
+    lhs.insert(lhs.end(), rhs.begin(), rhs.end());
+    return lhs;
+  };
+  // with duplicates, and an element equivalent to one of the prefix
+  const Indexes upperTail{45, 31, 47, 31, 46, 33, 39, 41};
+  const Indexes inputs[] = {
+      concat(evens, upperTail),               // strictly sorted prefix
+      concat(concat({0}, evens), upperTail),  // duplicate in the prefix
+      concat(concat(Indexes(evens.begin() + 1, evens.end()), {47}), {1, 0, 13, 2, 25, 25, 3, 0}),  // tail before all
+      concat(Indexes(evens.begin(), evens.begin() + 21), {39, 47, 45, 43, 41, 37, 35, 33, 31, 29, 27})};  // 21 < 2 * 11
+  for (const Indexes& indexes : inputs) {
+    if (static_cast<std::size_t>(TypeParam().max_size()) < indexes.size() + 2U) {
+      break;  // FixedCapacityVector
+    }
+    const std::vector<value_type> input = ValuesAt(sorted48, indexes);
+    TypeParam expectedLong;
+    for (const value_type& v : input) {
+      expectedLong.insert(v);
+    }
+    EXPECT_EQ(TypeParam(input.begin(), input.end()), expectedLong);
+
+    // insertion in a set whose elements are interleaved with the inserted ones
+    TypeParam s{sorted48[5], sorted48[30]};
+    s.insert(input.begin(), input.end());
+    expectedLong.insert(sorted48[5]);
+    expectedLong.insert(sorted48[30]);
+    EXPECT_EQ(s, expectedLong);
+  }
 }
 
 // Single pass input iterators (here, reading from a stream) can be traversed only once.
@@ -768,15 +856,18 @@ TYPED_TEST(SetStatefulCompareTest, UseComparatorObject) {
   const ModuloCompare comp(10);
   // 11, 21 and 12 are equivalent to 1, 1 and 2. 3 makes small SmallSets grow before they are inserted.
   const int32_t values[] = {1, 2, 3, 11, 21, 12};
+  // sorted by value, but not by the comparator object, which must sort them
+  const int32_t valuesSortedByValue[] = {2, 3, 11, 21};
 
   SetType rangeConstructed(std::begin(values), std::end(values), comp);
+  SetType sortedRangeConstructed(std::begin(valuesSortedByValue), std::end(valuesSortedByValue), comp);
   SetType rangeInserted(comp);
   rangeInserted.insert(std::begin(values), std::end(values));
   SetType oneByOne(comp);
   for (int32_t v : values) {
     oneByOne.insert(v);
   }
-  for (const SetType* s : {&rangeConstructed, &rangeInserted, &oneByOne}) {
+  for (const SetType* s : {&rangeConstructed, &sortedRangeConstructed, &rangeInserted, &oneByOne}) {
     EXPECT_EQ(s->size(), 3U);
     EXPECT_TRUE(s->contains(31));
     EXPECT_FALSE(s->contains(4));
@@ -1257,6 +1348,68 @@ TYPED_TEST(FlatSetBoundsTest, LookupsOfAllSizes) {
       ASSERT_EQ(range.second - s.begin(), ub) << "size " << n << " key " << k;
     }
   }
+}
+
+// Sorted input is not sorted again: each element is compared with its successor, once if the elements are unique (it
+// is the minimum to check that they are sorted), twice from the first duplicate on, and the insertion of greater
+// elements adds the binary search of their position. Only the unsorted elements after a long sorted prefix are sorted.
+TEST(FlatSetTest, SortedInputIsNotSortedAgain) {
+  using SetType = FlatSet<int32_t, ThrowingCompare>;
+  using Values = std::vector<int32_t>;
+  constexpr int kNbElems = 1000;
+  constexpr int kMaxNbBinarySearchComparisons = 11;  // ceil(log2(kNbElems + 1)), plus one for the implementation
+  Values sorted;
+  Values greater;
+  for (int32_t i = 0; i < kNbElems; ++i) {
+    sorted.push_back(i);
+    greater.push_back(kNbElems + i);
+  }
+  Values sortedWithDuplicate(sorted);
+  sortedWithDuplicate.insert(sortedWithDuplicate.begin(), 0);
+
+  // ThrowingCompare counts down the comparisons (and never throws here)
+  int& nbComparisonsLeft = ThrowingCompare::NbComparisonsBeforeThrow();
+  const auto startCounting = [&nbComparisonsLeft] { nbComparisonsLeft = std::numeric_limits<int>::max(); };
+  const auto nbComparisons = [&nbComparisonsLeft] { return std::numeric_limits<int>::max() - nbComparisonsLeft; };
+
+  startCounting();
+  SetType s(sorted.begin(), sorted.end());
+  EXPECT_EQ(nbComparisons(), kNbElems - 1);
+
+  startCounting();
+  SetType s2(sortedWithDuplicate.begin(), sortedWithDuplicate.end());
+  EXPECT_LT(nbComparisons(), 2 * (kNbElems + 1));
+  EXPECT_EQ(s2, s);
+
+  startCounting();
+  s.insert(greater.begin(), greater.end());
+  EXPECT_LE(nbComparisons(), kNbElems - 1 + kMaxNbBinarySearchComparisons);
+  EXPECT_EQ(s.size(), static_cast<SetType::size_type>(2 * kNbElems));
+
+  // A few unsorted elements after the sorted ones: only they are sorted, then merged with the end of the sorted ones
+  Values sortedPrefix(sorted);
+  const Values tail{998, 1500, 990, 1200, 995, 1500};
+  sortedPrefix.insert(sortedPrefix.end(), tail.begin(), tail.end());
+  startCounting();
+  SetType s4(sortedPrefix.begin(), sortedPrefix.end());
+  EXPECT_LT(nbComparisons(), kNbElems + 100);
+  SetType expected(sorted.begin(), sorted.end());
+  expected.insert(1200);
+  expected.insert(1500);
+  EXPECT_EQ(s4, expected);
+
+#ifdef AMC_NONSTD_FEATURES
+  using VecType = SetType::vector_type;
+  startCounting();
+  SetType s3(VecType(sorted.begin(), sorted.end()));
+  EXPECT_EQ(nbComparisons(), kNbElems - 1);
+
+  startCounting();
+  s3 = VecType(greater.begin(), greater.end());
+  EXPECT_EQ(nbComparisons(), kNbElems - 1);
+  EXPECT_EQ(s3, SetType(greater.begin(), greater.end()));
+#endif
+  nbComparisonsLeft = -1;
 }
 
 #ifdef AMC_NONSTD_FEATURES
