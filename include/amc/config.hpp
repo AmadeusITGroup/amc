@@ -31,6 +31,28 @@
 #define AMC_UNLIKELY(x) (!!(x))
 #endif
 
+// Hints that a condition is random: Clang then compiles it into a conditional move rather than a branch (whose
+// prediction would fail half of the time), which it does not otherwise in loops. Not parenthesized: Clang only takes
+// the hint when the builtin call is directly the condition of the 'if'. Only defined if the compiler supports it.
+#ifdef __has_builtin
+#if __has_builtin(__builtin_unpredictable)
+#define AMC_UNPREDICTABLE(x) __builtin_unpredictable(!!(x))
+#endif
+#endif
+
+// Asks the CPU to start loading the cache line of 'addr', which will be read soon. It has no other effect.
+#if defined(__GNUC__) || defined(__clang__)
+#define AMC_PREFETCH(addr) __builtin_prefetch(addr)
+#elif defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64)) && !defined(_M_ARM64EC)
+#include <xmmintrin.h>
+#define AMC_PREFETCH(addr) _mm_prefetch(reinterpret_cast<const char*>(addr), _MM_HINT_T0)
+#elif defined(_MSC_VER) && defined(_M_ARM64)
+#include <intrin.h>
+#define AMC_PREFETCH(addr) __prefetch(addr)
+#else
+#define AMC_PREFETCH(addr) static_cast<void>(addr)
+#endif
+
 #if defined(_MSC_VER)
 
 #define AMC_CXX14 1

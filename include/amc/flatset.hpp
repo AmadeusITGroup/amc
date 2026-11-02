@@ -7,6 +7,7 @@
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -27,6 +28,93 @@
 #endif
 namespace amc {
 
+namespace flatset_details {
+
+/// std::less and std::greater, transparent or of a scalar type: they compare scalar values with the built-in operators.
+template <class Compare>
+struct IsBuiltinComparator : std::false_type {};
+
+template <class U>
+struct IsBuiltinComparator<std::less<U>>
+    : std::integral_constant<bool, std::is_void<U>::value || std::is_scalar<U>::value> {};
+
+template <class U>
+struct IsBuiltinComparator<std::greater<U>>
+    : std::integral_constant<bool, std::is_void<U>::value || std::is_scalar<U>::value> {};
+
+/// Tells whether the binary searches of keys of type 'K' among elements of type 'T' ordered by 'Compare' use
+/// BranchlessPartitionPoint. It is only faster than the standard binary searches when comparisons are cheap: scalar
+/// values (arithmetic, enumeration, pointer) compared with the built-in operators. It is slower for std::string, or
+/// with a comparator dereferencing pointers.
+template <class T, class K, class Compare>
+struct UseBranchlessSearch : std::integral_constant<bool, std::is_scalar<T>::value && std::is_scalar<K>::value &&
+                                                              IsBuiltinComparator<Compare>::value> {};
+
+/// Ranges smaller than this size are searched without prefetching: they likely fit in the L1 data cache, where the
+/// prefetches would only cost instructions.
+constexpr std::size_t kPrefetchMinRangeBytes = 64U * 1024U;
+
+/// The prefetching stops when the remaining range is smaller than this size: its few cache lines are already being
+/// loaded.
+constexpr std::size_t kPrefetchStopRangeBytes = 256U;
+
+/// Returns 'it + offset' if 'cond', 'it' otherwise, without a branch, which would be mispredicted half of the time on a
+/// random condition.
+template <class RandomIt>
+RandomIt AdvanceIf(RandomIt it, typename std::iterator_traits<RandomIt>::difference_type offset, bool cond) {
+#ifdef AMC_UNPREDICTABLE
+  // Clang compiles this 'if' into a conditional move, but turns the arithmetic below into a branch
+  if (AMC_UNPREDICTABLE(cond)) {
+    it += offset;
+  }
+  return it;
+#else
+  // GCC compiles the 'if' above into a branch (even with __builtin_expect_with_probability(cond, 1, 0.5))
+  return it + (offset & -static_cast<typename std::iterator_traits<RandomIt>::difference_type>(cond));
+#endif
+}
+
+/// Returns the first iterator 'it' of [first, first + n) for which 'pred(*it)' is false, the range being partitioned by
+/// 'pred' (the elements for which it is true come first), like std::partition_point.
+/// The next half of the range is selected with a conditional move instead of a branch, which would be mispredicted half
+/// of the time. As the next element to compare then depends on the result of the current comparison, in large ranges
+/// the elements of the next two steps (4 candidates) are prefetched, so that the latencies of their loads overlap.
+/// 'pred' is called ceil(log2(n + 1)) times, as many times as std::partition_point in its worst case.
+template <class RandomIt, class Pred>
+RandomIt BranchlessPartitionPoint(RandomIt first, std::size_t n, Pred pred) {
+  using diff_type = typename std::iterator_traits<RandomIt>::difference_type;
+  using value_type = typename std::iterator_traits<RandomIt>::value_type;
+  static_assert(kPrefetchStopRangeBytes / sizeof(value_type) >= 4U,
+                "the prefetching loop needs at least 5 positions for the prefetched elements to be in the range");
+  // Invariant: the partition point is one of the 'len' positions [first, first + len - 1]. Each step compares the
+  // element before first + half (half < len) and keeps either [first, first + half - 1] or [first + half, first + len
+  // - 1]: both fit in 'len - half' positions from their first one, so 'len' does not depend on the comparison either.
+  std::size_t len = n + 1U;
+  if (len > kPrefetchMinRangeBytes / sizeof(value_type)) {
+    do {
+      const std::size_t half = len / 2;
+      len -= half;
+      // The step after the next one compares the element before first + half2, plus 0 or half1 (next step), plus 0 or
+      // half: as len >= 3 here, 1 <= half2 and half1 + half2 < len.
+      const std::size_t half1 = len / 2;
+      const std::size_t half2 = (len - half1) / 2;
+      AMC_PREFETCH(std::addressof(first[static_cast<diff_type>(half2 - 1U)]));
+      AMC_PREFETCH(std::addressof(first[static_cast<diff_type>(half1 + half2 - 1U)]));
+      AMC_PREFETCH(std::addressof(first[static_cast<diff_type>(half + half2 - 1U)]));
+      AMC_PREFETCH(std::addressof(first[static_cast<diff_type>(half + half1 + half2 - 1U)]));
+      first = AdvanceIf(first, static_cast<diff_type>(half), pred(first[static_cast<diff_type>(half - 1U)]));
+    } while (len > kPrefetchStopRangeBytes / sizeof(value_type));
+  }
+  while (len > 1U) {
+    const std::size_t half = len / 2;
+    len -= half;
+    first = AdvanceIf(first, static_cast<diff_type>(half), pred(first[static_cast<diff_type>(half - 1U)]));
+  }
+  return first;
+}
+
+}  // namespace flatset_details
+
 /**
  * Set which keeps its elements into a sorted vector container.
  * The disadvantages of a sorted vector are linear-time insertions and linear-time deletions.
@@ -34,7 +122,8 @@ namespace amc {
  * with a much smaller memory impact.
  *
  * Detailed features and characteristics:
- * - Faster lookup than standard associative containers
+ * - Faster lookup than standard associative containers. The binary searches of scalar types ordered by std::less or
+ * std::greater are branchless, and prefetch their next steps in large sets.
  * - Much faster iteration than standard associative containers. Random-access iterators instead of bidirectional
  * iterators.
  * - Less memory consumption
@@ -425,20 +514,20 @@ class FlatSet : private Compare {
     return std::pair<const_iterator, const_iterator>(first, second);
   }
 
-  const_iterator lower_bound(const_reference v) const { return std::lower_bound(begin(), end(), v, compRef()); }
-  const_iterator upper_bound(const_reference v) const { return std::upper_bound(begin(), end(), v, compRef()); }
+  const_iterator lower_bound(const_reference v) const { return lowerBound(begin(), end(), v); }
+  const_iterator upper_bound(const_reference v) const { return upperBound(v); }
 
 #ifdef AMC_CXX14
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
   const_iterator lower_bound(const K& k) const {
-    return std::lower_bound(begin(), end(), k, compRef());
+    return lowerBound(begin(), end(), k);
   }
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
   const_iterator upper_bound(const K& k) const {
-    return std::upper_bound(begin(), end(), k, compRef());
+    return upperBound(k);
   }
 #endif
 
@@ -472,15 +561,48 @@ class FlatSet : private Compare {
   miterator mbegin() noexcept { return _sortedVector.begin(); }
   miterator mend() noexcept { return _sortedVector.end(); }
 
-  miterator mfind(const_reference v) {
-    miterator lbIt = std::lower_bound(mbegin(), mend(), v, compRef());
-    return lbIt == mend() || compRef()(v, *lbIt) ? mend() : lbIt;
+  miterator mfind(const_reference v) { return mbegin() + (find(v) - begin()); }
+
+  /// First element of [first, last) which is not less than 'k' (std::lower_bound).
+  template <class K>
+  const_iterator lowerBound(const_iterator first, const_iterator last, const K& k) const {
+    return lowerBound(first, last, k, flatset_details::UseBranchlessSearch<T, K, Compare>());
+  }
+
+  template <class K>
+  const_iterator lowerBound(const_iterator first, const_iterator last, const K& k, std::true_type) const {
+    const Compare& comp = compRef();
+    return flatset_details::BranchlessPartitionPoint(first, static_cast<std::size_t>(last - first),
+                                                     [&comp, &k](const_reference v) { return comp(v, k); });
+  }
+
+  template <class K>
+  const_iterator lowerBound(const_iterator first, const_iterator last, const K& k, std::false_type) const {
+    return std::lower_bound(first, last, k, compRef());
+  }
+
+  /// First element which is greater than 'k' (std::upper_bound).
+  template <class K>
+  const_iterator upperBound(const K& k) const {
+    return upperBound(k, flatset_details::UseBranchlessSearch<T, K, Compare>());
+  }
+
+  template <class K>
+  const_iterator upperBound(const K& k, std::true_type) const {
+    const Compare& comp = compRef();
+    return flatset_details::BranchlessPartitionPoint(begin(), static_cast<std::size_t>(size()),
+                                                     [&comp, &k](const_reference v) { return !comp(k, v); });
+  }
+
+  template <class K>
+  const_iterator upperBound(const K& k, std::false_type) const {
+    return std::upper_bound(begin(), end(), k, compRef());
   }
 
   template <class V>
   std::pair<iterator, bool> insert_val(V&& v) {
-    miterator insertIt = std::lower_bound(mbegin(), mend(), v, compRef());
-    bool newValue = insertIt == mend() || compRef()(v, *insertIt);
+    const_iterator insertIt = lowerBound(begin(), end(), v);
+    bool newValue = insertIt == end() || compRef()(v, *insertIt);
     if (newValue) {
       insertIt = _sortedVector.insert(insertIt, std::forward<V>(v));
     }
@@ -508,7 +630,7 @@ class FlatSet : private Compare {
         // hint is correct and element not already present, insert
         return _sortedVector.insert(hint, std::forward<V>(v));
       } else {
-        const_iterator insertIt = std::lower_bound(b, prevIt, v, compRef());
+        const_iterator insertIt = lowerBound(b, prevIt, v);
         if (insertIt == prevIt || compRef()(v, *insertIt)) {
           return _sortedVector.insert(insertIt, std::forward<V>(v));
         }
@@ -559,8 +681,8 @@ class FlatSet : private Compare {
   template <class C2>
   void mergeOneByOne(FlatSet<T, C2, Alloc, VecType>& o) {
     for (miterator oit = o.mbegin(); oit != o.mend();) {
-      miterator lbIt = std::lower_bound(mbegin(), mend(), *oit, compRef());
-      if (lbIt == mend()) {
+      const_iterator lbIt = lowerBound(begin(), end(), *oit);
+      if (lbIt == end()) {
         _sortedVector.push_back(std::move(*oit));
         oit = o._sortedVector.erase(oit);
       } else if (compRef()(*oit, *lbIt)) {

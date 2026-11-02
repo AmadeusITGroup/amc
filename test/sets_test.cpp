@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
 #include <stdint.h>
 
+#include <algorithm>
 #include <amc/config.hpp>
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
+#include <cstddef>
 #include <iterator>
+#include <limits>
 #include <list>
 #include <set>
 #include <sstream>
@@ -1015,6 +1018,16 @@ TYPED_TEST(SetListEquivalentType, ContainsEquivalentType) {
   EXPECT_FALSE(s.contains(1LL));
   EXPECT_TRUE(s.contains(7ULL));
   EXPECT_FALSE(s.contains(static_cast<char>(4)));
+  EXPECT_EQ(s.count(0LL), 1U);
+  EXPECT_EQ(s.count(1LL), 0U);
+}
+
+TEST(FlatSetTest, BoundsEquivalentType) {
+  const FlatSet<int, std::less<>> s{1, 2, 4};
+  EXPECT_EQ(s.lower_bound(1.5), s.begin() + 1);
+  EXPECT_EQ(s.upper_bound(2.0), s.begin() + 2);
+  EXPECT_EQ(s.lower_bound(SelfMoveUnsafeType(2)), s.begin() + 1);
+  EXPECT_EQ(s.upper_bound(SelfMoveUnsafeType(2)), s.begin() + 2);
 }
 #endif
 
@@ -1033,9 +1046,12 @@ TEST(SmallSetTest, MergeDifferentCompare) {
 template <typename T>
 class FlatSetBoundsTest : public ::testing::Test {};
 
-// The bounds depend on the ordering of the comparator and on the iterators of the vector
-typedef ::testing::Types<FlatSet<char>, FlatSet<uint32_t, std::greater<uint32_t>, amc::allocator<uint32_t>,
-                                                std::vector<uint32_t, amc::allocator<uint32_t>>>>
+// The bounds depend on the ordering of the comparator, on whether the search is branchless (scalar types ordered by
+// std::less or std::greater), and on the iterators of the vector. Only uint32_t has enough distinct values to reach
+// the size from which the branchless search prefetches.
+typedef ::testing::Types<FlatSet<char>, FlatSet<char, ModuloCompare>,
+                         FlatSet<uint32_t, std::greater<uint32_t>, amc::allocator<uint32_t>,
+                                 std::vector<uint32_t, amc::allocator<uint32_t>>>>
     FlatSetsBoundsType;
 TYPED_TEST_SUITE(FlatSetBoundsTest, FlatSetsBoundsType, );
 
@@ -1055,6 +1071,50 @@ TYPED_TEST(FlatSetBoundsTest, EqualRangeAndBounds) {
       EXPECT_EQ(std::distance(s.begin(), range.second), std::distance(ref.begin(), refRange.second)) << "key " << k;
       EXPECT_TRUE(range.first == s.lower_bound(key)) << "key " << k;
       EXPECT_TRUE(range.second == s.upper_bound(key)) << "key " << k;
+    }
+  }
+}
+
+// Same positions as the standard binary searches, for all the sizes up to 70 (each number of steps of the binary search
+// without prefetching, from 0 to 7), and for sizes on both sides of the one from which it prefetches, for all the keys:
+// present, absent between two elements, before the first and after the last one.
+TYPED_TEST(FlatSetBoundsTest, LookupsOfAllSizes) {
+  using SetType = TypeParam;
+  using ValueType = typename SetType::value_type;
+  using SizeType = typename SetType::size_type;
+  const typename SetType::key_compare comp;
+  const std::size_t prefetchMinSize = flatset_details::kPrefetchMinRangeBytes / sizeof(ValueType);
+  std::vector<std::size_t> sizes;
+  for (std::size_t n = 0; n <= 70; ++n) {
+    sizes.push_back(n);
+  }
+  for (std::size_t n : {prefetchMinSize - 1, prefetchMinSize, 2 * prefetchMinSize, 3 * prefetchMinSize + 7}) {
+    sizes.push_back(n);
+  }
+  for (std::size_t n : sizes) {
+    // Elements 1, 3, ..., 2n - 1, so that keys 0, 2, ..., 2n are absent
+    if (2 * n > static_cast<std::size_t>(std::numeric_limits<ValueType>::max())) {
+      continue;
+    }
+    std::vector<ValueType> sorted;
+    for (std::size_t i = 0; i < n; ++i) {
+      sorted.push_back(static_cast<ValueType>(2 * i + 1));
+    }
+    std::sort(sorted.begin(), sorted.end(), comp);
+    const SetType s(sorted.begin(), sorted.end());
+    ASSERT_EQ(s.size(), static_cast<SizeType>(n));
+    for (std::size_t k = 0; k <= 2 * n; ++k) {
+      const ValueType key = static_cast<ValueType>(k);
+      const bool present = k % 2 == 1;
+      const std::ptrdiff_t lb = std::lower_bound(sorted.begin(), sorted.end(), key, comp) - sorted.begin();
+      const std::ptrdiff_t ub = std::upper_bound(sorted.begin(), sorted.end(), key, comp) - sorted.begin();
+      ASSERT_EQ(s.lower_bound(key) - s.begin(), lb) << "size " << n << " key " << k;
+      ASSERT_EQ(s.upper_bound(key) - s.begin(), ub) << "size " << n << " key " << k;
+      ASSERT_EQ(s.find(key) - s.begin(), present ? lb : static_cast<std::ptrdiff_t>(n)) << "size " << n << " key " << k;
+      ASSERT_EQ(s.count(key), static_cast<SizeType>(present)) << "size " << n << " key " << k;
+      const auto range = s.equal_range(key);
+      ASSERT_EQ(range.first - s.begin(), lb) << "size " << n << " key " << k;
+      ASSERT_EQ(range.second - s.begin(), ub) << "size " << n << " key " << k;
     }
   }
 }
