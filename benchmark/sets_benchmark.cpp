@@ -192,6 +192,39 @@ void MergeInterleaved(benchmark::State& state) {
   PrintStats(state);
 }
 
+/// Inserts sorted batches of 8 values, greater than all the elements, in a set of state.range(0) values, like new
+/// increasing keys (timestamps, identifiers...). Every 128 batches, the inserted elements are erased (not measured), so
+/// that the size of the set stays close to its initial one.
+template <class SetType>
+void InsertSortedBatches(benchmark::State& state) {
+  constexpr uint32_t kBatchSize = 8;
+  constexpr uint32_t kNbBatchesBeforeErase = 128;
+  const auto size = static_cast<uint32_t>(state.range(0));
+  using ValueType = typename SetType::value_type;
+  std::vector<ValueType> values;
+  for (uint32_t i = 0; i < size + kBatchSize * kNbBatchesBeforeErase; ++i) {
+    values.emplace_back(i);
+  }
+  SetType s(values.begin(), values.begin() + size);
+  const ValueType& firstInserted = values[size];
+  auto batchIt = values.begin() + size;
+  TypeStats::_stats = TypeStats();
+  TypeStats::_stats.start();
+  for (auto _ : state) {
+    s.insert(batchIt, batchIt + kBatchSize);
+    batchIt += kBatchSize;
+    if (batchIt == values.end()) {
+      state.PauseTiming();
+      s.erase(s.lower_bound(firstInserted), s.end());
+      batchIt = values.begin() + size;
+      state.ResumeTiming();
+    }
+  }
+  benchmark::DoNotOptimize(s);
+  TypeStats::_stats.end();
+  PrintStats(state);
+}
+
 template <class SetType, unsigned TypicalMaxSize>
 void CommonUsage(benchmark::State& state) {
   TypeStats::_stats = TypeStats();
@@ -256,6 +289,11 @@ BENCHMARK_TEMPLATE(LookUpChained, AMCInt)->RangeMultiplier(10)->Range(100, 10000
 
 BENCHMARK_TEMPLATE(MergeInterleaved, REFInt)->RangeMultiplier(10)->Range(1000, 100000)->UseManualTime();
 BENCHMARK_TEMPLATE(MergeInterleaved, AMCInt)->RangeMultiplier(10)->Range(1000, 100000)->UseManualTime();
+
+BENCHMARK_TEMPLATE(InsertSortedBatches, REFInt)->RangeMultiplier(10)->Range(1000, 100000);
+BENCHMARK_TEMPLATE(InsertSortedBatches, AMCInt)->RangeMultiplier(10)->Range(1000, 100000);
+BENCHMARK_TEMPLATE(InsertSortedBatches, REFRelocType)->Arg(100000);
+BENCHMARK_TEMPLATE(InsertSortedBatches, AMCRelocType)->Arg(100000);
 
 #ifdef AMC_SMALLSET
 BENCHMARK_TEMPLATE(CommonUsage, amc::SmallSet<uint32_t, 50>, 50);

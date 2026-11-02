@@ -363,6 +363,16 @@ TYPED_TEST(SetListTest, InsertIterators) {
   EXPECT_TRUE(s.contains(2));
   EXPECT_TRUE(s.contains(6));
   EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
+
+  // empty range, then elements all greater, and all less than the present ones
+  s.insert(std::begin(kNewEls), std::begin(kNewEls));
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18}));
+  const value_type kGreaterEls[] = {20, 19, 20};
+  s.insert(std::begin(kGreaterEls), std::end(kGreaterEls));
+  EXPECT_EQ(s, TypeParam({1, 2, 3, 4, 6, 18, 19, 20}));
+  const value_type kLessEls[] = {0, 0};
+  s.insert(std::begin(kLessEls), std::end(kLessEls));
+  EXPECT_EQ(s, TypeParam({0, 1, 2, 3, 4, 6, 18, 19, 20}));
 }
 
 #ifdef AMC_CXX23
@@ -781,6 +791,26 @@ TYPED_TEST(SetStatefulCompareTest, UseComparatorObject) {
   rhs.insert(3);
   EXPECT_TRUE(rhs < lhs);
   EXPECT_FALSE(lhs < rhs);
+}
+
+// Like std::set, the insertion of a range keeps the present elements rather than the equivalent inserted ones, wherever
+// the least inserted element is: before all the present ones, equivalent to the first, to a middle or to the last one,
+// or after all of them.
+TYPED_TEST(SetStatefulCompareTest, InsertRangeKeepsPresentElements) {
+  using SetType = TypeParam;
+  using Values = std::vector<int32_t>;
+  const ModuloCompare moduloTen(10);
+  const Values present{2, 4, 6};
+  // inserted elements equivalent to each other are also equivalent to a present one, which is kept
+  for (const Values& inserted :
+       {Values{11, 15, 22}, Values{12, 17, 22, 13}, Values{15, 26, 14, 34}, Values{16, 19, 36}, Values{19, 17}}) {
+    SetType s(moduloTen);
+    s.insert(present.begin(), present.end());
+    s.insert(inserted.begin(), inserted.end());
+    std::set<int32_t, ModuloCompare> expected(present.begin(), present.end(), moduloTen);
+    expected.insert(inserted.begin(), inserted.end());
+    EXPECT_EQ(Values(s.begin(), s.end()), Values(expected.begin(), expected.end()));
+  }
 }
 
 // Comparator objects of the same type may define different orderings: merged elements must be ordered and deduplicated
