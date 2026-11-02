@@ -599,17 +599,16 @@ class SmallSet {
     return _set <=> o._set;
   }
 
+  /// Linear: the elements are not erased one by one, which would shift the next ones at each erase in the vector of the
+  /// small state, or in the one of a FlatSet.
   template <class Pred>
   friend size_type erase_if(SmallSet& c, Pred pred) {
-    auto oldSize = c.size();
-    for (auto i = c.begin(); i != c.end();) {
-      if (pred(*i)) {
-        i = c.erase(i);
-      } else {
-        ++i;
-      }
+    // like the iterators of a set, the predicate only has a const access to the elements
+    auto constPred = [&pred](const_reference v) { return pred(v); };
+    if (c.isSmall()) {
+      return static_cast<size_type>(erase_if(c._vec, constPred));
     }
-    return oldSize - c.size();
+    return EraseIfFromSet(c._set, constPred);
   }
 
 #else
@@ -760,6 +759,28 @@ class SmallSet {
       throw;
     }
   }
+
+#ifdef AMC_CXX20
+  /// Erases one by one the elements satisfying 'pred', like std::erase_if for the node based sets such as std::set.
+  template <class S, class Pred>
+  static size_type EraseIfFromSet(S& set, Pred& pred) {
+    const auto oldSize = set.size();
+    for (auto it = set.begin(); it != set.end();) {
+      if (pred(*it)) {
+        it = set.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    return static_cast<size_type>(oldSize - set.size());
+  }
+
+  /// A FlatSet removes the elements satisfying 'pred' in a single pass over its vector.
+  template <class V, class Pred>
+  static size_type EraseIfFromSet(FlatSet<T, Compare, Alloc, V>& set, Pred& pred) {
+    return static_cast<size_type>(erase_if(set, pred));
+  }
+#endif
 
   bool isSmall() const noexcept { return _set.empty(); }
   bool isSmallContFull() const noexcept { return _vec.size() == N; }
