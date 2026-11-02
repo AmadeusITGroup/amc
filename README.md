@@ -103,7 +103,8 @@ Lookup time mostly depends on where the set fits in the cache hierarchy: per ele
  - **chained** lookups: each looked up value depends on the element found by the previous lookup, so this is the latency of a single lookup.
 
  - With 1 000 000 elements, `amc::FlatSet` (4 MB) still fits in the L3 cache while the node based sets (40 to 50 MB) do not: its lookup latency is 3.3 to 4.4 times lower than the one of `std::unordered_set`.
- - Clang compiles the binary searches of `amc::FlatSet` (`std::lower_bound`) and `std::set` with conditional moves, GCC with branches. Mispredicted branches serialize the lookups, so with GCC independent lookups are barely faster than chained ones. Beyond the L3 cache however, the speculative execution of the predicted branch prefetches the next levels of the binary search of `amc::FlatSet`, which is then faster with GCC than with Clang.
+ - The binary searches of `amc::FlatSet<uint32_t>` are branchless with both compilers: the next half of the range is selected with a conditional move, which, unlike a branch, is never mispredicted. The address of the next element to compare then depends on the result of the current comparison, so in sets larger than the L1 cache, each step prefetches the 4 elements which the two following steps may compare: the cache misses of successive steps overlap. This applies to scalar types (arithmetic, enumerations, pointers) ordered by `std::less` or `std::greater`. With costlier comparisons, like those of `std::string` or of a comparator dereferencing pointers, the branchless search is slower, so `amc::FlatSet` keeps `std::lower_bound` for them.
+ - GCC compiles the tree search of `std::set` with branches, Clang with conditional moves. Mispredicted branches serialize the lookups, so with GCC independent lookups of `std::set` are barely faster than chained ones.
 
 #### Benchmarks
 
@@ -513,6 +514,7 @@ In addition, if type is trivially destructible, `FixedCapacityVector` will be it
 Also sometimes called `SortedVector`, it uses a sorted `amc::vector` as storage (by default, provided as template type) and is thus cache friendly and memory efficient set-like container.
 It can be used as a drop-in replacement for `std::set` especially when the read operations occur much frequently than the writes.
 Even if there are a lot of writes, it is still very efficient for *trivially relocatable* types as it uses `amc::vector` by default which relocates elements very efficiently.
+Lookups (`find`, `lower_bound`, `insert`...) of scalar types ordered by `std::less` or `std::greater` use a branchless binary search, which prefetches its next steps in large sets (see [Sets](#sets)).
 
 Besides, the vector container is templated and thus can be combined with above vectors variations to optimize memory allocations (`SmallVector` or `FixedCapacityVector`).
 
