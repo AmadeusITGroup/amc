@@ -290,6 +290,18 @@ TYPED_TEST(VectorTest, Shrink) {
   v.resize(3, Type(42));
   EXPECT_EQ(v, VectorType({1, 2, 3}));
 
+  // Like 'assign', assigning an initializer list keeps the storage: only 'shrink_to_fit' releases it
+  const Type* data = v.data();
+  const auto capacity = v.capacity();
+  v = {4, 5};
+  EXPECT_EQ(v, VectorType({4, 5}));
+  EXPECT_EQ(v.data(), data);
+  EXPECT_EQ(v.capacity(), capacity);
+  v = {};
+  EXPECT_TRUE(v.empty());
+  EXPECT_EQ(v.data(), data);
+  EXPECT_EQ(v.capacity(), capacity);
+
   // An empty vector releases its dynamic storage, if any
   v.clear();
   v.shrink_to_fit();

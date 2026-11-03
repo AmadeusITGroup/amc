@@ -1418,11 +1418,6 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   using size_type = SizeType;
   using allocator_type = Alloc;
 
-  VectorImpl& operator=(std::initializer_list<T> list) {
-    assign(list.begin(), list.end());
-    return *this;
-  }
-
   bool empty() const noexcept { return this->size() == 0; }
 
   iterator end() noexcept { return this->begin() + this->size(); }
@@ -2022,6 +2017,13 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
     if (AMC_LIKELY(this != &o)) {
       moveAssign(o, CanStealOnMoveAssign());
     }
+    return *this;
+  }
+
+  /// Like 'assign': the storage is kept if it is large enough. Defined here, as the assignment operators above hide the
+  /// ones of the base classes.
+  Vector& operator=(std::initializer_list<T> list) {
+    this->assign(list.begin(), list.end());
     return *this;
   }
 
