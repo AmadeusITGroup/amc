@@ -7,11 +7,14 @@
 #include <array>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <list>
 #include <memory>
 #include <numeric>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #ifdef AMC_CXX23
@@ -175,6 +178,21 @@ TYPED_TEST(VectorTest, Main) {
   EXPECT_EQ(s[1], Type(8));
   EXPECT_EQ(s.front(), Type(3));
   EXPECT_EQ(s.back(), Type(8));
+
+  // 'at' checks its index, also rejecting the negative ones of a signed size type
+  using SzType = typename VectorType::size_type;
+  const VectorType& constS = s;
+  EXPECT_EQ(s.at(1), Type(8));
+  EXPECT_EQ(constS.at(2), Type(15));
+  std::vector<SzType> outOfRangeIdxs{static_cast<SzType>(4), std::numeric_limits<SzType>::max()};
+  if (std::is_signed<SzType>::value) {
+    outOfRangeIdxs.push_back(static_cast<SzType>(-1));
+    outOfRangeIdxs.push_back(std::numeric_limits<SzType>::min());
+  }
+  for (SzType idx : outOfRangeIdxs) {
+    EXPECT_THROW(s.at(idx), std::out_of_range);
+    EXPECT_THROW(constS.at(idx), std::out_of_range);
+  }
 
   EXPECT_EQ(s, VectorType(s));
 

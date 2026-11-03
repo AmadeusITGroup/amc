@@ -1445,20 +1445,20 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   const_pointer data() const noexcept { return this->begin(); }
 
   reference operator[](size_type idx) {
-    assert(idx < this->size());
+    assert(isValidIndex(idx));
     return this->begin()[idx];
   }
   const_reference operator[](size_type idx) const {
-    assert(idx < this->size());
+    assert(isValidIndex(idx));
     return this->begin()[idx];
   }
 
   reference at(size_type idx) {
-    if (idx >= this->size()) throw std::out_of_range("Out of Range access");
+    if (!isValidIndex(idx)) throw std::out_of_range("Out of Range access");
     return this->begin()[idx];
   }
   const_reference at(size_type idx) const {
-    if (idx >= this->size()) throw std::out_of_range("Out of Range access");
+    if (!isValidIndex(idx)) throw std::out_of_range("Out of Range access");
     return this->begin()[idx];
   }
 
@@ -1761,6 +1761,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 #endif
 
  private:
+  /// Tells whether 'idx' is the index of an element. Compared as unsigned values: a negative index of a signed size
+  /// type converts to a value larger than any size, so that it is rejected too.
+  bool isValidIndex(size_type idx) const noexcept {
+    using UnsignedSizeType = typename std::make_unsigned<SizeType>::type;
+    return static_cast<UnsignedSizeType>(idx) < static_cast<UnsignedSizeType>(this->size());
+  }
+
   // Range methods implementations, dispatched on the iterator category.
   // Forward iterators can be traversed several times: we compute the number of elements first to reserve once.
   // Single pass input iterators can be traversed only once, so we cannot know their number of elements in advance.
