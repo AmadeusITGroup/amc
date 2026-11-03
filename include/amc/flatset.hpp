@@ -21,7 +21,6 @@
 #include "istransparent.hpp"
 #ifdef AMC_CXX17
 #include <optional>
-#include <tuple>
 #ifdef AMC_CXX23
 #include <ranges>
 #endif
@@ -255,7 +254,12 @@ class FlatSet : private Compare {
 
   FlatSet(const FlatSet& o, const Alloc& alloc) : Compare(o.key_comp()), _sortedVector(o._sortedVector, alloc) {}
 
-  FlatSet(FlatSet&& o, const Alloc& alloc) : Compare(o.key_comp()), _sortedVector(std::move(o._sortedVector), alloc) {}
+  /// Like the move constructor, moves the comparator. If 'alloc' is not equal to the allocator of 'o', the elements are
+  /// moved one by one (by the vector).
+  FlatSet(FlatSet&& o,
+          const Alloc& alloc) noexcept(std::is_nothrow_move_constructible<Compare>::value &&
+                                       std::is_nothrow_constructible<VecType, VecType&&, const Alloc&>::value)
+      : Compare(std::move(static_cast<Compare&>(o))), _sortedVector(std::move(o._sortedVector), alloc) {}
 
   FlatSet(std::initializer_list<value_type> list, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : Compare(comp), _sortedVector(alloc) {
@@ -263,6 +267,43 @@ class FlatSet : private Compare {
   }
 
   FlatSet(std::initializer_list<value_type> list, const Alloc& alloc) : FlatSet(list, Compare(), alloc) {}
+
+ private:
+  // The exception specifications of the defaulted moves must be the ones they would have if they were implicit.
+  using IsNothrowMoveConstructible =
+      std::integral_constant<bool, std::is_nothrow_move_constructible<Compare>::value &&
+                                       std::is_nothrow_move_constructible<VecType>::value>;
+  using IsNothrowMoveAssignable = std::integral_constant<bool, std::is_nothrow_move_assignable<Compare>::value &&
+                                                                   std::is_nothrow_move_assignable<VecType>::value>;
+
+ public:
+  FlatSet(const FlatSet&) = default;
+
+  FlatSet(FlatSet&&) noexcept(IsNothrowMoveConstructible::value) = default;
+
+  /// If an exception is thrown, the set is emptied: assigning the elements one by one could otherwise leave a mix of
+  /// the previous and new elements, unsorted or with duplicates.
+  FlatSet& operator=(const FlatSet& o) {
+    if (this != &o) {
+      try {
+        static_cast<Compare&>(*this) = static_cast<const Compare&>(o);
+        _sortedVector = o._sortedVector;
+      } catch (...) {
+        _sortedVector.clear();
+        throw;
+      }
+    }
+    return *this;
+  }
+
+  /// If a move of an element throws, both sets are emptied, as they could otherwise keep moved from elements, or a mix
+  /// of the previous and new elements.
+  FlatSet& operator=(FlatSet&& o) noexcept(IsNothrowMoveAssignable::value) {
+    if (this != &o) {
+      moveAssign(o, IsNothrowMoveAssignable());
+    }
+    return *this;
+  }
 
 #ifdef AMC_NONSTD_FEATURES
   using vector_type = VecType;
@@ -351,16 +392,18 @@ class FlatSet : private Compare {
 
 #ifdef AMC_CXX17
   /// 'nh' is left empty. If the insertion fails (equivalent element already present), the returned node owns its value.
+  /// If an exception is thrown (by the comparator, or by an allocation), 'nh' keeps its value.
   insert_return_type insert(node_type&& nh) {
-    insert_return_type irt{end(), false, std::move(nh)};
-    if (irt.node) {
-      // the value is only moved from if it is inserted
-      std::tie(irt.position, irt.inserted) = insert(std::move(*irt.node._optV));
-      if (irt.inserted) {
-        irt.node._optV = std::nullopt;
-      }
+    if (!nh) {
+      return insert_return_type{end(), false, node_type()};
     }
-    return irt;
+    // the value is only moved from if it is inserted: it stays in 'nh' until the insertion succeeds or fails
+    const std::pair<iterator, bool> ret = insert(std::move(*nh._optV));
+    if (ret.second) {
+      nh._optV.reset();
+      return insert_return_type{ret.first, true, node_type()};
+    }
+    return insert_return_type{ret.first, false, std::move(nh)};
   }
 
   /// If the insertion fails (equivalent element already present), 'nh' is unchanged.
@@ -560,6 +603,22 @@ class FlatSet : private Compare {
   friend class SmallSet;
 
   using miterator = typename VecType::iterator;  // Custom non const iterator to allow modification of content
+
+  void moveAssign(FlatSet& o, std::true_type) noexcept {
+    static_cast<Compare&>(*this) = std::move(static_cast<Compare&>(o));
+    _sortedVector = std::move(o._sortedVector);
+  }
+
+  void moveAssign(FlatSet& o, std::false_type) {
+    try {
+      static_cast<Compare&>(*this) = std::move(static_cast<Compare&>(o));
+      _sortedVector = std::move(o._sortedVector);
+    } catch (...) {
+      _sortedVector.clear();
+      o._sortedVector.clear();
+      throw;
+    }
+  }
 
   miterator mbegin() noexcept { return _sortedVector.begin(); }
   miterator mend() noexcept { return _sortedVector.end(); }
