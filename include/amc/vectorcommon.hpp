@@ -636,6 +636,8 @@ class StaticVectorBase {
 
   void shrink_impl(SizeType) noexcept {}
 
+  bool isFull() const noexcept { return _capa <= _size; }
+
   void incrSize() noexcept { ++_size; }
   void decrSize() noexcept { --_size; }
   void setSize(SizeType s) noexcept { _size = s; }
@@ -1566,7 +1568,11 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   iterator insert(const_iterator position, T&& v) {
     assert(position >= this->cbegin() && position <= cend());
-    iterator pos = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, position);
+    if (this->isFull()) {
+      // 'v' may be an element of the vector, like for 'push_back(T&&)'
+      return this->emplace(position, std::move(v));
+    }
+    iterator pos = const_cast<iterator>(position);
     insert_n(pos, this->size() - (pos - this->begin()), std::move(v));
     this->incrSize();
     return pos;
