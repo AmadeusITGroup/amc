@@ -175,6 +175,15 @@ struct ModuloCompare {
   int32_t _modulo = std::numeric_limits<int32_t>::max();
 };
 
+/// Comparator of integers with operator<, whose copies and moves are not noexcept (even though they never throw).
+struct PotentiallyThrowingMoveCompare {
+  PotentiallyThrowingMoveCompare() = default;
+  PotentiallyThrowingMoveCompare(const PotentiallyThrowingMoveCompare&) noexcept(false) {}
+  PotentiallyThrowingMoveCompare& operator=(const PotentiallyThrowingMoveCompare&) noexcept(false) { return *this; }
+
+  bool operator()(int32_t lhs, int32_t rhs) const { return lhs < rhs; }
+};
+
 struct CompareException {};
 
 /// Comparator of integers with operator<, which throws CompareException once 'NbComparisonsBeforeThrow()' comparisons

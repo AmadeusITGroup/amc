@@ -9,7 +9,6 @@
 #include <memory>
 #include <optional>
 #include <set>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -154,6 +153,12 @@ class SmallSet {
   using VecType = FixedCapacityVector<T, N, vec::UncheckedGrowingPolicy>;
   using VecIt = typename VecType::const_iterator;
   using SetIt = typename SetType::const_iterator;
+  // The exception specification of the defaulted move constructor must be the one it would have if it were implicit.
+  using IsNothrowMoveConstructible =
+      std::integral_constant<bool, std::is_nothrow_move_constructible<VecType>::value &&
+                                       std::is_nothrow_move_constructible<SetType>::value>;
+  using IsNothrowMoveAssignable = std::integral_constant<bool, std::is_nothrow_move_assignable<VecType>::value &&
+                                                                   std::is_nothrow_move_assignable<SetType>::value>;
 
   static_assert(N <= 64, "N should be small as search has linear complexity for small sets");
 
@@ -269,12 +274,45 @@ class SmallSet {
 
   SmallSet(const SmallSet& o, const Alloc& alloc) : _vec(o._vec), _set(o._set, alloc) {}
 
-  SmallSet(SmallSet&& o, const Alloc& alloc) : _vec(std::move(o._vec)), _set(std::move(o._set), alloc) {}
+  /// If 'alloc' is not equal to the allocator of 'o', the elements of the large state are moved one by one (by its
+  /// set).
+  SmallSet(SmallSet&& o,
+           const Alloc& alloc) noexcept(std::is_nothrow_move_constructible<VecType>::value &&
+                                        std::is_nothrow_constructible<SetType, SetType&&, const Alloc&>::value)
+      : _vec(std::move(o._vec)), _set(std::move(o._set), alloc) {}
 
   SmallSet(std::initializer_list<T> list, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : SmallSet(list.begin(), list.end(), comp, alloc) {}
 
   SmallSet(std::initializer_list<T> list, const Alloc& alloc) : SmallSet(list, Compare(), alloc) {}
+
+  SmallSet(const SmallSet&) = default;
+
+  SmallSet(SmallSet&&) noexcept(IsNothrowMoveConstructible::value) = default;
+
+  /// If an exception is thrown, the set is emptied: assigning the elements of the small state one by one could
+  /// otherwise leave a mix of the previous and new elements, with duplicates.
+  SmallSet& operator=(const SmallSet& o) {
+    if (this != &o) {
+      try {
+        _vec = o._vec;
+        _set = o._set;
+      } catch (...) {
+        clearBoth();
+        throw;
+      }
+    }
+    return *this;
+  }
+
+  /// If a move of an element throws, both sets are emptied, as they could otherwise keep moved from elements, or a mix
+  /// of the previous and new elements.
+  SmallSet& operator=(SmallSet&& o) noexcept(IsNothrowMoveAssignable::value) {
+    if (this != &o) {
+      moveAssign(o, IsNothrowMoveAssignable());
+    }
+    return *this;
+  }
 
   SmallSet& operator=(std::initializer_list<T> list) {
     clear();
@@ -345,16 +383,18 @@ class SmallSet {
   void insert(std::initializer_list<value_type> ilist) { insert(ilist.begin(), ilist.end()); }
 
   /// 'nh' is left empty. If the insertion fails (equivalent element already present), the returned node owns its value.
+  /// If an exception is thrown (by the comparator, or by an allocation when growing), 'nh' keeps its value.
   insert_return_type insert(node_type&& nh) {
-    insert_return_type irt{end(), false, std::move(nh)};
-    if (irt.node) {
-      // the value is only moved from if it is inserted
-      std::tie(irt.position, irt.inserted) = insert(std::move(*irt.node._optV));
-      if (irt.inserted) {
-        irt.node._optV = std::nullopt;
-      }
+    if (!nh) {
+      return insert_return_type{end(), false, node_type()};
     }
-    return irt;
+    // the value is only moved from if it is inserted: it stays in 'nh' until the insertion succeeds or fails
+    const std::pair<iterator, bool> ret = insert(std::move(*nh._optV));
+    if (ret.second) {
+      nh._optV.reset();
+      return insert_return_type{ret.first, true, node_type()};
+    }
+    return insert_return_type{ret.first, false, std::move(nh)};
   }
 
   /// If the insertion fails (equivalent element already present), 'nh' is unchanged.
@@ -784,6 +824,28 @@ class SmallSet {
 
   bool isSmall() const noexcept { return _set.empty(); }
   bool isSmallContFull() const noexcept { return _vec.size() == N; }
+
+  /// Unlike 'clear', clears both containers, as a failed assignment may have filled both.
+  void clearBoth() noexcept {
+    _vec.clear();
+    _set.clear();
+  }
+
+  void moveAssign(SmallSet& o, std::true_type) noexcept {
+    _vec = std::move(o._vec);
+    _set = std::move(o._set);
+  }
+
+  void moveAssign(SmallSet& o, std::false_type) {
+    try {
+      _vec = std::move(o._vec);
+      _set = std::move(o._set);
+    } catch (...) {
+      clearBoth();
+      o.clearBoth();
+      throw;
+    }
+  }
 
   using PtrVec = FixedCapacityVector<const_pointer, N, vec::UncheckedGrowingPolicy>;
 

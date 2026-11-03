@@ -162,6 +162,13 @@ TYPED_TEST(SetListTest, SpecialMembers) {
   s = cpy;
   EXPECT_EQ(s, TypeParam({1, 2, 3}));
   EXPECT_EQ(s, cpy);
+
+  // self assignments are no-ops, in the small and large states of SmallSets
+  TypeParam& self = s;  // assignment through a reference, avoiding self assignment warnings
+  s = self;
+  EXPECT_EQ(s, TypeParam({1, 2, 3}));
+  s = std::move(self);
+  EXPECT_EQ(s, TypeParam({1, 2, 3}));
 }
 
 TYPED_TEST(SetListTest, EraseValue) {
@@ -651,6 +658,22 @@ TEST(SetTest, SmallSetGrowAllocationFailureKeepsElements) {
   ExpectGrowFailureKeepsElements<SmallSet<int, 4>>(insertFailing);
   using T = ThrowingAssignmentType;  // loses its value when moved
   ExpectGrowFailureKeepsElements<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>(insertFailing);
+
+  // the node handle keeps its value
+  auto insertNodeFailing = [](auto& s, int nbSuccessfulAllocations) {
+    using SetType = std::remove_reference_t<decltype(s)>;
+    SetType src{5};
+    typename SetType::node_type nh = src.extract(src.begin());
+    try {
+      CallWithFailingMalloc([&] { s.insert(std::move(nh)); }, nbSuccessfulAllocations);
+    } catch (const std::bad_alloc&) {
+      EXPECT_TRUE(!nh.empty() && static_cast<int32_t>(nh.value()) == 5);
+      return true;
+    }
+    return false;
+  };
+  ExpectGrowFailureKeepsElements<SmallSet<int, 4>>(insertNodeFailing);
+  ExpectGrowFailureKeepsElements<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>(insertNodeFailing);
 }
 
 TEST(SetTest, SmallSetGrowThrowingMoveKeepsElements) {
@@ -712,6 +735,66 @@ TEST(SetTest, FlatSetMergeAllocationFailureKeepsSets) {
   ExpectMergeAllocationFailureKeepsSets<FlatSet<T, std::less<T>, amc::allocator<T>, SmallVector<T, 4>>>();
 }
 
+// If an assignment of an element throws during the copy or the move assignment of a set, the assigned set is emptied:
+// assigning the elements one by one could otherwise leave a mix of its previous and new elements, unsorted or with
+// duplicates. The source of a failed move assignment, which could keep moved from elements, is emptied as well.
+template <class SetType>
+void ExpectAssignmentThrowEmptiesSets() {
+  using T = ThrowingAssignmentType;
+  using Values = std::vector<int32_t>;
+  int& nbAssignmentsBeforeThrow = T::NbAssignmentsBeforeThrow();
+  const int nbLive = T::NbLive();
+  // small and large states of SmallSets. The elements of the source are greater than the first ones of the destination,
+  // which they replace: an incomplete assignment leaves duplicates.
+  for (const Values& dstValues : {Values{1, 2}, Values{1, 2, 3, 4, 5}}) {
+    for (const Values& srcValues : {Values{2, 3}, Values{2, 3, 4, 5, 6}}) {
+      const SetType src(srcValues.begin(), srcValues.end());
+      for (bool moveAssign : {false, true}) {
+        for (int nbAssignments = 0;; ++nbAssignments) {
+          SetType dst(dstValues.begin(), dstValues.end());
+          SetType movedSrc(src);
+          nbAssignmentsBeforeThrow = nbAssignments;
+          bool thrown = false;
+          try {
+            if (moveAssign) {
+              dst = std::move(movedSrc);
+            } else {
+              dst = src;
+            }
+          } catch (const AssignmentException&) {
+            thrown = true;
+          }
+          nbAssignmentsBeforeThrow = -1;
+          if (!thrown) {
+            EXPECT_EQ(dst, src);
+            break;
+          }
+          const char* assignment = moveAssign ? "move" : "copy";
+          EXPECT_TRUE(dst.empty()) << assignment << " assignment of " << srcValues.size() << " elements to "
+                                   << dstValues.size() << ", throw at assignment " << nbAssignments;
+          EXPECT_TRUE(!moveAssign || movedSrc.empty())
+              << assignment << " assignment of " << srcValues.size() << " elements to " << dstValues.size()
+              << ", throw at assignment " << nbAssignments;
+        }
+      }
+    }
+  }
+  EXPECT_EQ(T::NbLive(), nbLive);
+}
+
+TEST(SetTest, AssignmentThrowEmptiesSets) {
+  using T = ThrowingAssignmentType;
+  // copy assigns the elements one by one, move steals the storage
+  ExpectAssignmentThrowEmptiesSets<FlatSet<T>>();
+  // copy and move assign the elements one by one
+  ExpectAssignmentThrowEmptiesSets<
+      FlatSet<T, std::less<T>, FixedCapacityVector<T, 8>::allocator_type, FixedCapacityVector<T, 8>>>();
+#ifdef AMC_SMALLSET
+  ExpectAssignmentThrowEmptiesSets<SmallSet<T, 4>>();
+  ExpectAssignmentThrowEmptiesSets<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>();
+#endif
+}
+
 TEST(SetTest, Relocatibility) {
   using TrivialType = int;
   using NonRelocType = std::list<int>;
@@ -729,6 +812,56 @@ TEST(SetTest, Relocatibility) {
           SmallSet<TrivialType, 10, std::less<TrivialType>, amc::allocator<TrivialType>, FlatSet<TrivialType>>>::value);
   static_assert(!amc::is_trivially_relocatable<SmallSet<NonRelocType, 10, std::less<NonRelocType>,
                                                         amc::allocator<NonRelocType>, FlatSet<NonRelocType>>>::value);
+#endif
+}
+
+/// Whether 'SetType' can be move constructed, with or without an allocator, and move assigned without throwing.
+template <class SetType>
+struct IsNothrowMovable
+    : std::integral_constant<
+          bool, std::is_nothrow_move_constructible<SetType>::value &&
+                    std::is_nothrow_constructible<SetType, SetType&&, const typename SetType::allocator_type&>::value &&
+                    std::is_nothrow_move_assignable<SetType>::value> {};
+
+/// Whether 'SetType' can be move constructed, with or without an allocator, and move assigned, all of them possibly
+/// throwing. Before C++20, a move constructor defaulted with another exception specification than its implicit one
+/// would be deleted.
+template <class SetType>
+struct IsOnlyMovable
+    : std::integral_constant<
+          bool,
+          std::is_move_constructible<SetType>::value && !std::is_nothrow_move_constructible<SetType>::value &&
+              std::is_constructible<SetType, SetType&&, const typename SetType::allocator_type&>::value &&
+              !std::is_nothrow_constructible<SetType, SetType&&, const typename SetType::allocator_type&>::value &&
+              std::is_move_assignable<SetType>::value && !std::is_nothrow_move_assignable<SetType>::value> {};
+
+// The moves of the sets cannot throw, unless the ones of their comparator, of the elements of an inline storage, or of
+// the set of a SmallSet can.
+TEST(SetTest, NothrowMove) {
+  static_assert(IsNothrowMovable<FlatSet<int>>::value, "");
+  static_assert(IsNothrowMovable<FlatSet<ComplexTriviallyRelocatableType>>::value, "");
+  static_assert(IsNothrowMovable<FlatSet<int32_t, ModuloCompare>>::value, "");
+  static_assert(IsNothrowMovable<FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 4>>>::value,
+                "");
+  static_assert(
+      IsNothrowMovable<FlatSet<uint32_t, std::less<uint32_t>, FixedCapacityVector<uint32_t, 20>::allocator_type,
+                               FixedCapacityVector<uint32_t, 20>>>::value,
+      "");
+  using Compare = PotentiallyThrowingMoveCompare;
+  static_assert(IsOnlyMovable<FlatSet<int32_t, Compare>>::value, "");
+  // the elements of an inline storage are moved one by one
+  using T = ThrowingMoveType;
+  static_assert(IsOnlyMovable<FlatSet<T, std::less<T>, amc::allocator<T>, SmallVector<T, 4>>>::value, "");
+#ifdef AMC_SMALLSET
+  static_assert(IsNothrowMovable<SmallSet<int, 4, std::less<int>, amc::allocator<int>, FlatSet<int>>>::value);
+  static_assert(IsNothrowMovable<
+                SmallSet<int32_t, 2, ModuloCompare, amc::allocator<int32_t>, FlatSet<int32_t, ModuloCompare>>>::value);
+  // the move constructor of std::set may allocate (MSVC), or not be noexcept with an allocator (libc++)
+  static_assert(IsNothrowMovable<SmallSet<int, 4>>::value ==
+                IsNothrowMovable<std::set<int, std::less<int>, amc::allocator<int>>>::value);
+  static_assert(
+      IsOnlyMovable<SmallSet<int32_t, 2, Compare, amc::allocator<int32_t>, FlatSet<int32_t, Compare>>>::value);
+  static_assert(IsOnlyMovable<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>::value);
 #endif
 }
 
@@ -1120,6 +1253,52 @@ TYPED_TEST(SetThrowingCompareTest, EmplaceComparisonThrowKeepsElements) {
     }
   }
 }
+
+#ifdef AMC_CXX17
+// If a comparison throws during the insertion of a node, the set keeps exactly its previous elements, and the node
+// keeps its value.
+TYPED_TEST(SetThrowingCompareTest, InsertNodeComparisonThrowKeepsNode) {
+  using SetType = TypeParam;
+  using Values = std::vector<int32_t>;
+  int& nbComparisonsBeforeThrow = ThrowingCompare::NbComparisonsBeforeThrow();
+  // small, small and full, and large states of SmallSets
+  for (const Values& initValues : {Values{4}, Values{4, 1}, Values{4, 1, 6}}) {
+    const SetType init(initValues.begin(), initValues.end());
+    for (int32_t v : {1, 4, 2, 7}) {  // present or not, before or after the first element
+      for (bool withHint : {false, true}) {
+        for (int nbComparisons = 0;; ++nbComparisons) {
+          SetType s(init);
+          // the node is extracted from the set of a large SmallSet (std::set or FlatSet node handle)
+          SetType src{v, 100, 101};
+          typename SetType::node_type nh = src.extract(src.find(v));
+          nbComparisonsBeforeThrow = nbComparisons;
+          bool thrown = false;
+          try {
+            if (withHint) {
+              s.insert(s.begin(), std::move(nh));
+            } else {
+              s.insert(std::move(nh));
+            }
+          } catch (const CompareException&) {
+            thrown = true;
+          }
+          nbComparisonsBeforeThrow = -1;
+          if (!thrown) {
+            SetType expected(init);
+            expected.insert(v);
+            EXPECT_EQ(s, expected) << "insert node " << v << (withHint ? " with hint" : "");
+            break;
+          }
+          EXPECT_EQ(s, init) << "insert node " << v << (withHint ? " with hint" : "") << ", throw at comparison "
+                             << nbComparisons;
+          EXPECT_TRUE(!nh.empty() && static_cast<int32_t>(nh.value()) == v)
+              << "insert node " << v << (withHint ? " with hint" : "") << ", throw at comparison " << nbComparisons;
+        }
+      }
+    }
+  }
+}
+#endif
 
 template <typename T>
 class SetLessComparableTest : public ::testing::Test {};
