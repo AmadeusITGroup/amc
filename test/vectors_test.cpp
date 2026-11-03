@@ -1232,6 +1232,51 @@ TYPED_TEST(VectorTest, InsertCountSelfReferenceAfterPosition) {
   }
 }
 
+// The 'T&&' overload of 'insert' may also be given an element of the vector, like 'push_back(T&&)'. When the vector is
+// full, the new element is moved from it before the elements are relocated to the new storage, like the standard
+// library implementations do. Otherwise, it is moved from after the shift, as allowed for an rvalue reference
+// ([res.on.arguments]) and like the standard library implementations as well: this case is not checked.
+TYPED_TEST(VectorTest, InsertRvalueSelfReferenceGrowing) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
+  // Full vector of 4 elements, or of its inline capacity if it is larger (a FixedCapacityVector cannot grow)
+  const auto createFullVector = [] {
+    VectorType v;
+    for (int i = 0; i < 4; ++i) {
+      v.push_back(Type(i + 1));
+    }
+    v.shrink_to_fit();
+    while (v.size() < v.capacity() && v.capacity() < v.max_size()) {
+      v.push_back(Type(static_cast<int>(v.size()) + 1));
+    }
+    return v;
+  };
+  const VectorType full = createFullVector();
+  if (full.size() != full.capacity()) {
+    return;  // a FixedCapacityVector cannot grow
+  }
+  const int size = static_cast<int>(full.size());
+  for (int pos = 0; pos <= size; ++pos) {
+    for (int src = 0; src < size; ++src) {
+      VectorType vec = createFullVector();
+      std::vector<Type> expected(vec.begin(), vec.end());
+      expected.insert(expected.begin() + pos, expected[static_cast<std::size_t>(src)]);
+
+      typename VectorType::iterator it = vec.insert(vec.begin() + pos, std::move(vec[static_cast<SzType>(src)]));
+
+      EXPECT_EQ(it, vec.begin() + pos);
+      ASSERT_EQ(static_cast<std::size_t>(vec.size()), expected.size());
+      const int movedFrom = src < pos ? src : src + 1;  // its value is unspecified
+      for (int i = 0; i <= size; ++i) {
+        if (i != movedFrom) {
+          EXPECT_EQ(vec[static_cast<SzType>(i)], expected[static_cast<std::size_t>(i)]);
+        }
+      }
+    }
+  }
+}
+
 // Same aliasing concern for 'emplace', whose arguments may reference an element of the vector (see LWG 2164).
 TYPED_TEST(VectorTest, EmplaceSelfReference) {
   using VectorType = TypeParam;
@@ -1478,8 +1523,8 @@ void CheckInsertUndoShiftThrowsDoesNotLeak() {
   const int nbLive = Type::NbLive();
   for (int method = 0; method < 3; ++method) {
     for (bool grow : {false, true}) {
-      if (grow && method == 2) {
-        continue;  // emplace constructs the new element in the new storage, then relocates the elements around it
+      if (grow && method != 0) {
+        continue;  // insert(T&&) and emplace do not shift elements when growing, they relocate them around the new one
       }
       for (int pos = 0; pos < 4; ++pos) {  // inserting at the end shifts nothing
         const int nbShifted = 4 - pos;
