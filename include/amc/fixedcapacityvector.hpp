@@ -11,31 +11,23 @@
 #include "config.hpp"
 #include "vectorcommon.hpp"
 
-#ifdef AMC_CXX14
-#include <functional>
-#endif
-
 namespace amc {
 namespace vec {
+
+/// Tells whether 'N' is at most 'Max', both of the same type: in the template arguments below, the built-in operator
+/// between N and the maximum of a smaller type would make GCC warn that the "comparison is always false due to limited
+/// range of data type" (-Wtype-limits). It also avoids the heavy <functional> header of std::less_equal.
+template <std::uintmax_t N, std::uintmax_t Max>
+struct FitsIn : std::integral_constant<bool, (N <= Max)> {};
 
 /// Wrapper to get the smallest needed type for holding a maximum number of N elements
 template <std::uintmax_t N>
 struct SmallestSizeType {
   // clang-format off
-#ifdef AMC_CXX14
-// this is to avoid potential harmless warning occurring for instance in GCC:
-// warning: comparison is always false due to limited range of data type [-Wtype-limits]
-// Activated only in C++14 as we need it to be constexpr
-  using type = typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<std::uint8_t>::max()), std::uint8_t,
-               typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<std::uint16_t>::max()), std::uint16_t,
-               typename std::conditional<std::less_equal<std::size_t>()(N, std::numeric_limits<std::uint32_t>::max()), std::uint32_t,
+  using type = typename std::conditional<FitsIn<N, std::numeric_limits<std::uint8_t>::max()>::value, std::uint8_t,
+               typename std::conditional<FitsIn<N, std::numeric_limits<std::uint16_t>::max()>::value, std::uint16_t,
+               typename std::conditional<FitsIn<N, std::numeric_limits<std::uint32_t>::max()>::value, std::uint32_t,
           std::uint64_t>::type>::type>::type;
-#else
-  using type = typename std::conditional<N <= std::numeric_limits<std::uint8_t>::max(), std::uint8_t,
-               typename std::conditional<N <= std::numeric_limits<std::uint16_t>::max(), std::uint16_t,
-               typename std::conditional<N <= std::numeric_limits<std::uint32_t>::max(), std::uint32_t,
-          std::uint64_t>::type>::type>::type;
-#endif
   // clang-format on
 };
 

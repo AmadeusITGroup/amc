@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <stdexcept>
 #include <type_traits>
 
@@ -120,7 +119,7 @@ inline void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bo
   SizeType newCapa;
   const std::uintmax_t maxCapa = MaxCapacity<SizeType>(static_cast<const Alloc&>(*this));
   if (isSmall()) {
-    SizeType oldCapa = _size == std::numeric_limits<SizeType>::max() ? _capa : _size;
+    SizeType oldCapa = capacity();
     newCapa = SafeNextCapacity(oldCapa, minSize, maxCapa, MaxDoublingCapacity<T>(), exact);
     T* dynStorage = this->allocate(static_cast<std::size_t>(newCapa));
     try {
@@ -265,7 +264,7 @@ void SmallVectorBase<T, Alloc, SizeType>::resetToSmall(SizeType inplaceCapa) {
   }
   this->deallocate(dynStorage, static_cast<std::size_t>(_capa));
   _capa = _size;
-  _size = _size == inplaceCapa ? std::numeric_limits<SizeType>::max() : inplaceCapa;
+  _size = SmallSizeMember(inplaceCapa);
 }
 
 template <class T, class Alloc, class SizeType>

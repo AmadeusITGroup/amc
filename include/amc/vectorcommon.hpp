@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
@@ -47,10 +46,12 @@ struct is_move_construct_nothrow : std::integral_constant<bool, amc::is_triviall
 
 /// Tells whether 'p' points to one of the 'n' elements starting at 'first'.
 /// 'p' may point to an object unrelated to this range: the result of the built-in relational operators is then
-/// unspecified, whereas std::less provides a strict total order over pointers.
+/// unspecified, so the addresses are compared as integers instead, like std::less does (which would require the heavy
+/// <functional> header). The offset of 'p' is compared as an unsigned value, which checks both bounds at once.
 template <class T, class SizeType>
 inline bool IsInRange(const T* p, const T* first, SizeType n) noexcept {
-  return !std::less<const T*>()(p, first) && std::less<const T*>()(p, first + n);
+  return reinterpret_cast<std::uintptr_t>(p) - reinterpret_cast<std::uintptr_t>(first) <
+         static_cast<std::uintptr_t>(n) * sizeof(T);
 }
 
 /// Returns 'v' as is if it is a T, otherwise explicitly converted to a T: elements of a range of another type are
@@ -642,6 +643,18 @@ class StaticVectorBase {
   void decrSize() noexcept { --_size; }
   void setSize(SizeType s) noexcept { _size = s; }
 
+  /// Constructs a new element at the end from 'args' and increments the size, the vector not being full.
+  /// The size is read before the construction and written after it: the compiler would otherwise reload it after the
+  /// construction, as the new element may alias it (an element type of chars, or of integers of the type of SizeType).
+  template <class... Args>
+  T* constructBack(Args&&... args) {
+    const SizeType size = _size;
+    T* endIt = begin() + size;
+    amc::construct_at(endIt, std::forward<Args>(args)...);
+    _size = static_cast<SizeType>(size + 1);
+    return endIt;
+  }
+
  private:
   // Capacity is added as member of the object to decrease code generation.
   // It's usually not a concern as SizeType is mostly small for FixedCapacityVector (upper bound is known at compile
@@ -758,6 +771,17 @@ class StdVectorBase : private Alloc {
   SizeType& mcapacity() noexcept { return _capa; }
   void setSize(SizeType s) noexcept { _size = s; }
 
+  /// Constructs a new element at the end from 'args' and increments the size, the vector not being full (see
+  /// StaticVectorBase::constructBack).
+  template <class... Args>
+  T* constructBack(Args&&... args) {
+    const SizeType size = _size;
+    T* endIt = _storage + size;
+    amc::construct_at(endIt, std::forward<Args>(args)...);
+    _size = static_cast<SizeType>(size + 1);
+    return endIt;
+  }
+
   iterator dynStorage() const noexcept { return _storage; }
 
  private:
@@ -797,9 +821,7 @@ class SmallVectorBase : private Alloc {
   const_iterator cbegin() const noexcept { return begin(); }
 
   SizeType size() const noexcept { return isSmall() ? _capa : _size; }
-  SizeType capacity() const noexcept {
-    return isSmall() && _size != std::numeric_limits<SizeType>::max() ? _size : _capa;
-  }
+  SizeType capacity() const noexcept { return isSmall() ? static_cast<SizeType>(_size - 1) : _capa; }
 
   ~SmallVectorBase() {
     if (!isSmall()) {
@@ -810,21 +832,25 @@ class SmallVectorBase : private Alloc {
  protected:
   /// Optim: To know if the SmallVector is small, we need one additional bool.
   /// The idea here, instead of storing an additional bool is to use a normally 'invalid' configuration of the two
-  /// size and capacity values for small states: we inverse the capacity and the size in this case.
-  /// This way, we are able to detect if the SmallVector is small or not comparing the two. There is one ambiguity
-  /// though: when size == capacity. This could happen in both states of the SmallVector, so we need something else
-  /// for this special configuration: we will set size to MAX in this case.
-  /// Maximum size and capacity would make no sense in a SmallVector for a small state, because it could not grow
-  /// (it could be transformed into a FixedCapacityVector, or, if larger size is needed, SizeType could be upgraded
-  /// to a larger type). This invalid configuration is caught in a static_assert in SmallVector class.
+  /// size and capacity values for small states: the capacity member holds the size, and the size member the inline
+  /// capacity plus one, which is larger than any size of a small vector (see SmallSizeMember).
+  /// This way, we are able to detect if the SmallVector is small or not comparing the two, as a large vector never has
+  /// a size larger than its capacity. Its size member being constant, a small vector only updates its capacity member
+  /// when its size changes, even when it becomes full.
+  /// The inline capacity plus one fits in SizeType: a SmallVector of the maximum inline capacity could not grow (it
+  /// could be transformed into a FixedCapacityVector, or, if larger size is needed, SizeType could be upgraded to a
+  /// larger type). This invalid configuration is caught in a static_assert in SmallVector class.
   /// Invariant: a large SmallVector has a capacity larger than its inline capacity. It grows from the inline capacity,
   /// shrink_to_fit comes back to the small state if the elements fit inline, and dynamic storages taken from other
   /// vectors (move construction from a vector, swap2) are larger than the inline capacity too.
-  explicit SmallVectorBase(SizeType inplaceCapa) noexcept : _capa(0), _size(inplaceCapa) {}
+  explicit SmallVectorBase(SizeType inplaceCapa) noexcept : _capa(0), _size(SmallSizeMember(inplaceCapa)) {}
 
-  SmallVectorBase(SizeType inplaceCapa, const Alloc& alloc) noexcept : Alloc(alloc), _capa(0), _size(inplaceCapa) {}
+  SmallVectorBase(SizeType inplaceCapa, const Alloc& alloc) noexcept
+      : Alloc(alloc), _capa(0), _size(SmallSizeMember(inplaceCapa)) {}
 
-  /// As explained above, if _capa == _size == SizeType::max() then it's necessarily in a large state.
+  /// Size member of a small vector of inline capacity 'inplaceCapa' (see above).
+  static SizeType SmallSizeMember(SizeType inplaceCapa) noexcept { return static_cast<SizeType>(inplaceCapa + 1); }
+
   bool isSmall() const noexcept { return _capa < _size; }
 
   /// swap_impl is called by public method 'swap' for same SmallVector (same number of inplace elements).
@@ -854,7 +880,7 @@ class SmallVectorBase : private Alloc {
       _storage.setDyn(o._storage.dyn());
     }
     _capa = amc::exchange(o._capa, SizeType{0});
-    _size = amc::exchange(o._size, inplaceCapa);
+    _size = amc::exchange(o._size, SmallSizeMember(inplaceCapa));
   }
 
   void move_construct(StdVectorBase<T, Alloc, SizeType>& o,
@@ -887,7 +913,6 @@ class SmallVectorBase : private Alloc {
       // (move construction from a vector and swap2 only take dynamic storages larger than the inline capacity too)
       assert(isSmall() || inplaceCapa < _capa);
       move_n(o._storage.ptr(), o._capa, begin(), size());
-      // Use setSize for both as it correctly handles the encoding of the full small state
       setSize(o._capa);
       o.setSize(0);
     } else {
@@ -895,7 +920,7 @@ class SmallVectorBase : private Alloc {
       destroyFreeStorage();
       _storage.setDyn(o._storage.dyn());
       _capa = amc::exchange(o._capa, SizeType{0});
-      _size = amc::exchange(o._size, inplaceCapa);
+      _size = amc::exchange(o._size, SmallSizeMember(inplaceCapa));
     }
   }
 
@@ -951,26 +976,19 @@ class SmallVectorBase : private Alloc {
     SwapDynStorage(_storage, o._storage);
   }
 
-  static constexpr SizeType kMaxSize = std::numeric_limits<SizeType>::max();
-
-  /// An equality, unlike StdVectorBase::isFull: GCC simplifies it with the state encoding above, but not an inequality,
-  /// which adds instructions to each 'emplace_back' of a small vector (5 % slower).
-  bool isFull() const noexcept { return size() == capacity(); }
+  /// Same as 'size() == capacity()', written with the members for both compilers to merge its comparisons with the ones
+  /// of the modifiers on the state (Clang does not simplify 'size() == capacity()').
+  bool isFull() const noexcept { return isSmall() ? static_cast<SizeType>(_capa + 1) == _size : _size == _capa; }
 
   void incrSize() noexcept {
     if (isSmall()) {
-      if (++_capa == _size) {
-        _size = kMaxSize;
-      }
+      (void)++_capa;
     } else {
       (void)++_size;
     }
   }
   void decrSize() noexcept {
     if (isSmall()) {
-      if (_size == kMaxSize) {
-        _size = _capa;
-      }
       (void)--_capa;
     } else {
       (void)--_size;
@@ -978,17 +996,29 @@ class SmallVectorBase : private Alloc {
   }
   void setSize(SizeType s) noexcept {
     if (isSmall()) {
-      if (_size == kMaxSize) {
-        if (s != _capa) {
-          _size = _capa;
-        }
-      } else if (s == _size) {
-        _size = kMaxSize;
-      }
       _capa = s;
     } else {
       _size = s;
     }
+  }
+
+  /// Constructs a new element at the end from 'args' and increments the size, the vector not being full (see
+  /// StaticVectorBase::constructBack).
+  template <class... Args>
+  T* constructBack(Args&&... args) {
+    // The members are read as two scalars: copied together in a struct, Clang loads them as a single 64 bits value,
+    // which cannot be forwarded from the two 32 bits stores of the previous call in a loop (2 to 3 times slower).
+    const SizeType capa = _capa;
+    const SizeType size = _size;
+    const bool small = capa < size;
+    T* endIt = small ? _storage.ptr() + capa : _storage.dyn() + size;
+    amc::construct_at(endIt, std::forward<Args>(args)...);
+    if (small) {
+      _capa = static_cast<SizeType>(capa + 1);
+    } else {
+      _size = static_cast<SizeType>(size + 1);
+    }
+    return endIt;
   }
 
   /// Access to 'real' size and capacity member references. No need to check for small state here, these methods are
@@ -1059,10 +1089,7 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
   template <class... Args>
   reference emplace_back(Args&&... args) {
     GrowingPolicy::Check(this->size() + 1U, this->capacity());
-    iterator endIt = this->begin() + this->size();
-    amc::construct_at(endIt, std::forward<Args&&>(args)...);
-    this->incrSize();
-    return *endIt;
+    return *this->constructBack(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -1070,53 +1097,31 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
     if (this->size() == this->capacity()) {
       return nullptr;
     }
-    iterator endIt = this->begin() + this->size();
-    amc::construct_at(endIt, std::forward<Args&&>(args)...);
-    this->incrSize();
-    return endIt;
+    return this->constructBack(std::forward<Args>(args)...);
   }
 
   template <class... Args>
   reference unchecked_emplace_back(Args&&... args) {
-    iterator endIt = this->begin() + this->size();
-    amc::construct_at(endIt, std::forward<Args&&>(args)...);
-    this->incrSize();
-    return *endIt;
+    return *this->constructBack(std::forward<Args>(args)...);
   }
 
   pointer try_push_back(const T& value) {
     if (this->size() == this->capacity()) {
       return nullptr;
     }
-    iterator endIt = this->begin() + this->size();
-    amc::construct_at(endIt, value);
-    this->incrSize();
-    return endIt;
+    return this->constructBack(value);
   }
 
   pointer try_push_back(T&& value) {
     if (this->size() == this->capacity()) {
       return nullptr;
     }
-    iterator endIt = this->begin() + this->size();
-    amc::construct_at(endIt, std::move(value));
-    this->incrSize();
-    return endIt;
+    return this->constructBack(std::move(value));
   }
 
-  pointer unchecked_push_back(const T& value) {
-    iterator endIt = this->begin() + this->size();
-    amc::construct_at(endIt, value);
-    this->incrSize();
-    return endIt;
-  }
+  pointer unchecked_push_back(const T& value) { return this->constructBack(value); }
 
-  pointer unchecked_push_back(T&& value) {
-    iterator endIt = this->begin() + this->size();
-    amc::construct_at(endIt, std::move(value));
-    this->incrSize();
-    return endIt;
-  }
+  pointer unchecked_push_back(T&& value) { return this->constructBack(std::move(value)); }
 
  protected:
   template <class... Args>
@@ -1218,15 +1223,12 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
 
   template <class... Args>
   reference emplace_back(Args&&... args) {
-    iterator endIt;
     if (this->isFull()) {
-      endIt = emplaceBackGrowing(typename CanReallocate<Alloc>::type(), std::forward<Args>(args)...);
-    } else {
-      endIt = this->begin() + this->size();
-      amc::construct_at(endIt, std::forward<Args&&>(args)...);
+      iterator endIt = emplaceBackGrowing(typename CanReallocate<Alloc>::type(), std::forward<Args>(args)...);
+      this->incrSize();
+      return *endIt;
     }
-    this->incrSize();
-    return *endIt;
+    return *this->constructBack(std::forward<Args>(args)...);
   }
 
  protected:
@@ -1653,8 +1655,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   void push_back(const_reference v) {
     const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
-    amc::construct_at(end(), newV);
-    this->incrSize();
+    this->constructBack(newV);
   }
 
   /// Appends the given element value to the end of the container, moving from 'v'.
@@ -1668,8 +1669,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// outside the vector.
   void push_back(T&& v) {
     const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
-    amc::construct_at(end(), std::move(const_cast<reference>(newV)));
-    this->incrSize();
+    this->constructBack(std::move(const_cast<reference>(newV)));
   }
 
   void resize(size_type count) {
@@ -1747,8 +1747,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       // the range may not be common (its end may be a sentinel of a different type than its iterator)
       auto last = std::ranges::end(rg);
       for (; first != last && this->size() < this->capacity(); ++first) {
-        amc::construct_at(this->end(), *first);
-        this->incrSize();
+        this->constructBack(*first);
       }
       return first;
     }

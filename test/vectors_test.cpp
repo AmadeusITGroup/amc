@@ -2011,6 +2011,28 @@ TEST(VectorTest, GrowBeyondMaxSizeThrows) {
   CheckGrowBeyondMaxSizeThrows<inplace_vector<int, 10>, std::bad_alloc>();
 }
 
+// The default size type of a FixedCapacityVector is the smallest one holding its capacity
+static_assert(std::is_same<vec::SmallestSizeType<0>::type, uint8_t>::value, "");
+static_assert(std::is_same<vec::SmallestSizeType<255>::type, uint8_t>::value, "");
+static_assert(std::is_same<vec::SmallestSizeType<256>::type, uint16_t>::value, "");
+static_assert(std::is_same<vec::SmallestSizeType<65535>::type, uint16_t>::value, "");
+static_assert(std::is_same<vec::SmallestSizeType<65536>::type, uint32_t>::value, "");
+static_assert(std::is_same<vec::SmallestSizeType<4294967295U>::type, uint32_t>::value, "");
+static_assert(std::is_same<vec::SmallestSizeType<4294967296U>::type, uint64_t>::value, "");
+
+// IsInRange tells whether a pointer designates one of the elements of a range, its end excluded
+TEST(VectorTest, IsInRange) {
+  const int tab[5] = {0, 1, 2, 3, 4};
+  const int other = 5;
+  EXPECT_FALSE(vec::IsInRange(tab, tab + 1, 3U));
+  EXPECT_TRUE(vec::IsInRange(tab + 1, tab + 1, 3U));
+  EXPECT_TRUE(vec::IsInRange(tab + 3, tab + 1, 3U));
+  EXPECT_FALSE(vec::IsInRange(tab + 4, tab + 1, 3U));
+  EXPECT_FALSE(vec::IsInRange(tab + 1, tab + 1, 0U));
+  EXPECT_FALSE(vec::IsInRange(&other, tab, 5U));
+  EXPECT_TRUE(vec::IsInRange(tab + 4, tab, static_cast<signed char>(5)));
+}
+
 /// Capacities taken by a vector while 'nbElems' elements are pushed back, starting from its initial one.
 template <class VectorType>
 std::vector<std::size_t> GrowthCapacities(int nbElems) {
@@ -2471,6 +2493,160 @@ TEST(VectorTest, SmallVectorMoveAssignFromSmall) {
   CheckSmallVectorMoveAssignFromSmall<SmallVector<int, 4>>();
   CheckSmallVectorMoveAssignFromSmall<SmallVector<ComplexTriviallyRelocatableType, 4>>();
   CheckSmallVectorMoveAssignFromSmall<SmallVector<ComplexNonTriviallyRelocatableType, 4>>();
+}
+
+// A small SmallVector encodes its state with its size and capacity members (see SmallVectorBase), its size member
+// holding the inline capacity plus one, the maximum of the size type for the largest inline capacity. Its size,
+// capacity and storage are checked through the transitions between its inline and dynamic storages, notably the ones
+// to and from a full inline storage, against a std::vector.
+template <class SV>
+void CheckSmallVectorStates() {
+  using T = typename SV::value_type;
+  using SzType = typename SV::size_type;
+  const SzType n = SV::kInlineCapacity;
+  const auto count = [](int c) { return static_cast<SzType>(c); };
+  const auto value = [](int i) { return T(static_cast<uint32_t>(i % 100)); };
+  std::vector<T> expected;
+  SV v;
+  const auto check = [&v, &expected](bool isInline) {
+    ASSERT_EQ(static_cast<std::size_t>(v.size()), expected.size());
+    EXPECT_TRUE(std::equal(v.begin(), v.end(), expected.begin()));
+    EXPECT_EQ(UsesInlineStorage(v), isInline);
+    ExpectInlineCapacityInvariant(v);
+  };
+  check(true);
+
+  // Up to a full inline storage
+  for (int i = 0; i < static_cast<int>(n); ++i) {
+    if (i % 2 == 0) {
+      v.push_back(value(i));
+    } else {
+      v.emplace_back(value(i));
+    }
+    expected.push_back(value(i));
+    check(true);
+  }
+  v.pop_back();
+  expected.pop_back();
+  check(true);
+  v.emplace_back(value(1));
+  expected.push_back(value(1));
+  check(true);
+
+  // One more element moves them to the dynamic storage, which is kept until shrink_to_fit, whatever the modifier
+  v.emplace_back(value(2));
+  expected.push_back(value(2));
+  check(false);
+  v.pop_back();
+  expected.pop_back();
+  check(false);
+  v.shrink_to_fit();
+  check(true);
+  v.push_back(value(12));
+  expected.push_back(value(12));
+  check(false);
+  v.erase(v.begin());
+  expected.erase(expected.begin());
+  check(false);
+  v.shrink_to_fit();
+  check(true);
+  v.emplace(v.begin(), value(13));
+  expected.insert(expected.begin(), value(13));
+  check(false);
+  v.erase(v.end() - 1);
+  expected.erase(expected.end() - 1);
+  v.shrink_to_fit();
+  check(true);
+  v.insert(v.begin() + 1, value(14));
+  expected.insert(expected.begin() + 1, value(14));
+  check(false);
+  v.pop_back();
+  expected.pop_back();
+  check(false);
+  v.shrink_to_fit();
+  check(true);
+
+  // Size changes from and to a full inline storage
+  v.erase(v.begin());
+  expected.erase(expected.begin());
+  check(true);
+  v.insert(v.begin(), value(3));
+  expected.insert(expected.begin(), value(3));
+  check(true);
+  v.clear();
+  expected.clear();
+  check(true);
+  v.resize(n, value(4));
+  expected.resize(n, value(4));
+  check(true);
+  v.resize(count(n - 1));
+  expected.resize(n - 1U);
+  check(true);
+  v.insert(v.end(), 1, value(5));
+  expected.insert(expected.end(), 1, value(5));
+  check(true);
+  v.insert(v.begin(), 1, value(6));
+  expected.insert(expected.begin(), 1, value(6));
+  check(false);
+  v.erase(v.begin(), v.begin() + 1);
+  expected.erase(expected.begin(), expected.begin() + 1);
+  check(false);
+  v.shrink_to_fit();
+  check(true);
+
+  // Assignments
+  v.assign(count(n - 1), value(7));
+  expected.assign(n - 1U, value(7));
+  check(true);
+  v.assign(n, value(8));
+  expected.assign(n, value(8));
+  check(true);
+  v.assign(count(n + 1), value(9));
+  expected.assign(n + 1U, value(9));
+  check(false);
+
+  // A dynamic storage whose elements fit inline without filling it
+  v.resize(count(n - 1));
+  expected.resize(n - 1U);
+  check(false);
+  v.shrink_to_fit();
+  check(true);
+
+  // Copy, move and swap of a full inline storage
+  v.resize(n, value(10));
+  expected.resize(n, value(10));
+  check(true);
+  SV copy(v);
+  EXPECT_EQ(copy, v);
+  EXPECT_TRUE(UsesInlineStorage(copy));
+  ExpectInlineCapacityInvariant(copy);
+  SV moved(std::move(copy));
+  EXPECT_EQ(moved, v);
+  ExpectInlineCapacityInvariant(moved);
+  EXPECT_TRUE(copy.empty());
+  EXPECT_EQ(copy.capacity(), n);
+  SV large(count(n + 1), value(11));
+  large.swap(moved);
+  EXPECT_EQ(large, v);
+  EXPECT_TRUE(UsesInlineStorage(large));
+  ExpectInlineCapacityInvariant(large);
+  EXPECT_EQ(moved, SV(count(n + 1), value(11)));
+  EXPECT_FALSE(UsesInlineStorage(moved));
+  moved = std::move(large);
+  EXPECT_EQ(moved, v);
+  EXPECT_FALSE(UsesInlineStorage(moved));
+  ExpectInlineCapacityInvariant(moved);
+  EXPECT_TRUE(large.empty());
+  ExpectInlineCapacityInvariant(large);
+}
+
+TEST(VectorTest, SmallVectorStates) {
+  CheckSmallVectorStates<SmallVector<uint32_t, 1>>();
+  CheckSmallVectorStates<SmallVector<int, 4>>();
+  CheckSmallVectorStates<SmallVector<ComplexNonTriviallyRelocatableType, 3>>();
+  // Largest inline capacities of their size types
+  CheckSmallVectorStates<SmallVector<char, 254, amc::allocator<char>, uint8_t>>();
+  CheckSmallVectorStates<SmallVector<int16_t, 126, std::allocator<int16_t>, int8_t>>();
 }
 
 template <typename T>
