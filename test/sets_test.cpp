@@ -691,6 +691,8 @@ TEST(SetTest, SmallSetGrowAllocationFailureKeepsElements) {
   };
   ExpectGrowFailureKeepsElements<SmallSet<int, 4>>(insertNodeFailing);
   ExpectGrowFailureKeepsElements<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>(insertNodeFailing);
+  using C = ComplexTriviallyRelocatableType;  // loses its value when moved, its FlatSet grows with 'realloc'
+  ExpectGrowFailureKeepsElements<SmallSet<C, 4, std::less<C>, amc::allocator<C>, FlatSet<C>>>(insertNodeFailing);
 }
 
 TEST(SetTest, SmallSetGrowThrowingMoveKeepsElements) {
@@ -727,6 +729,31 @@ TEST(SetTest, FlatSetInsertAllocationFailureKeepsElements) {
                std::bad_alloc);
   EXPECT_EQ(s, SetType({1, 2, 3}));
 }
+
+#ifdef AMC_CXX17
+// If the vector of a FlatSet cannot grow, an inserted node keeps its value (moving 'T' loses it, and its vector grows
+// with 'realloc').
+TEST(SetTest, FlatSetInsertNodeAllocationFailureKeepsNode) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  using T = ComplexTriviallyRelocatableType;
+  using SetType = FlatSet<T>;
+  const T init[] = {1, 2, 4};
+  SetType s(std::begin(init), std::end(init));  // constructed from the range: full vector
+  SetType src{3};
+  SetType::node_type nh = src.extract(src.begin());
+  EXPECT_THROW(CallWithFailingMalloc([&] { s.insert(std::move(nh)); }), std::bad_alloc);
+  ASSERT_FALSE(nh.empty());
+  EXPECT_EQ(static_cast<int32_t>(nh.value()), 3);
+  EXPECT_THROW(CallWithFailingMalloc([&] { s.insert(s.end(), std::move(nh)); }), std::bad_alloc);
+  ASSERT_FALSE(nh.empty());
+  EXPECT_EQ(static_cast<int32_t>(nh.value()), 3);
+  EXPECT_EQ(s, SetType({1, 2, 4}));
+  EXPECT_TRUE(s.insert(std::move(nh)).inserted);
+  EXPECT_EQ(s, SetType({1, 2, 3, 4}));
+}
+#endif
 
 // If the vector of the destination set cannot grow, merge leaves both sets unchanged: it grows it before moving any
 // element.

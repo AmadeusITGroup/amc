@@ -1639,6 +1639,17 @@ void CheckGrowAllocationFailureKeepsElements() {
     EXPECT_THROW(CallWithFailingMalloc([&] { v.emplace_back(42); }), std::bad_alloc);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.emplace(v.begin(), 42); }), std::bad_alloc);
     EXPECT_THROW(CallWithFailingMalloc([&] { v.insert(v.begin(), 3U, value); }), std::bad_alloc);
+    // an rvalue is only moved from once the vector has grown: it keeps its value (if moving 'Type' loses it)
+    const auto expectRvalueKept = [](const char* method, auto insertRvalue) {
+      Type rvalue(42);
+      EXPECT_THROW(CallWithFailingMalloc([&] { insertRvalue(rvalue); }), std::bad_alloc) << method;
+      EXPECT_EQ(static_cast<int32_t>(rvalue), 42) << method;
+    };
+    expectRvalueKept("push_back", [&](Type& r) { v.push_back(std::move(r)); });
+    expectRvalueKept("emplace_back", [&](Type& r) { v.emplace_back(std::move(r)); });
+    expectRvalueKept("emplace", [&](Type& r) { v.emplace(v.begin(), std::move(r)); });
+    expectRvalueKept("insert at begin", [&](Type& r) { v.insert(v.begin(), std::move(r)); });
+    expectRvalueKept("insert at end", [&](Type& r) { v.insert(v.end(), std::move(r)); });
     EXPECT_THROW(CallWithFailingMalloc([&] { v.reserve(capacity + 10U); }), std::bad_alloc);
     // assignments beyond the capacity allocate their new storage before destroying the elements
     const VectorType larger(capacity + 1U, value);
@@ -1657,9 +1668,13 @@ TEST(VectorTest, GrowAllocationFailureKeepsElements) {
   // Growth with 'realloc' for trivially relocatable types, with 'malloc' and relocation of the elements otherwise
   CheckGrowAllocationFailureKeepsElements<vector<int>>();
   CheckGrowAllocationFailureKeepsElements<vector<SimpleNonTriviallyCopyableType>>();
+  // Types losing their value when moved from, for both ways of growing
+  CheckGrowAllocationFailureKeepsElements<vector<ComplexTriviallyRelocatableType>>();
+  CheckGrowAllocationFailureKeepsElements<vector<ComplexNonTriviallyRelocatableType>>();
   // Including the transition from the inline storage to the dynamic one
   CheckGrowAllocationFailureKeepsElements<SmallVector<int, 2>>();
   CheckGrowAllocationFailureKeepsElements<SmallVector<SimpleNonTriviallyCopyableType, 2>>();
+  CheckGrowAllocationFailureKeepsElements<SmallVector<ComplexTriviallyRelocatableType, 2>>();
   // operator new
   CheckGrowAllocationFailureKeepsElements<vector<int, std::allocator<int>>>();
 }
