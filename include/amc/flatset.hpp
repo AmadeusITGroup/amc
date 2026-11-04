@@ -205,9 +205,18 @@ class FlatSet : private Compare {
     value_type& value() { return _optV.value(); }
     const value_type& value() const { return _optV.value(); }
 
+    /// Like the standard node handles, the allocators are exchanged too: an empty node may hold the allocator of
+    /// another container, and two nodes holding values should have equal allocators, unless they propagate on swap.
     void swap(node_type& o) noexcept(std::is_nothrow_move_constructible<T>::value &&
                                      amc::is_nothrow_swappable<T>::value) {
-      _optV.swap(o._optV);
+      _optV.swap(o._optV);  // first, as it may throw (the allocators cannot)
+      using std::swap;
+      swap(static_cast<Alloc&>(*this), static_cast<Alloc&>(o));
+    }
+
+    friend void swap(node_type& lhs, node_type& rhs) noexcept(std::is_nothrow_move_constructible<T>::value &&
+                                                              amc::is_nothrow_swappable<T>::value) {
+      lhs.swap(rhs);
     }
 
    private:
@@ -551,6 +560,15 @@ class FlatSet : private Compare {
     }
     mergeSorted(o, RelocatingMerge());
   }
+
+  /// Like std::set, a temporary can be merged. Its elements which are already present are destroyed with it.
+  template <class C2, typename std::enable_if<!std::is_same<Compare, C2>::value, bool>::type = true>
+  void merge(FlatSet<T, C2, Alloc, VecType>&& o) {
+    mergeOneByOne(o);
+  }
+
+  /// Like std::set, a temporary can be merged. Its elements which are already present are destroyed with it.
+  void merge(FlatSet&& o) { merge(o); }
 
   /// Like std::set, the range of an absent key is empty and positioned where the key would be inserted.
   std::pair<const_iterator, const_iterator> equal_range(const key_type& key) const {

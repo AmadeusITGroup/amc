@@ -30,102 +30,74 @@
 namespace amc {
 
 /**
- * Common definitions of SmallSetIterator that is independent from direction.
+ * Bidirectional iterator of a SmallSet whose set iterator is not a pointer. It holds either an iterator of the inline
+ * vector (small state) or an iterator of the set (large state).
+ * Its reverse iterator is a std::reverse_iterator of it, like the one of std::set.
  * Note: std::iterator is deprecated in c++17 so let's not derive from it.
- * It contains a variant to embed either a Vector type iterator or a SetType iterator.
  */
 template <class T, class SetItType>
-class SmallSetIteratorCommon {
+class SmallSetIterator {
  private:
   using VecItType = const T*;
-  using IteratorVariant = std::variant<SetItType, VecItType>;
-
-  IteratorVariant _iter;
-
-  // From C++20, an iterator must be default constructible to comply with ranges concepts.
-  // See https://stackoverflow.com/questions/72590345/using-stdranges-algorithms-with-custom-containers-and-iterators
-  SmallSetIteratorCommon() noexcept = default;
-
-  explicit SmallSetIteratorCommon(SetItType it) noexcept : _iter(it) {}
-  explicit SmallSetIteratorCommon(VecItType it) noexcept : _iter(it) {}
-
-  void incr() noexcept {
-    std::visit([](auto&& it) { ++it; }, _iter);
-  }
-  void decr() noexcept {
-    std::visit([](auto&& it) { --it; }, _iter);
-  }
-  const T& get() const noexcept {
-    return std::visit([](auto&& it) -> const T& { return *it; }, _iter);
-  }
-  const T& getPrev() const noexcept {
-    return std::visit([](auto&& it) -> const T& { return *std::prev(it, 1); }, _iter);
-  }
-
-  SetItType toSetIt() const noexcept { return std::get<SetItType>(_iter); }
-  VecItType toVecIt() const noexcept { return std::get<VecItType>(_iter); }
-
-  template <class, class, bool>
-  friend class SmallSetIterator;
-  template <class, std::uintmax_t, class, class, class>
-  friend class SmallSet;
 
  public:
-  // Needed types for iterators
   using iterator_category = std::bidirectional_iterator_tag;
   using value_type = T;
   using difference_type = std::ptrdiff_t;
   using pointer = const T*;
   using reference = const T&;
 
-  // For a set, only equality and un-equality operators are defined
-#ifdef AMC_CXX20
-  bool operator==(const SmallSetIteratorCommon&) const noexcept = default;
-#else
-  bool operator==(const SmallSetIteratorCommon& o) const noexcept { return _iter == o._iter; }
-  bool operator!=(const SmallSetIteratorCommon& o) const noexcept { return !(*this == o); }
-#endif
-};
-
-/**
- * Definition of the SmallSetIterator, depending on its direction.
- */
-template <class T, class SetItType, bool Reversed>
-class SmallSetIterator : public SmallSetIteratorCommon<T, SetItType> {
- public:
   // From C++20, an iterator must be default constructible to comply with ranges concepts.
   // See https://stackoverflow.com/questions/72590345/using-stdranges-algorithms-with-custom-containers-and-iterators
   SmallSetIterator() noexcept = default;
 
-  SmallSetIterator(SetItType it) noexcept : SmallSetIteratorCommon<T, SetItType>(it) {}
+  SmallSetIterator(SetItType it) noexcept : _iter(it) {}
 
-  SmallSetIterator(typename SmallSetIteratorCommon<T, SetItType>::VecItType it) noexcept
-      : SmallSetIteratorCommon<T, SetItType>(it) {}
+  SmallSetIterator(VecItType it) noexcept : _iter(it) {}
 
   SmallSetIterator& operator++() noexcept {  // Prefix increment
-    Reversed ? this->decr() : this->incr();
+    std::visit([](auto& it) { ++it; }, _iter);
     return *this;
   }
 
   SmallSetIterator& operator--() noexcept {  // Prefix decrement
-    Reversed ? this->incr() : this->decr();
+    std::visit([](auto& it) { --it; }, _iter);
     return *this;
   }
 
   SmallSetIterator operator++(int) noexcept {  // Postfix increment
     SmallSetIterator oldSelf = *this;
-    Reversed ? this->decr() : this->incr();
+    ++*this;
     return oldSelf;
   }
 
   SmallSetIterator operator--(int) noexcept {  // Postfix decrement
     SmallSetIterator oldSelf = *this;
-    Reversed ? this->incr() : this->decr();
+    --*this;
     return oldSelf;
   }
 
-  const T& operator*() const noexcept { return Reversed ? this->getPrev() : this->get(); }
-  const T* operator->() const noexcept { return &static_cast<const SmallSetIterator*>(this)->operator*(); }
+  reference operator*() const noexcept {
+    return std::visit([](const auto& it) -> reference { return *it; }, _iter);
+  }
+  pointer operator->() const noexcept { return std::addressof(**this); }
+
+  // For a set, only equality and un-equality operators are defined
+#ifdef AMC_CXX20
+  bool operator==(const SmallSetIterator&) const noexcept = default;
+#else
+  bool operator==(const SmallSetIterator& o) const noexcept { return _iter == o._iter; }
+  bool operator!=(const SmallSetIterator& o) const noexcept { return !(*this == o); }
+#endif
+
+ private:
+  template <class, std::uintmax_t, class, class, class>
+  friend class SmallSet;
+
+  SetItType toSetIt() const noexcept { return std::get<SetItType>(_iter); }
+  VecItType toVecIt() const noexcept { return std::get<VecItType>(_iter); }
+
+  std::variant<SetItType, VecItType> _iter;
 };
 
 template <class T, class Compare, class Alloc, class VecType>
@@ -145,6 +117,20 @@ class FlatSet;
  *
  * It does not allow duplicated elements.
  * Elements a, b are equivalent if !Compare(a, b) && !Compare(b, a)
+ *
+ * Differences with std::set, by design (see the README for details):
+ *  - In the small state, the elements are iterated in insertion order, not sorted: begin() is not the smallest
+ *    element, and the algorithms requiring sorted ranges (std::includes, std::set_union...) do not apply. The
+ *    comparison operators sort the elements, they compare like the ones of std::set.
+ *  - No lower_bound, upper_bound nor equal_range, which would require sorted elements.
+ *  - Iterators, references and pointers are invalidated like the ones of a vector in the small state, and like the
+ *    ones of SetType in the large state, except that end() is not stable:
+ *     - an insertion in the small state invalidates end(), and the one making the set grow invalidates all of them,
+ *       including end() and the iterators to pass as hints,
+ *     - an erasure in the small state (erase, extract, clear) invalidates the iterators to the erased elements and to
+ *       all the following ones, including end(),
+ *     - an erasure emptying the large set (erase, extract, clear) makes it small again, which invalidates end(),
+ *     - a swap involving the small state invalidates the iterators to the elements of the small state.
  */
 template <class T, std::uintmax_t N, class Compare = std::less<T>, class Alloc = amc::allocator<T>,
           class SetType = typename std::set<T, Compare, Alloc>>
@@ -174,11 +160,9 @@ class SmallSet {
 
   // Optim: If Set iterator type is a pointer, do not use SmallSetIterator but a pointer instead.
   // This is possible for SetType = FlatSet for instance.
-  using iterator = typename std::conditional<std::is_same<SetIt, const T*>::value, const T*,
-                                             SmallSetIterator<T, SetIt, false>>::type;
-  using reverse_iterator =
-      typename std::conditional<std::is_same<SetIt, const T*>::value, std::reverse_iterator<const T*>,
-                                SmallSetIterator<T, SetIt, true>>::type;
+  using iterator =
+      typename std::conditional<std::is_same<SetIt, const T*>::value, const T*, SmallSetIterator<T, SetIt>>::type;
+  using reverse_iterator = std::reverse_iterator<iterator>;
   using const_iterator = iterator;
   using const_reverse_iterator = reverse_iterator;
   using reference = const T&;
@@ -226,9 +210,18 @@ class SmallSet {
     value_type& value() { return _optV.value(); }
     const value_type& value() const { return _optV.value(); }
 
+    /// Like the standard node handles, the allocators are exchanged too: an empty node may hold the allocator of
+    /// another container, and two nodes holding values should have equal allocators, unless they propagate on swap.
     void swap(node_type& o) noexcept(std::is_nothrow_move_constructible<T>::value &&
                                      amc::is_nothrow_swappable<T>::value) {
-      _optV.swap(o._optV);
+      _optV.swap(o._optV);  // first, as it may throw (the allocators cannot)
+      using std::swap;
+      swap(static_cast<Alloc&>(*this), static_cast<Alloc&>(o));
+    }
+
+    friend void swap(node_type& lhs, node_type& rhs) noexcept(std::is_nothrow_move_constructible<T>::value &&
+                                                              amc::is_nothrow_swappable<T>::value) {
+      lhs.swap(rhs);
     }
 
    private:
@@ -327,14 +320,10 @@ class SmallSet {
   const_iterator end() const noexcept { return isSmall() ? const_iterator(_vec.end()) : const_iterator(_set.end()); }
   const_iterator cend() const noexcept { return end(); }
 
-  const_reverse_iterator rbegin() const noexcept {
-    return isSmall() ? const_reverse_iterator(_vec.end()) : const_reverse_iterator(_set.end());
-  }
+  const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
   const_reverse_iterator crbegin() const noexcept { return rbegin(); }
 
-  const_reverse_iterator rend() const noexcept {
-    return isSmall() ? const_reverse_iterator(_vec.begin()) : const_reverse_iterator(_set.begin());
-  }
+  const_reverse_iterator rend() const noexcept { return const_reverse_iterator(begin()); }
   const_reverse_iterator crend() const noexcept { return rend(); }
 
   bool empty() const noexcept { return _vec.empty() && _set.empty(); }
@@ -594,6 +583,12 @@ class SmallSet {
         }
       }
     }
+  }
+
+  /// Like std::set, a temporary can be merged. Its elements which are already present are destroyed with it.
+  template <std::uintmax_t N2, class C2, class SetType2>
+  void merge(SmallSet<T, N2, C2, Alloc, SetType2>&& o) {
+    merge(o);
   }
 
   bool operator==(const SmallSet& o) const {

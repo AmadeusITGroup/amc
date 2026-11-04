@@ -141,6 +141,19 @@ TYPED_TEST(SetListTest, ReverseIteration) {
   EXPECT_EQ(s, cpy);
   EXPECT_EQ(*std::prev(s.rend()), *s.begin());
   EXPECT_EQ(*std::prev(s.end()), *s.rbegin());
+
+  // like the one of std::set, the reverse iterator is a std::reverse_iterator: it has a base, it can be built from an
+  // iterator, and an element can be erased through it
+  using ReverseIterator = typename TypeParam::reverse_iterator;
+  static_assert(std::is_same<ReverseIterator, std::reverse_iterator<typename TypeParam::iterator>>::value, "");
+  EXPECT_EQ(s.rbegin().base(), s.end());
+  EXPECT_EQ(s.rend().base(), s.begin());
+  EXPECT_EQ(ReverseIterator(s.end()), s.rbegin());
+  EXPECT_EQ(std::next(s.rbegin()).base(), std::prev(s.end()));
+  const auto last = *s.rbegin();
+  s.erase(std::next(s.rbegin()).base());
+  EXPECT_FALSE(s.contains(last));
+  EXPECT_EQ(s.size(), 4U);
 }
 
 TYPED_TEST(SetListTest, IteratorOperators) {
@@ -348,6 +361,10 @@ TYPED_TEST(SetListTest, Merge) {
   SetType s{1, 2, 3};
   s.merge(s);
   EXPECT_EQ(s, SetType({1, 2, 3}));
+
+  // a temporary can be merged, like with std::set
+  s.merge(SetType{0, 2, 4});
+  EXPECT_EQ(s, SetType({0, 1, 2, 3, 4}));
 }
 
 TYPED_TEST(SetListTest, ReturnedIteratorsInsertErase) {
@@ -956,6 +973,21 @@ TYPED_TEST(SetListExtractTest, Extract) {
   nh2 = std::move(self);
   ASSERT_FALSE(nh2.empty());
   EXPECT_EQ(nh2.value(), ValueType(5));
+
+  // swap of nodes, found by argument dependent lookup like for the standard node handles
+  s.emplace(6);
+  nh = s.extract(6);
+  static_assert(noexcept(swap(nh, nh2)), "");
+  swap(nh, nh2);
+  ASSERT_FALSE(nh.empty());
+  ASSERT_FALSE(nh2.empty());
+  EXPECT_EQ(nh.value(), ValueType(5));
+  EXPECT_EQ(nh2.value(), ValueType(6));
+  nh2 = s.extract(42);
+  swap(nh, nh2);  // with an empty node
+  EXPECT_TRUE(nh.empty());
+  ASSERT_FALSE(nh2.empty());
+  EXPECT_EQ(nh2.value(), ValueType(5));
 }
 
 // Inserting a node whose value is already present fails and leaves the node untouched: it keeps its value.
@@ -1001,6 +1033,43 @@ TYPED_TEST(SetListExtractTest, InsertNodeAlreadyPresent) {
     EXPECT_EQ(s.insert(s.begin(), s.extract(42)), s.end());
     EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems + 1));
   }
+}
+
+// Like the standard node handles, swapping nodes exchanges their allocators too: an empty node may come from a
+// container with another allocator.
+template <class SetType>
+void ExpectNodeSwapExchangesAllocators() {
+  using Alloc = typename SetType::allocator_type;
+  const Alloc alloc1(ArenaAllocator(1));
+  const Alloc alloc2(ArenaAllocator(2));
+  for (int nbElems : {1, 5}) {  // small and large states of SmallSets
+    SetType s1(alloc1);
+    for (int i = 0; i < nbElems; ++i) {
+      s1.insert(i);
+    }
+    SetType s2(alloc2);
+    typename SetType::node_type nh1 = s1.extract(0);
+    typename SetType::node_type nh2 = s2.extract(0);  // empty, with the allocator of s2
+    ASSERT_FALSE(nh1.empty());
+    ASSERT_TRUE(nh2.empty());
+    swap(nh1, nh2);
+    EXPECT_TRUE(nh1.empty());
+    ASSERT_FALSE(nh2.empty());
+    EXPECT_EQ(nh2.value(), 0);
+    EXPECT_TRUE(nh2.get_allocator() == alloc1);
+    EXPECT_TRUE(s1.insert(std::move(nh2)).inserted);
+  }
+}
+
+TEST(SetTest, NodeSwapExchangesAllocators) {
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  ExpectNodeSwapExchangesAllocators<FlatSet<int, std::less<int>, ArenaAllocatorOf<int>>>();
+#ifdef AMC_SMALLSET
+  ExpectNodeSwapExchangesAllocators<SmallSet<int, 2, std::less<int>, ArenaAllocatorOf<int>>>();
+  ExpectNodeSwapExchangesAllocators<
+      SmallSet<int, 2, std::less<int>, ArenaAllocatorOf<int>, FlatSet<int, std::less<int>, ArenaAllocatorOf<int>>>>();
+#endif
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
 }
 #endif
 
@@ -1431,6 +1500,9 @@ TEST(FlatSetTest, MergeDifferentCompare) {
   s1.merge(s2);
   EXPECT_EQ(s1, SetType({-2, 0, 2, 3, 4, 6, 17, 19, 23}));
   EXPECT_EQ(s2, RevSetType({19, 4, 2, -2}));
+
+  s1.merge(RevSetType{30, 4, -5});
+  EXPECT_EQ(s1, SetType({-5, -2, 0, 2, 3, 4, 6, 17, 19, 23, 30}));
 }
 
 #ifdef AMC_CXX14
