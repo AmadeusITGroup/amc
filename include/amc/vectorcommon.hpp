@@ -152,6 +152,19 @@ inline void fill_after_shift(T* first, SizeType, SizeType count, const T& v) {
   std::uninitialized_fill_n(first, count, v);
 }
 
+/// Assigns the first 'd_n' of the 'count' elements starting at 'first' to the initialized memory starting at 'd_first',
+/// and copies the next ones to the uninitialized memory following it. Unlike std::copy_n followed by
+/// amc::uninitialized_copy_n, the input elements are iterated only once.
+/// Requirements: 0 < d_n < count
+template <class ForwardIt, class SizeType, class T>
+inline void assign_then_construct_n(ForwardIt first, SizeType count, T* d_first, SizeType d_n) {
+  *d_first++ = AsValueType<T>(*first);
+  for (SizeType i = 1; i < d_n; ++i) {
+    *d_first++ = AsValueType<T>(*++first);
+  }
+  amc::uninitialized_copy_n(++first, count - d_n, d_first);
+}
+
 /// copy from a range to available location divided in two parts: one on initialized memory, other one on raw memory
 /// Requirements: d_n < count
 template <class ForwardIt, class SizeType, class T,
@@ -159,13 +172,10 @@ template <class ForwardIt, class SizeType, class T,
 inline void assign_n(ForwardIt first, SizeType count, T* d_first, SizeType d_n) {
   assert(d_n < count);
   if (d_n > 0) {
-    *d_first++ = AsValueType<T>(*first);  // rewrite copy_n to avoid double iteration on the input elements
-    for (SizeType i = 1; i < d_n; ++i) {
-      *d_first++ = AsValueType<T>(*++first);
-    }
-    (void)++first;
+    assign_then_construct_n(first, count, d_first, d_n);
+  } else {
+    amc::uninitialized_copy_n(first, count, d_first);
   }
-  amc::uninitialized_copy_n(first, count - d_n, d_first);
 }
 
 template <class ForwardIt, class SizeType, class T,
@@ -182,12 +192,7 @@ template <class ForwardIt, class SizeType, class T,
 inline void copy_after_shift(ForwardIt first, SizeType n, SizeType count, T* pos) {
   assert(n > 0);
   if (n < count) {
-    *pos++ = AsValueType<T>(*first);  // rewrite copy_n to avoid double iteration on the input elements
-    for (SizeType i = 1; i < n; ++i) {
-      *pos++ = AsValueType<T>(*++first);
-    }
-    (void)++first;
-    amc::uninitialized_copy_n(first, count - n, pos);
+    assign_then_construct_n(first, count, pos, n);
   } else {
     std::copy_n(first, count, pos);
   }
@@ -231,17 +236,6 @@ template <class T, class SizeType, typename std::enable_if<amc::is_trivially_rel
 inline void erase_n(T* first, SizeType n, SizeType count) {
   amc::destroy_n(first, n);
   (void)amc::uninitialized_relocate_n(first + n, count, first);
-}
-
-/// Erase one element starting at 'first', shifting the next 'count' elements to memory starting at 'first'
-template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void erase_at(T* first, SizeType count) {
-  amc::destroy_at(std::move(first + 1, first + 1 + count, first));
-}
-template <class T, class SizeType, typename std::enable_if<amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void erase_at(T* first, SizeType count) {
-  amc::destroy_at(first);
-  (void)amc::uninitialized_relocate_n(first + 1, count, first);
 }
 
 /// Assign 'v' to a memory starting at 'first', with 'n' slots on initialized memory, 'count - n'
@@ -324,6 +318,20 @@ inline void assign_after_shift(T* pos, V&& v) {
   amc::construct_at(pos, std::forward<V>(v));
 }
 
+/// Shifts the 'n' elements starting at 'pos' one slot to the right, then calls 'place(pos)' to put the new element in
+/// the freed slot (with 'assign_after_shift' or 'relocate_after_shift'). If it throws, the elements are shifted back.
+/// Requirements: n != 0
+template <class T, class SizeType, class Place>
+inline void shift_right_and_place(T* pos, SizeType n, Place place) {
+  shift_right(pos, n);
+  try {
+    place(pos);
+  } catch (...) {
+    shift_left(pos + 1, n);
+    throw;
+  }
+}
+
 /// Insert an lvalue 'v' at 'pos', shifting the 'n' elements starting at 'pos' one slot to the right.
 ///
 /// 'v' is allowed to be a reference to an element already stored in the vector: this is the case exercised by the
@@ -345,13 +353,7 @@ inline void insert_n(T* pos, SizeType n, const T& v) {
     // Bind the source to its post-shift location so the correct value is read once the shift has been performed.
     const T* pv = std::addressof(v);
     const T& src = IsInRange(pv, pos, n) ? *(pv + 1) : v;
-    shift_right(pos, n);
-    try {
-      assign_after_shift(pos, src);
-    } catch (...) {
-      shift_left(pos + 1, n);
-      throw;
-    }
+    shift_right_and_place(pos, n, [&src](T* p) { assign_after_shift(p, src); });
   }
 }
 
@@ -365,13 +367,7 @@ inline void insert_n(T* pos, SizeType n, T&& v) {
   if (n == 0) {
     amc::construct_at(pos, std::move(v));
   } else {
-    shift_right(pos, n);
-    try {
-      assign_after_shift(pos, std::move(v));
-    } catch (...) {
-      shift_left(pos + 1, n);
-      throw;
-    }
+    shift_right_and_place(pos, n, [&v](T* p) { assign_after_shift(p, std::move(v)); });
   }
 }
 
@@ -433,13 +429,7 @@ inline void relocate_insert_n(T* pos, SizeType n, T* e) {
   if (n == 0) {
     amc::relocate_at(e, pos);
   } else {
-    shift_right(pos, n);
-    try {
-      relocate_after_shift(e, pos);
-    } catch (...) {
-      shift_left(pos + 1, n);
-      throw;
-    }
+    shift_right_and_place(pos, n, [e](T* p) { relocate_after_shift(e, p); });
   }
 }
 
@@ -710,14 +700,12 @@ class StdVectorBase : private Alloc {
     _size = amc::exchange(o._size, SizeType{0});
   }
 
-  void move_assign(StdVectorBase& o, SizeType) noexcept {
+  void move_assign(StdVectorBase& o, SizeType inplaceCapa) noexcept {
     if (_storage) {
       amc::destroy_n(_storage, _size);
       freeStorage();  // Compared to swap, we can free memory directly for move assignment
     }
-    _storage = amc::exchange(o._storage, nullptr);
-    _capa = amc::exchange(o._capa, SizeType{0});
-    _size = amc::exchange(o._size, SizeType{0});
+    move_construct(o, inplaceCapa);
   }
 
   void grow(std::uintmax_t minSize, bool exact = false);
@@ -746,14 +734,11 @@ class StdVectorBase : private Alloc {
   template <class, class, class>
   friend class StdVectorBase;
 
-  /// Tells whether swap2 can exchange our dynamic storage with the one of 'o', of inline capacity 'oInplaceCapa'.
-  template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t,
-                         std::uintmax_t oInplaceCapa) const noexcept;
-
-  template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t, std::uintmax_t) const noexcept {
-    return AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
+  /// Tells whether swap2 can give our dynamic storage to a vector of inline capacity 'inplaceCapa': a vector without
+  /// inline elements takes any (even none), a SmallVector only one larger than its inline capacity (see
+  /// SmallVectorBase::move_assign).
+  bool canGiveDynStorage(std::uintmax_t inplaceCapa) const noexcept {
+    return inplaceCapa == 0U || inplaceCapa < static_cast<std::uintmax_t>(_capa);
   }
 
   template <class VectorType>
@@ -954,21 +939,10 @@ class SmallVectorBase : private Alloc {
   template <class, class, class>
   friend class StdVectorBase;
 
-  /// Tells whether swap2 can exchange our dynamic storage with the one of 'o', our inline capacities being
-  /// 'inplaceCapa' and 'oInplaceCapa': both vectors are large, and a SmallVector only takes a dynamic storage larger
-  /// than its inline capacity (see move_assign).
-  template <class OAlloc, class OSizeType>
-  bool canSwapDynStorage(StdVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t inplaceCapa,
-                         std::uintmax_t) const noexcept {
-    return !isSmall() && inplaceCapa < static_cast<std::uintmax_t>(o._capa) &&
-           AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
-  }
-  template <class OSizeType, class OAlloc>
-  bool canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t inplaceCapa,
-                         std::uintmax_t oInplaceCapa) const noexcept {
-    return !isSmall() && !o.isSmall() && inplaceCapa < static_cast<std::uintmax_t>(o._capa) &&
-           oInplaceCapa < static_cast<std::uintmax_t>(_capa) &&
-           AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
+  /// Tells whether swap2 can give our dynamic storage to a vector of inline capacity 'inplaceCapa': we need to be
+  /// large, and a SmallVector only takes a dynamic storage larger than its inline capacity (see move_assign).
+  bool canGiveDynStorage(std::uintmax_t inplaceCapa) const noexcept {
+    return !isSmall() && inplaceCapa < static_cast<std::uintmax_t>(_capa);
   }
 
   template <class VectorType>
@@ -1054,13 +1028,24 @@ class SmallVectorBase : private Alloc {
   ElemWithPtrStorage<T> _storage;
 };
 
-/// A large SmallVector only takes a dynamic storage larger than its inline capacity 'oInplaceCapa' (see move_assign).
-template <class T, class Alloc, class SizeType>
-template <class OSizeType, class OAlloc>
-bool StdVectorBase<T, Alloc, SizeType>::canSwapDynStorage(SmallVectorBase<T, OAlloc, OSizeType>& o, std::uintmax_t,
-                                                          std::uintmax_t oInplaceCapa) const noexcept {
-  return !o.isSmall() && oInplaceCapa < static_cast<std::uintmax_t>(_capa) &&
-         AllocatorsAreEqual(get_allocator(), o.get_allocator()) && CapacitiesFitEachOther(_capa, o._capa);
+/// swap2 of vectors which do not exchange their dynamic storages ('lhs' and 'rhs' may be any vectors): swaps all the
+/// elements, after having grown each vector to the size of the other one (which throws if it does not fit in its size
+/// type, or in the capacity of a FixedCapacityVector). Then swaps the sizes with setSize, which keeps the encoding of
+/// the small state of SmallVector.
+/// The capacities are adjusted with uintmax_t values, as the size types of both vectors may differ (public method
+/// reserve takes a size_type).
+template <class V1, class V2>
+void swap2_deep(V1& lhs, V2& rhs) {
+  using SizeType1 = typename V1::size_type;
+  using SizeType2 = typename V2::size_type;
+  lhs.adjustCapacity(rhs.size());
+  rhs.adjustCapacity(lhs.size());
+  const SizeType1 size1 = lhs.size();
+  const SizeType2 size2 = rhs.size();
+  assert(CapacitiesFitEachOther(size1, size2));
+  swap_deep(lhs.begin(), size1, rhs.begin(), size2);
+  lhs.setSize(static_cast<SizeType1>(size2));
+  rhs.setSize(static_cast<SizeType2>(size1));
 }
 
 template <class T, class SizeType, class GrowingPolicy>
@@ -1081,7 +1066,7 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
     GrowingPolicy::Check(this->size() + 1U, this->capacity());
     iterator pos = const_cast<iterator>(position);
-    emplace_n(pos, this->size() - (pos - this->begin()), std::forward<Args>(args)...);
+    emplace_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::forward<Args>(args)...);
     this->incrSize();
     return pos;
   }
@@ -1105,19 +1090,9 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
     return *this->constructBack(std::forward<Args>(args)...);
   }
 
-  pointer try_push_back(const T& value) {
-    if (this->size() == this->capacity()) {
-      return nullptr;
-    }
-    return this->constructBack(value);
-  }
+  pointer try_push_back(const T& value) { return try_emplace_back(value); }
 
-  pointer try_push_back(T&& value) {
-    if (this->size() == this->capacity()) {
-      return nullptr;
-    }
-    return this->constructBack(std::move(value));
-  }
+  pointer try_push_back(T&& value) { return try_emplace_back(std::move(value)); }
 
   pointer unchecked_push_back(const T& value) { return this->constructBack(value); }
 
@@ -1133,21 +1108,14 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
   template <class, class, class, bool>
   friend class DynamicVector;
 
+  template <class V1, class V2>
+  friend void swap2_deep(V1& lhs, V2& rhs);
+
   /// swap2 implementation ('o' may be any vector, the inline capacities are only used by the dynamic ones).
-  /// We cannot exchange dynamic storages: swaps all elements, after having checked that each size fits in the capacity
-  /// of the other vector, which may make 'o' grow. Then swaps the sizes with setSize, which keeps the encoding of the
-  /// small state of SmallVector.
+  /// We cannot exchange dynamic storages: swaps all elements (which may make 'o' grow).
   template <class VectorType>
   void swap2_impl(VectorType& o, std::uintmax_t, std::uintmax_t) {
-    using OSizeType = typename VectorType::size_type;
-    adjustCapacity(o.size());
-    o.adjustCapacity(this->size());
-    const SizeType size = this->size();
-    const OSizeType oSize = o.size();
-    assert(CapacitiesFitEachOther(size, oSize));
-    swap_deep(this->begin(), size, o.begin(), oSize);
-    this->setSize(static_cast<SizeType>(oSize));
-    o.setSize(static_cast<OSizeType>(size));
+    swap2_deep(*this, o);
   }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
@@ -1246,13 +1214,16 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   template <class OSizeType, class OGrowingPolicy>
   void swap2_impl(StaticVector<T, OSizeType, OGrowingPolicy>& o, std::uintmax_t, std::uintmax_t) {
     // Here 'o' cannot grow so we cannot swap any dynamic storage. Deeply swap all elements
-    swap2_deep(o);
+    swap2_deep(*this, o);
   }
 
+  /// The dynamic storages are exchanged if each vector can take the one of the other vector.
   template <class OAlloc, class OSizeType, bool OWithInlineElems>
   void swap2_impl(DynamicVector<T, OAlloc, OSizeType, OWithInlineElems>& o, std::uintmax_t inplaceCapa,
                   std::uintmax_t oInplaceCapa) {
-    if (this->canSwapDynStorage(o, inplaceCapa, oInplaceCapa)) {
+    if (this->canGiveDynStorage(oInplaceCapa) && o.canGiveDynStorage(inplaceCapa) &&
+        AllocatorsAreEqual(this->get_allocator(), o.get_allocator()) &&
+        CapacitiesFitEachOther(this->mcapacity(), o.mcapacity())) {
       // Both vectors are large: take their size members before swapping the capacities, as a SmallVector compares
       // them to know its state.
       SizeType& size = this->msize();
@@ -1261,26 +1232,12 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
       swap_sizetype(this->mcapacity(), o.mcapacity());
       swap_sizetype(size, oSize);
     } else {
-      swap2_deep(o);
+      swap2_deep(*this, o);
     }
   }
 
-  /// Swaps all elements, after having grown each vector to the size of the other one (which throws if it does not fit
-  /// in its size type). Then swaps the sizes with setSize, which keeps the encoding of the small state of SmallVector.
-  /// Do not use public method reserve as it takes size_type argument instead of uintmax_t (as the two size types may
-  /// differ, we should use uintmax_t to avoid overflows)
-  template <class VectorType>
-  void swap2_deep(VectorType& o) {
-    using OSizeType = typename VectorType::size_type;
-    adjustCapacity(o.size());
-    o.adjustCapacity(this->size());
-    const SizeType size = this->size();
-    const OSizeType oSize = o.size();
-    assert(CapacitiesFitEachOther(size, oSize));
-    swap_deep(this->begin(), size, o.begin(), oSize);
-    this->setSize(static_cast<SizeType>(oSize));
-    o.setSize(static_cast<OSizeType>(size));
-  }
+  template <class V1, class V2>
+  friend void swap2_deep(V1& lhs, V2& rhs);
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
   inline void adjustCapacity(std::uintmax_t neededCapacity) {
@@ -1558,7 +1515,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     assert(position >= this->cbegin() && position <= cend());
     const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v, &position);
     iterator pos = const_cast<iterator>(position);
-    insert_n(pos, this->size() - (pos - this->begin()), newV);
+    insert_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), newV);
     this->incrSize();
     return pos;
   }
@@ -1570,7 +1527,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       return this->emplace(position, std::move(v));
     }
     iterator pos = const_cast<iterator>(position);
-    insert_n(pos, this->size() - (pos - this->begin()), std::move(v));
+    insert_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::move(v));
     this->incrSize();
     return pos;
   }
@@ -1635,7 +1592,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   iterator erase(const_iterator position) {
     assert(position >= this->cbegin() && position < cend());
     const iterator it = const_cast<iterator>(position);
-    erase_at(it, this->size() - (position - this->begin()) - 1);
+    erase_n(it, SizeType{1}, static_cast<SizeType>(this->size() - (position - this->begin()) - 1));
     this->decrSize();
     return it;
   }

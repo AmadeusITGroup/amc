@@ -451,15 +451,8 @@ inline T* relocate_at_impl(T* elem, T* dest, Default) {
 
 template <class T>
 inline T* relocate_at_impl(T* elem, T* dest, MemMove) {
-#if __GNUC__ >= 8
-  // Do not raise class-memaccess warning for trivially relocatable types
-  AMC_PUSH_WARNING
-  AMC_DISABLE_WARNING("-Wclass-memaccess")
-#endif
+  // The casts to void* tell GCC that copying the bytes of a non trivially copyable type is intended (-Wclass-memaccess)
   ::std::memmove(static_cast<void*>(dest), static_cast<const void*>(elem), sizeof(T));
-#if __GNUC__ >= 8
-  AMC_POP_WARNING
-#endif
   return dest;
 }
 
@@ -493,16 +486,8 @@ inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputI
   using ValueType = typename std::iterator_traits<InputIt>::value_type;
   typename std::iterator_traits<InputIt>::difference_type count = last - first;
   if (count > 0) {
-#if __GNUC__ >= 8
-    // Do not raise class-memaccess warning for trivially relocatable types
-    AMC_PUSH_WARNING
-    AMC_DISABLE_WARNING("-Wclass-memaccess")
-#endif
     ::std::memmove(static_cast<void*>(dest), static_cast<const void*>(first),
                    static_cast<std::size_t>(count) * sizeof(ValueType));
-#if __GNUC__ >= 8
-    AMC_POP_WARNING
-#endif
   }
   return dest + count;
 }
@@ -538,16 +523,8 @@ template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first, Size count, OutputIt dest, MemMove) {
   using ValueType = typename std::iterator_traits<InputIt>::value_type;
   if (count > 0) {
-#if __GNUC__ >= 8
-    // Do not raise class-memaccess warning for trivially relocatable types
-    AMC_PUSH_WARNING
-    AMC_DISABLE_WARNING("-Wclass-memaccess")
-#endif
     ::std::memmove(static_cast<void*>(dest), static_cast<const void*>(first),
                    static_cast<std::size_t>(count) * sizeof(ValueType));
-#if __GNUC__ >= 8
-    AMC_POP_WARNING
-#endif
   }
   return std::pair<InputIt, OutputIt>(first + count, dest + count);
 }
