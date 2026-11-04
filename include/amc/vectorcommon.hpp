@@ -1316,6 +1316,24 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   iterator emplaceGrowing(std::false_type, SizeType idx, Args&&... args) {
     return this->growEmplace(idx, std::forward<Args>(args)...);
   }
+
+  // An rvalue of 'T' (such as the argument of 'insert(pos, T&&)') is only moved from once the vector has grown, like in
+  // 'push_back(T&&)', so that it keeps its value if the growth throws. It may be an element of the vector:
+  // 'adjustCapacity' finds it back in the grown storage. Being non-templates, these overloads win over the ones above.
+  iterator emplaceBackGrowing(std::true_type, T&& v) {
+    const T& newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
+    iterator endIt = this->dynStorage() + this->size();
+    amc::construct_at(endIt, std::move(const_cast<T&>(newV)));
+    return endIt;
+  }
+
+  iterator emplaceGrowing(std::true_type, SizeType idx, T&& v) {
+    const T& newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
+    iterator pos = this->begin() + idx;
+    // 'newV' may be one of the elements to shift: 'emplace_n' moves from it before shifting them
+    emplace_n(pos, static_cast<SizeType>(this->size() - idx), std::move(const_cast<T&>(newV)));
+    return pos;
+  }
 };
 
 /// Standard growing policy which allows SmallVector to use dynamic memory
@@ -1523,7 +1541,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   iterator insert(const_iterator position, T&& v) {
     assert(position >= this->cbegin() && position <= cend());
     if (this->isFull()) {
-      // 'v' may be an element of the vector, like for 'push_back(T&&)'
+      // 'v' may be an element of the vector, like for 'push_back(T&&)', and keeps its value if the growth throws
       return this->emplace(position, std::move(v));
     }
     iterator pos = const_cast<iterator>(position);
