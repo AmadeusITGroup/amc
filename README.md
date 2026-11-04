@@ -40,6 +40,7 @@
     - [Sets](#sets-1)
       - [FlatSet](#flatset)
       - [SmallSet (c++17)](#smallset-c17)
+        - [Differences with std::set](#differences-with-stdset)
 
 </p>
 </details>
@@ -546,4 +547,28 @@ Note that insertions have linear complexity in the small state so the inline cap
 
 using VisitedCountries = amc::SmallSet<Country, 5>;
 using VisitedCities = amc::SmallSet<City, 20, std::less<City>, amc::allocator<City>, amc::FlatSet<City>>;
+```
+
+##### Differences with std::set
+
+By design, `SmallSet` does not offer all the guarantees of `std::set`:
+
+ - **Order**: in the small state, the elements are iterated in insertion order, not sorted. `*begin()` is not the smallest element, and the algorithms requiring sorted ranges (`std::includes`, `std::set_union`, `std::set_intersection`, `std::merge`...) must not be used. The order changes when the set grows (the elements are sorted from then on) and when it becomes small again. The comparison operators sort the elements: they give the same results as the ones of `std::set`.
+ - **No `lower_bound`, `upper_bound` nor `equal_range`**: they would require sorted elements.
+ - **Iterator invalidation**: iterators, references and pointers to the elements are invalidated like the ones of a vector in the small state, and like the ones of the set type in the large state (with `FlatSet`, any insertion or erasure may invalidate them). Unlike with `std::set`, `end()` is not stable: it should not be kept to be compared later with the result of a `find`, or in an erasure loop.
+
+| Operation                                                              | Invalidated iterators                                                                                              |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Insertion in the small state (`insert`, `emplace`, `merge`...)         | `end()`                                                                                                            |
+| Insertion making the set grow beyond `N` elements                      | All of them, including `end()` and the ones to pass as hints: the elements are moved to the set                    |
+| Erasure in the small state (`erase`, `extract`, `clear`, `merge` from) | The ones to the erased elements and to the following ones, which are shifted, and `end()`                          |
+| Erasure emptying a large set (`erase`, `extract`, `clear`)             | `end()`: the set becomes small again                                                                               |
+| `swap` of a set in the small state                                     | The ones to its elements: they are exchanged between the inline storages, the iterators do not follow them         |
+
+For instance, this loop, valid with a `std::set`, must compare `it` with `s.end()` at each step with a `SmallSet`:
+
+```cpp
+for (auto it = s.begin(), last = s.end(); it != last;) {  // 'last' may be invalidated by 'erase'
+  it = pred(*it) ? s.erase(it) : std::next(it);
+}
 ```
