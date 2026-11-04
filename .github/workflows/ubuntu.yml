@@ -22,9 +22,9 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Release
       - name: build
-        run: cmake --build build --parallel 2
+        run: cmake --build build --parallel
       - name: test
-        run: cd build && ctest -j 2 --output-on-failure
+        run: cd build && ctest -j --output-on-failure
 
   ci_test_gcc_debug:
     runs-on: ubuntu-latest
@@ -41,9 +41,9 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
-        run: cmake --build build --parallel 2
+        run: cmake --build build --parallel
       - name: test
-        run: cd build && ctest -j 2 --output-on-failure
+        run: cd build && ctest -j --output-on-failure
 
   ci_test_clang_release:
     runs-on: ubuntu-latest
@@ -60,9 +60,9 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Release -DAMC_ENABLE_ASAN=ON
       - name: build
-        run: cmake --build build --parallel 2
+        run: cmake --build build --parallel
       - name: test
-        run: cd build && ctest -j 2 --output-on-failure
+        run: cd build && ctest -j --output-on-failure
 
   ci_test_clang_debug:
     runs-on: ubuntu-latest
@@ -79,9 +79,9 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
-        run: cmake --build build --parallel 2
+        run: cmake --build build --parallel
       - name: test
-        run: cd build && ctest -j 2 --output-on-failure
+        run: cd build && ctest -j --output-on-failure
 
   ci_test_standards:
     runs-on: ubuntu-latest
@@ -98,9 +98,9 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
-        run: cmake --build build --parallel 2
+        run: cmake --build build --parallel
       - name: test
-        run: cd build && ctest -j 2 --output-on-failure
+        run: cd build && ctest -j --output-on-failure
 
   ci_nonstandard_features:
     runs-on: ubuntu-latest
@@ -109,9 +109,9 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DAMC_PEDANTIC=ON -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
-        run: cmake --build build --parallel 2
+        run: cmake --build build --parallel
       - name: test
-        run: cd build && ctest -j 2 --output-on-failure
+        run: cd build && ctest -j --output-on-failure
 
   ci_coverage:
     runs-on: ubuntu-latest
@@ -129,7 +129,7 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-21 -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_COVERAGE=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build, test and report coverage
-        run: cmake --build build --target coverage --parallel 2
+        run: cmake --build build --target coverage --parallel
       - name: summary
         run: |
           echo '```text' >> $GITHUB_STEP_SUMMARY

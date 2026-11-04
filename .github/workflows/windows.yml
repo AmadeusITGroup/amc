@@ -20,9 +20,9 @@ jobs:
         # warnings are only treated as errors in Debug
         run: cmake -S . -B build -A ${{ matrix.architecture }} -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
-        run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
       - name: test
-        run: cd build && ctest -j 2 -C ${{ matrix.build_type }} --output-on-failure
+        run: cd build && ctest -j -C ${{ matrix.build_type }} --output-on-failure
 
   clang-cl-11:
     runs-on: windows-latest
@@ -35,6 +35,6 @@ jobs:
       - name: cmake
         run: cmake -S . -B build -A ${{ matrix.architecture }} -T ClangCL -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
-        run: cmake --build build --config Debug --parallel 2
+        run: cmake --build build --config Debug --parallel
       - name: test
-        run: cd build && ctest -j 2 -C Debug --output-on-failure
+        run: cd build && ctest -j -C Debug --output-on-failure
