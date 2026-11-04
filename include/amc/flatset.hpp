@@ -14,16 +14,14 @@
 #include "allocator.hpp"
 #include "config.hpp"
 #include "memory.hpp"
+#include "setnode.hpp"
 #include "type_traits.hpp"
 #include "vector.hpp"
 
 #ifdef AMC_CXX14
 #include "istransparent.hpp"
-#ifdef AMC_CXX17
-#include <optional>
 #ifdef AMC_CXX23
 #include <ranges>
-#endif
 #endif
 #endif
 namespace amc {
@@ -172,68 +170,9 @@ class FlatSet : private Compare {
   static_assert(std::is_same<Alloc, typename VecType::allocator_type>::value, "Allocator should match vector's");
 
 #ifdef AMC_CXX17
-  class node_type : private Alloc {
-   public:
-    using value_type = T;
-    using allocator_type = Alloc;
-
-    node_type() noexcept = default;
-
-    node_type(const node_type&) = delete;
-    /// Like the standard node handles, a moved from node is empty.
-    node_type(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value)
-        : Alloc(std::move(static_cast<Alloc&>(o))), _optV(std::move(o._optV)) {
-      o._optV.reset();
-    }
-    node_type& operator=(const node_type&) = delete;
-    node_type& operator=(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
-                                                 std::is_nothrow_move_assignable<value_type>::value) {
-      if (this != &o) {
-        static_cast<Alloc&>(*this) = std::move(static_cast<Alloc&>(o));
-        _optV = std::move(o._optV);
-        o._optV.reset();
-      }
-      return *this;
-    }
-
-    ~node_type() = default;
-
-    bool empty() const noexcept { return !_optV.has_value(); }
-    explicit operator bool() const noexcept { return _optV.has_value(); }
-    allocator_type get_allocator() const { return static_cast<allocator_type>(*this); }
-
-    value_type& value() { return _optV.value(); }
-    const value_type& value() const { return _optV.value(); }
-
-    /// Like the standard node handles, the allocators are exchanged too: an empty node may hold the allocator of
-    /// another container, and two nodes holding values should have equal allocators, unless they propagate on swap.
-    void swap(node_type& o) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                     amc::is_nothrow_swappable<T>::value) {
-      _optV.swap(o._optV);  // first, as it may throw (the allocators cannot)
-      using std::swap;
-      swap(static_cast<Alloc&>(*this), static_cast<Alloc&>(o));
-    }
-
-    friend void swap(node_type& lhs, node_type& rhs) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                                              amc::is_nothrow_swappable<T>::value) {
-      lhs.swap(rhs);
-    }
-
-   private:
-    template <class, class, class, class>
-    friend class FlatSet;
-
-    explicit node_type(Alloc alloc) : Alloc(alloc) {}
-    explicit node_type(value_type&& v, Alloc alloc = Alloc()) : Alloc(alloc), _optV(std::move(v)) {}
-
-    std::optional<value_type> _optV;
-  };
-
-  struct insert_return_type {
-    iterator position;
-    bool inserted;
-    node_type node;
-  };
+  /// Shared with the FlatSets and SmallSets of the same value and allocator types (see set_details::NodeHandle).
+  using node_type = set_details::NodeHandle<T, Alloc>;
+  using insert_return_type = set_details::InsertReturnType<iterator, node_type>;
 #endif
 
   using trivially_relocatable =
@@ -402,32 +341,10 @@ class FlatSet : private Compare {
 #ifdef AMC_CXX17
   /// 'nh' is left empty. If the insertion fails (equivalent element already present), the returned node owns its value.
   /// If an exception is thrown (by the comparator, or by an allocation), 'nh' keeps its value.
-  insert_return_type insert(node_type&& nh) {
-    if (!nh) {
-      return insert_return_type{end(), false, node_type()};
-    }
-    // the value is only moved from if it is inserted: it stays in 'nh' until the insertion succeeds or fails
-    const std::pair<iterator, bool> ret = insert(std::move(*nh._optV));
-    if (ret.second) {
-      nh._optV.reset();
-      return insert_return_type{ret.first, true, node_type()};
-    }
-    return insert_return_type{ret.first, false, std::move(nh)};
-  }
+  insert_return_type insert(node_type&& nh) { return node_type::InsertInto(*this, std::move(nh)); }
 
   /// If the insertion fails (equivalent element already present), 'nh' is unchanged.
-  iterator insert(const_iterator hint, node_type&& nh) {
-    if (!nh) {
-      return end();
-    }
-    // the value is only moved from if it is inserted
-    const size_type oldSize = size();
-    iterator retIt = insert(hint, std::move(*nh._optV));
-    if (size() != oldSize) {
-      nh._optV = std::nullopt;
-    }
-    return retIt;
-  }
+  iterator insert(const_iterator hint, node_type&& nh) { return node_type::InsertInto(*this, hint, std::move(nh)); }
 #endif
 
 #ifdef AMC_CXX23

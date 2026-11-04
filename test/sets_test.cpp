@@ -988,6 +988,25 @@ TYPED_TEST(SetListExtractTest, Extract) {
   EXPECT_TRUE(nh.empty());
   ASSERT_FALSE(nh2.empty());
   EXPECT_EQ(nh2.value(), ValueType(5));
+
+  // Like the node handles of the standard sets, the ones of FlatSet and SmallSet only depend on the value and allocator
+  // types: nodes move between sets of other comparators and underlying containers, in both directions.
+  using Alloc = typename SetType::allocator_type;
+  using OtherSetType =
+      SmallSet<ValueType, 1, std::greater<ValueType>, Alloc, FlatSet<ValueType, std::greater<ValueType>, Alloc>>;
+  static_assert(std::is_same_v<typename OtherSetType::node_type, typename SetType::node_type>);
+  OtherSetType o;
+  o.emplace(8);
+  o.emplace(9);  // large state of 'o'
+  irt = s.insert(o.extract(9));
+  EXPECT_TRUE(irt.inserted);
+  EXPECT_EQ(*irt.position, ValueType(9));
+  EXPECT_EQ(*s.insert(s.end(), o.extract(8)), ValueType(8));
+  EXPECT_TRUE(o.empty());
+  EXPECT_TRUE(o.insert(s.extract(9)).inserted);
+  EXPECT_TRUE(o.contains(9));
+  EXPECT_FALSE(s.contains(9));
+  EXPECT_TRUE(s.contains(8));
 }
 
 // Inserting a node whose value is already present fails and leaves the node untouched: it keeps its value.

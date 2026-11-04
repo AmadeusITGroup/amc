@@ -549,6 +549,8 @@ using VisitedCountries = amc::SmallSet<Country, 5>;
 using VisitedCities = amc::SmallSet<City, 20, std::less<City>, amc::allocator<City>, amc::FlatSet<City>>;
 ```
 
+Like the node handles of `std::set`, the `node_type` of `FlatSet` and `SmallSet` only depends on the value and allocator types: `extract` and `insert` move elements between sets of different comparators and underlying containers, from a `FlatSet` to a `SmallSet` and back.
+
 ##### Differences with std::set
 
 By design, `SmallSet` does not offer all the guarantees of `std::set`:
