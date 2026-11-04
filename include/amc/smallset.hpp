@@ -7,16 +7,15 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <set>
 #include <type_traits>
 #include <utility>
 #include <variant>
 
 #include "allocator.hpp"
-#include "config.hpp"
 #include "fixedcapacityvector.hpp"
 #include "istransparent.hpp"
+#include "setnode.hpp"
 #include "type_traits.hpp"
 
 #ifdef AMC_CXX20
@@ -175,70 +174,9 @@ class SmallSet {
   using pointer = const T*;
   using const_pointer = const T*;
 
-  class node_type : private Alloc {
-   public:
-    using value_type = T;
-    using allocator_type = Alloc;
-
-    node_type() noexcept = default;
-
-    node_type(const node_type&) = delete;
-    /// Like the standard node handles, a moved from node is empty.
-    node_type(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value)
-        : Alloc(std::move(static_cast<Alloc&>(o))), _optV(std::move(o._optV)) {
-      o._optV.reset();
-    }
-    node_type& operator=(const node_type&) = delete;
-    node_type& operator=(node_type&& o) noexcept(std::is_nothrow_move_constructible<value_type>::value &&
-                                                 std::is_nothrow_move_assignable<value_type>::value) {
-      if (this != &o) {
-        static_cast<Alloc&>(*this) = std::move(static_cast<Alloc&>(o));
-        _optV = std::move(o._optV);
-        o._optV.reset();
-      }
-      return *this;
-    }
-
-    ~node_type() = default;
-
-    bool empty() const noexcept { return !_optV.has_value(); }
-
-    explicit operator bool() const noexcept { return _optV.has_value(); }
-
-    allocator_type get_allocator() const { return static_cast<allocator_type>(*this); }
-
-    value_type& value() { return _optV.value(); }
-    const value_type& value() const { return _optV.value(); }
-
-    /// Like the standard node handles, the allocators are exchanged too: an empty node may hold the allocator of
-    /// another container, and two nodes holding values should have equal allocators, unless they propagate on swap.
-    void swap(node_type& o) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                     amc::is_nothrow_swappable<T>::value) {
-      _optV.swap(o._optV);  // first, as it may throw (the allocators cannot)
-      using std::swap;
-      swap(static_cast<Alloc&>(*this), static_cast<Alloc&>(o));
-    }
-
-    friend void swap(node_type& lhs, node_type& rhs) noexcept(std::is_nothrow_move_constructible<T>::value &&
-                                                              amc::is_nothrow_swappable<T>::value) {
-      lhs.swap(rhs);
-    }
-
-   private:
-    template <class, std::uintmax_t, class, class, class>
-    friend class SmallSet;
-
-    explicit node_type(Alloc alloc) : Alloc(alloc) {}
-    explicit node_type(value_type&& v, Alloc alloc = Alloc()) : Alloc(alloc), _optV(std::move(v)) {}
-
-    std::optional<value_type> _optV;
-  };
-
-  struct insert_return_type {
-    iterator position;
-    bool inserted;
-    node_type node;
-  };
+  /// Shared with the FlatSets and SmallSets of the same value and allocator types (see set_details::NodeHandle).
+  using node_type = set_details::NodeHandle<T, Alloc>;
+  using insert_return_type = set_details::InsertReturnType<iterator, node_type>;
 
   using trivially_relocatable =
       typename std::conditional<is_trivially_relocatable<VecType>::value && is_trivially_relocatable<SetType>::value,
@@ -373,32 +311,10 @@ class SmallSet {
 
   /// 'nh' is left empty. If the insertion fails (equivalent element already present), the returned node owns its value.
   /// If an exception is thrown (by the comparator, or by an allocation when growing), 'nh' keeps its value.
-  insert_return_type insert(node_type&& nh) {
-    if (!nh) {
-      return insert_return_type{end(), false, node_type()};
-    }
-    // the value is only moved from if it is inserted: it stays in 'nh' until the insertion succeeds or fails
-    const std::pair<iterator, bool> ret = insert(std::move(*nh._optV));
-    if (ret.second) {
-      nh._optV.reset();
-      return insert_return_type{ret.first, true, node_type()};
-    }
-    return insert_return_type{ret.first, false, std::move(nh)};
-  }
+  insert_return_type insert(node_type&& nh) { return node_type::InsertInto(*this, std::move(nh)); }
 
   /// If the insertion fails (equivalent element already present), 'nh' is unchanged.
-  iterator insert(const_iterator hint, node_type&& nh) {
-    if (!nh) {
-      return end();
-    }
-    // the value is only moved from if it is inserted
-    const size_type oldSize = size();
-    auto retIt = insert(hint, std::move(*nh._optV));
-    if (size() != oldSize) {
-      nh._optV = std::nullopt;
-    }
-    return retIt;
-  }
+  iterator insert(const_iterator hint, node_type&& nh) { return node_type::InsertInto(*this, hint, std::move(nh)); }
 
 #ifdef AMC_CXX23
   /// 'rg' may not be common (its end may be a sentinel of another type than its iterator).
@@ -488,27 +404,13 @@ class SmallSet {
     return 1U;
   }
 
-  template <class I = const_iterator>
-  iterator erase(const_iterator pos, typename std::enable_if<std::is_same<I, const T*>::value>::type* = 0) {
-    return isSmall() ? _vec.erase(pos) : afterSetErase(_set.erase(pos));
+  iterator erase(const_iterator pos) {
+    return isSmall() ? iterator(_vec.erase(ToVecIt(pos))) : afterSetErase(_set.erase(ToSetIt(pos)));
   }
 
-  template <class I = const_iterator>
-  iterator erase(const_iterator pos, typename std::enable_if<!std::is_same<I, const T*>::value>::type* = 0) {
-    return isSmall() ? iterator(_vec.erase(pos.toVecIt())) : afterSetErase(_set.erase(pos.toSetIt()));
-  }
-
-  template <class I = const_iterator>
-  iterator erase(const_iterator first, const_iterator last,
-                 typename std::enable_if<std::is_same<I, const T*>::value>::type* = 0) {
-    return isSmall() ? _vec.erase(first, last) : afterSetErase(_set.erase(first, last));
-  }
-
-  template <class I = const_iterator>
-  iterator erase(const_iterator first, const_iterator last,
-                 typename std::enable_if<!std::is_same<I, const T*>::value>::type* = 0) {
-    return isSmall() ? iterator(_vec.erase(first.toVecIt(), last.toVecIt()))
-                     : afterSetErase(_set.erase(first.toSetIt(), last.toSetIt()));
+  iterator erase(const_iterator first, const_iterator last) {
+    return isSmall() ? iterator(_vec.erase(ToVecIt(first), ToVecIt(last)))
+                     : afterSetErase(_set.erase(ToSetIt(first), ToSetIt(last)));
   }
 
   void swap(SmallSet& o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType&>())) &&
@@ -607,31 +509,12 @@ class SmallSet {
 
 #ifdef AMC_CXX20
   auto operator<=>(const SmallSet& o) const {
-    struct Comp {
-      auto operator()(const_pointer pLhs, const_pointer pRhs) const { return amc::synth_three_way()(*pLhs, *pRhs); }
-      auto operator()(const_pointer pLhs, const_reference rhs) const { return amc::synth_three_way()(*pLhs, rhs); }
-      auto operator()(const_reference lhs, const_pointer pRhs) const { return amc::synth_three_way()(lhs, *pRhs); }
-    };
-
-    if (isSmall()) {
-      auto sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
-      if (o.isSmall()) {
-        // We are both small, we need to sort both containers
-        auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
-        return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
-                                                      oSortedPtrs.end(), Comp());
-      }
-      // we are small: as we do not order elements in the small container, we need to sort them.
-      return amc::lexicographical_compare_three_way(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(),
-                                                    Comp());
+    if (!isSmall() && !o.isSmall()) {
+      return _set <=> o._set;
     }
-    if (o.isSmall()) {
-      // other is small: as we do not order elements in the small container, we need to sort them.
-      auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
-      return amc::lexicographical_compare_three_way(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(),
-                                                    Comp());
-    }
-    return _set <=> o._set;
+    return compareSorted(o, [](auto first1, auto last1, auto first2, auto last2) {
+      return amc::lexicographical_compare_three_way(first1, last1, first2, last2, DerefThreeWay());
+    });
   }
 
   /// Linear: the elements are not erased one by one, which would shift the next ones at each erase in the vector of the
@@ -651,29 +534,12 @@ class SmallSet {
   // Comparison operators are provided for compliance with std::set but could be painful for performances
   // as we keep elements unsorted in the 'small' container.
   bool operator<(const SmallSet& o) const {
-    struct Comp {
-      bool operator()(const_pointer pLhs, const_pointer pRhs) const { return *pLhs < *pRhs; }
-      bool operator()(const_pointer pLhs, const_reference rhs) const { return *pLhs < rhs; }
-      bool operator()(const_reference lhs, const_pointer pRhs) const { return lhs < *pRhs; }
-    };
-
-    if (isSmall()) {
-      auto sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
-      if (o.isSmall()) {
-        // We are both small, we need to sort both containers
-        auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
-        return std::lexicographical_compare(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(),
-                                            oSortedPtrs.end(), Comp());
-      }
-      // we are small: as we do not order elements in the small container, we need to sort them.
-      return std::lexicographical_compare(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end(), Comp());
+    if (!isSmall() && !o.isSmall()) {
+      return _set < o._set;
     }
-    if (o.isSmall()) {
-      // other is small: as we do not order elements in the small container, we need to sort them.
-      auto oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
-      return std::lexicographical_compare(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end(), Comp());
-    }
-    return _set < o._set;
+    return compareSorted(o, [](auto first1, auto last1, auto first2, auto last2) {
+      return std::lexicographical_compare(first1, last1, first2, last2, DerefLess());
+    });
   }
 
   bool operator<=(const SmallSet& o) const { return !(o < *this); }
@@ -853,6 +719,44 @@ class SmallSet {
               [&comp](const_pointer p1, const_pointer p2) { return comp(*p1, *p2); });
     return sortedPtrs;
   }
+
+  /// Returns 'lexCompare(first1, last1, first2, last2)' for the elements of 'this' and 'o' in increasing order, at
+  /// least one of the sets being small: as the elements of the small state are not ordered, the ones of a small set are
+  /// given by pointers to them, sorted by 'ComputeSortedPtrVec' (see DerefLess and DerefThreeWay).
+  template <class LexCompare>
+  auto compareSorted(const SmallSet& o, LexCompare lexCompare) const {
+    if (!isSmall()) {
+      const PtrVec oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
+      return lexCompare(_set.begin(), _set.end(), oSortedPtrs.begin(), oSortedPtrs.end());
+    }
+    const PtrVec sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
+    if (!o.isSmall()) {
+      return lexCompare(sortedPtrs.begin(), sortedPtrs.end(), o._set.begin(), o._set.end());
+    }
+    const PtrVec oSortedPtrs = ComputeSortedPtrVec(o._vec, o.key_comp());
+    return lexCompare(sortedPtrs.begin(), sortedPtrs.end(), oSortedPtrs.begin(), oSortedPtrs.end());
+  }
+
+  /// Element of a range compared by 'compareSorted': a pointer to an element of a small set, or an element of a large
+  /// one.
+  static const T& Deref(const_pointer p) noexcept { return *p; }
+  static const T& Deref(const_reference v) noexcept { return v; }
+
+#ifdef AMC_CXX20
+  struct DerefThreeWay {
+    template <class L, class R>
+    auto operator()(const L& lhs, const R& rhs) const {
+      return amc::synth_three_way()(Deref(lhs), Deref(rhs));
+    }
+  };
+#else
+  struct DerefLess {
+    template <class L, class R>
+    bool operator()(const L& lhs, const R& rhs) const {
+      return Deref(lhs) < Deref(rhs);
+    }
+  };
+#endif
 
   template <class, std::uintmax_t, class, class, class>
   friend class SmallSet;
