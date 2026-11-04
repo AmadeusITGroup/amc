@@ -41,3 +41,8 @@ add_bench(
   sets_benchmark
   sets_benchmark.cpp
 )
+
+add_bench(
+  smallsets_benchmark
+  smallsets_benchmark.cpp
+)

@@ -20,6 +20,7 @@
     - [Performance optimizations](#performance-optimizations)
       - [Vectors](#vectors)
       - [Sets](#sets)
+      - [SmallSet](#smallset)
     - [Other benefits](#other-benefits)
       - [For vector types](#for-vector-types)
       - [For FlatSet](#for-flatset)
@@ -106,6 +107,21 @@ Lookup time mostly depends on where the set fits in the cache hierarchy: per ele
  - With 1 000 000 elements, `amc::FlatSet` (4 MB) still fits in the L3 cache while the node based sets (40 to 50 MB) do not: its lookup latency is 3.3 to 4.4 times lower than the one of `std::unordered_set`.
  - The binary searches of `amc::FlatSet<uint32_t>` are branchless with both compilers: the next half of the range is selected with a conditional move, which, unlike a branch, is never mispredicted. The address of the next element to compare then depends on the result of the current comparison, so in sets larger than the L1 cache, each step prefetches the 4 elements which the two following steps may compare: the cache misses of successive steps overlap. This applies to scalar types (arithmetic, enumerations, pointers) ordered by `std::less` or `std::greater`. With costlier comparisons, like those of `std::string` or of a comparator dereferencing pointers, the branchless search is slower, so `amc::FlatSet` keeps `std::lower_bound` for them.
  - GCC compiles the tree search of `std::set` with branches, Clang with conditional moves. Mispredicted branches serialize the lookups, so with GCC independent lookups of `std::set` are barely faster than chained ones.
+
+#### SmallSet
+
+![amc::SmallSet vs std::set](./docs/bench_smallset.svg)
+
+`amc::SmallSet<T, N>` keeps up to `N` elements unsorted in an inline vector: an insertion is a linear search followed by a `push_back`, without allocation. Beyond `N` elements, it moves them to its set type, `std::set` by default. The charts compare `N = 16` to the other sets (`amc::FlatSet` uses an `amc::vector`), with elements which are cheap to compare and trivially relocatable (`uint32_t`), or not (short `std::string`):
+
+ - **`uint32_t`, mostly small sets**: filling a `SmallSet` of up to 16 elements costs 1.5 to 3 ns per element, 6 to 10 times less than a `std::set` and 4.5 to 7.5 times less than an `amc::FlatSet`. As soon as some sets are large though, those of the default `SmallSet<T, 16>` allocate a `std::set` node per element: with 10 % of large sets, it is already 2.3 to 2.4 times slower than a `SmallSet` whose set type is an `amc::FlatSet`.
+ - **`SmallSet<T, N, std::less<T>, amc::allocator<T>, amc::FlatSet<T>>`** is the fastest of these sets of `uint32_t` from 50 % of small sets: 6.5 to 6.9 times faster than `std::set` when all the sets are small, and still 2.9 to 3.5 times when they all are large. Its large state is within 10 % of an `amc::FlatSet`, for fills and lookups.
+ - **Lookups** are not what `SmallSet` speeds up the most: up to 16 elements, the linear search of the small state is up to 1.7 times faster than the one of a `std::set` with GCC, but the branchless binary search of an `amc::FlatSet` is about twice faster from 4 elements. With Clang, the three of them are within 1.4 times of each other.
+ - **`std::string`**: the linear search compares the looked up value with each element (once or twice), so at 16 elements, a lookup takes 1.4 (Clang) to 2 (GCC) times as long as in a `std::set`, and `SmallSet` is 1.5 to 1.6 times slower than `std::set` even when all the sets are small. Only the sets of at most 8 elements are faster to fill. `std::string` is not trivially relocatable either: an `amc::FlatSet` moves its elements one by one at each insertion, so the fill of a large `SmallSet` with an `amc::FlatSet` is 2 to 3 times slower than with a `std::set` at 256 elements, and 17 to 22 times at 4096. `std::unordered_set` is the fastest set of strings, except to fill the smallest ones.
+
+![Sets by number of elements](./docs/bench_smallset_sizes.svg)
+
+`SmallSet` with an `amc::FlatSet` is thus the set of choice for sets of integers, enumerations, pointers or small trivially relocatable types which are often built, most of them with at most `N` elements: like `SmallVector`, choose `N` to cover most of them. Keep `std::set` (or `std::unordered_set` when the order of the elements does not matter) for strings and other types with costly comparisons. The SmallSet benchmarks ran 4 processes at a time, each pinned to its own core of the same L3 cache: they are about 4 % slower than alone, all of them alike.
 
 #### Benchmarks
 
@@ -280,6 +296,110 @@ The charts are drawn by [benchmark/plot_benchmarks.py](benchmark/plot_benchmarks
 | 100 000    |  59.9 ns / 105 ns |   9.7 ns / 39.8 ns | 30.1 ns / 42.7 ns |
 | 1 000 000  |   268 ns / 703 ns |   58.7 ns / 349 ns |   50.2 ns / 80 ns |
 | 10 000 000 |  650 ns / 1.36 µs |   77.2 ns / 475 ns |   306 ns / 488 ns |
+
+</details>
+
+<details><summary>SmallSet, GCC 13</summary>
+
+| Sets                                     | std::set | std::unordered_set | amc::FlatSet | FlatSet, SmallVector<T, 16> | SmallSet<T, 16> | SmallSet<T, 16, FlatSet> | SmallSet with FlatSet vs std::set |
+| ---------------------------------------- | -------: | -----------------: | -----------: | --------------------------: | --------------: | -----------------------: | --------------------------------: |
+| uint32_t: All large                      |  3.26 µs |            1.54 µs |       912 ns |                      925 ns |         3.13 µs |                   938 ns |                       3.5× faster |
+| uint32_t: 50 % small                     |  1.95 µs |             941 ns |       546 ns |                      539 ns |         1.63 µs |                   516 ns |                       3.8× faster |
+| uint32_t: 80 % small                     |  1.06 µs |             564 ns |       328 ns |                      310 ns |          705 ns |                   257 ns |                       4.1× faster |
+| uint32_t: 90 % small                     |   768 ns |             423 ns |       248 ns |                      230 ns |          385 ns |                   159 ns |                       4.8× faster |
+| uint32_t: 95 % small                     |   626 ns |             356 ns |       208 ns |                      194 ns |          236 ns |                   113 ns |                       5.5× faster |
+| uint32_t: 99 % small                     |   499 ns |             306 ns |       179 ns |                      160 ns |          107 ns |                  80.1 ns |                       6.2× faster |
+| uint32_t: All small                      |   458 ns |             291 ns |       171 ns |                      151 ns |         73.1 ns |                  70.9 ns |                       6.5× faster |
+| std::string of 12 characters: All large  |  5.89 µs |            2.55 µs |      5.78 µs |                     6.25 µs |         6.95 µs |                  7.01 µs |                       1.2× slower |
+| std::string of 12 characters: 50 % small |  3.42 µs |            1.55 µs |      3.34 µs |                     3.51 µs |         4.17 µs |                  4.27 µs |                       1.2× slower |
+| std::string of 12 characters: 80 % small |  1.93 µs |             934 ns |       1.8 µs |                     1.87 µs |         2.46 µs |                  2.47 µs |                       1.3× slower |
+| std::string of 12 characters: 90 % small |   1.4 µs |             733 ns |      1.28 µs |                     1.31 µs |         1.87 µs |                   1.9 µs |                       1.4× slower |
+| std::string of 12 characters: 95 % small |  1.12 µs |             646 ns |      1.02 µs |                     1.02 µs |         1.59 µs |                  1.63 µs |                       1.5× slower |
+| std::string of 12 characters: 99 % small |   883 ns |             542 ns |       830 ns |                      798 ns |         1.35 µs |                  1.37 µs |                       1.5× slower |
+| std::string of 12 characters: All small  |   830 ns |             515 ns |       743 ns |                      730 ns |          1.3 µs |                  1.32 µs |                       1.6× slower |
+
+</details>
+
+<details><summary>SmallSet, Clang 23</summary>
+
+| Sets                                     | std::set | std::unordered_set | amc::FlatSet | FlatSet, SmallVector<T, 16> | SmallSet<T, 16> | SmallSet<T, 16, FlatSet> | SmallSet with FlatSet vs std::set |
+| ---------------------------------------- | -------: | -----------------: | -----------: | --------------------------: | --------------: | -----------------------: | --------------------------------: |
+| uint32_t: All large                      |  2.57 µs |            1.62 µs |       899 ns |                      920 ns |         2.51 µs |                   899 ns |                       2.9× faster |
+| uint32_t: 50 % small                     |  1.48 µs |             964 ns |       543 ns |                      542 ns |         1.29 µs |                   481 ns |                       3.1× faster |
+| uint32_t: 80 % small                     |   811 ns |             563 ns |       317 ns |                      312 ns |          549 ns |                   222 ns |                       3.7× faster |
+| uint32_t: 90 % small                     |   586 ns |             431 ns |       240 ns |                      232 ns |          313 ns |                   137 ns |                       4.3× faster |
+| uint32_t: 95 % small                     |   477 ns |             365 ns |       202 ns |                      194 ns |          182 ns |                  95.8 ns |                       5.0× faster |
+| uint32_t: 99 % small                     |   379 ns |             312 ns |       175 ns |                      162 ns |         81.2 ns |                  60.1 ns |                       6.3× faster |
+| uint32_t: All small                      |   353 ns |             294 ns |       164 ns |                      154 ns |         54.8 ns |                  51.2 ns |                       6.9× faster |
+| std::string of 12 characters: All large  |  5.44 µs |            2.62 µs |      5.73 µs |                     5.73 µs |         6.42 µs |                  6.24 µs |                       1.1× slower |
+| std::string of 12 characters: 50 % small |  3.12 µs |            1.57 µs |      3.26 µs |                      3.3 µs |         3.77 µs |                  3.75 µs |                       1.2× slower |
+| std::string of 12 characters: 80 % small |  1.74 µs |             940 ns |      1.83 µs |                     1.77 µs |         2.19 µs |                  2.18 µs |                       1.3× slower |
+| std::string of 12 characters: 90 % small |  1.25 µs |             750 ns |      1.24 µs |                     1.25 µs |         1.66 µs |                  1.66 µs |                       1.3× slower |
+| std::string of 12 characters: 95 % small |   992 ns |             634 ns |       984 ns |                      961 ns |         1.43 µs |                   1.4 µs |                       1.4× slower |
+| std::string of 12 characters: 99 % small |   792 ns |             545 ns |       761 ns |                      733 ns |         1.17 µs |                   1.2 µs |                       1.5× slower |
+| std::string of 12 characters: All small  |   747 ns |             517 ns |       705 ns |                      671 ns |         1.12 µs |                  1.13 µs |                       1.5× slower |
+
+</details>
+
+<details><summary>Sets by number of elements (fill per element / lookup), GCC 13</summary>
+
+| Elements                            | std::set          | std::unordered_set | amc::FlatSet      | FlatSet, SmallVector<T, 16> | SmallSet<T, 16>   | SmallSet<T, 16, FlatSet> |
+| ----------------------------------- | ----------------: | -----------------: | ----------------: | --------------------------: | ----------------: | -----------------------: |
+| uint32_t: 2                         |  10.8 ns / 5.4 ns |  18.7 ns / 6.89 ns |   10 ns / 6.67 ns |            4.4 ns / 6.68 ns | 1.63 ns / 3.94 ns |        1.72 ns / 3.93 ns |
+| uint32_t: 4                         | 14.4 ns / 8.45 ns |  15.1 ns / 6.91 ns |  11.4 ns / 3.7 ns |           7.22 ns / 8.53 ns |  1.5 ns / 6.44 ns |        1.59 ns / 6.33 ns |
+| uint32_t: 8                         | 18.2 ns / 9.27 ns |   15.9 ns / 9.6 ns | 12.3 ns / 2.83 ns |           9.56 ns / 9.12 ns | 1.87 ns / 6.68 ns |        1.88 ns / 6.65 ns |
+| uint32_t: 16                        | 27.7 ns / 12.6 ns |  22.7 ns / 13.1 ns | 13.9 ns / 4.14 ns |           12.4 ns / 10.4 ns | 2.68 ns / 7.59 ns |        2.89 ns / 7.04 ns |
+| uint32_t: 32                        |   32.9 ns / 15 ns |    26 ns / 12.1 ns | 15.3 ns / 4.12 ns |           14.6 ns / 11.2 ns | 34.1 ns / 14.9 ns |         14.7 ns / 4.1 ns |
+| uint32_t: 64                        |   37 ns / 18.6 ns |    27 ns / 12.6 ns | 17.2 ns / 4.81 ns |           16.7 ns / 12.6 ns | 38.1 ns / 18.6 ns |        16.8 ns / 4.56 ns |
+| uint32_t: 128                       | 39.8 ns / 21.7 ns |  27.6 ns / 12.4 ns | 18.7 ns / 5.45 ns |           18.6 ns / 13.1 ns | 41.6 ns / 21.9 ns |        19.4 ns / 5.28 ns |
+| uint32_t: 256                       | 42.7 ns / 24.9 ns |  30.1 ns / 14.6 ns | 20.8 ns / 5.94 ns |           20.9 ns / 14.2 ns | 44.6 ns / 25.4 ns |         20.9 ns / 5.8 ns |
+| uint32_t: 512                       | 43.6 ns / 28.1 ns |  34.4 ns / 14.6 ns | 23.1 ns / 6.57 ns |           23.5 ns / 15.2 ns | 45.5 ns / 28.9 ns |        23.4 ns / 6.61 ns |
+| uint32_t: 1 024                     | 45.7 ns / 33.6 ns |  36.4 ns / 14.8 ns | 26.9 ns / 7.61 ns |           27.1 ns / 16.2 ns | 47.7 ns / 34.4 ns |          27 ns / 7.12 ns |
+| uint32_t: 2 048                     | 50.5 ns / 41.8 ns |  37.9 ns / 15.5 ns | 32.8 ns / 8.19 ns |           33.2 ns / 17.2 ns |   52.7 ns / 42 ns |        32.9 ns / 7.89 ns |
+| uint32_t: 4 096                     | 54.5 ns / 50.3 ns |  38.2 ns / 15.4 ns | 43.4 ns / 9.15 ns |           43.6 ns / 18.7 ns | 56.3 ns / 50.1 ns |        43.8 ns / 8.95 ns |
+| std::string of 12 characters: 2     | 18.8 ns / 11.2 ns |  25.4 ns / 9.15 ns | 17.2 ns / 12.5 ns |           11.6 ns / 12.6 ns | 10.4 ns / 16.3 ns |        11.4 ns / 16.7 ns |
+| std::string of 12 characters: 4     | 24.9 ns / 19.2 ns |  22.7 ns / 10.7 ns | 22.1 ns / 19.1 ns |               17 ns / 19 ns | 16.6 ns / 22.7 ns |        17.4 ns / 22.4 ns |
+| std::string of 12 characters: 8     | 30.3 ns / 21.9 ns |    23 ns / 13.9 ns | 27.7 ns / 22.8 ns |           23.4 ns / 22.5 ns |   24 ns / 31.6 ns |        24.7 ns / 32.1 ns |
+| std::string of 12 characters: 16    | 43.4 ns / 27.9 ns |    34 ns / 21.1 ns |   37 ns / 30.6 ns |           33.4 ns / 29.8 ns |   51 ns / 56.2 ns |        52.2 ns / 55.1 ns |
+| std::string of 12 characters: 32    | 53.8 ns / 32.5 ns |  39.2 ns / 17.7 ns | 50.8 ns / 35.6 ns |             46.5 ns / 35 ns | 85.5 ns / 33.9 ns |        78.3 ns / 35.2 ns |
+| std::string of 12 characters: 64    | 62.4 ns / 42.3 ns |  38.7 ns / 16.8 ns |   71 ns / 42.5 ns |             65 ns / 42.1 ns | 80.4 ns / 40.9 ns |        97.8 ns / 42.3 ns |
+| std::string of 12 characters: 128   | 70.1 ns / 50.4 ns |    38 ns / 17.2 ns |  102 ns / 51.2 ns |           89.2 ns / 49.9 ns |   81 ns / 48.1 ns |         141 ns / 49.7 ns |
+| std::string of 12 characters: 256   | 76.6 ns / 57.1 ns |  38.2 ns / 21.5 ns |  157 ns / 57.8 ns |            132 ns / 57.5 ns | 85.3 ns / 55.1 ns |         228 ns / 58.6 ns |
+| std::string of 12 characters: 512   | 83.5 ns / 66.3 ns |  41.7 ns / 21.8 ns |  259 ns / 65.1 ns |            210 ns / 64.4 ns | 91.9 ns / 63.6 ns |         402 ns / 65.3 ns |
+| std::string of 12 characters: 1 024 | 94.1 ns / 76.8 ns |    44.8 ns / 23 ns |  455 ns / 74.2 ns |              353 ns / 74 ns |  100 ns / 74.3 ns |         729 ns / 73.6 ns |
+| std::string of 12 characters: 2 048 |  102 ns / 86.2 ns |  44.2 ns / 23.6 ns |  833 ns / 86.3 ns |            632 ns / 88.1 ns |  109 ns / 83.9 ns |        1.38 µs / 85.6 ns |
+| std::string of 12 characters: 4 096 |  113 ns / 97.4 ns |    45 ns / 24.4 ns |  1.6 µs / 98.8 ns |             1.2 µs / 104 ns |    120 ns / 97 ns |         2.7 µs / 99.2 ns |
+
+</details>
+
+<details><summary>Sets by number of elements (fill per element / lookup), Clang 23</summary>
+
+| Elements                            | std::set          | std::unordered_set | amc::FlatSet      | FlatSet, SmallVector<T, 16> | SmallSet<T, 16>   | SmallSet<T, 16, FlatSet> |
+| ----------------------------------- | ----------------: | -----------------: | ----------------: | --------------------------: | ----------------: | -----------------------: |
+| uint32_t: 2                         | 11.3 ns / 7.41 ns |  18.5 ns / 6.66 ns | 10.2 ns / 6.68 ns |           6.91 ns / 6.67 ns | 1.94 ns / 6.72 ns |        1.78 ns / 6.71 ns |
+| uint32_t: 4                         |    15 ns / 5.8 ns |  14.7 ns / 7.24 ns | 11.3 ns / 8.39 ns |           9.22 ns / 8.35 ns | 1.79 ns / 6.76 ns |        1.77 ns / 6.75 ns |
+| uint32_t: 8                         |   19 ns / 7.03 ns |  15.1 ns / 10.3 ns | 11.9 ns / 9.03 ns |           10.7 ns / 9.05 ns | 2.08 ns / 7.24 ns |        2.19 ns / 7.22 ns |
+| uint32_t: 16                        | 28.3 ns / 11.4 ns |  21.1 ns / 13.5 ns | 13.4 ns / 10.4 ns |           12.6 ns / 10.4 ns | 2.97 ns / 8.11 ns |        3.17 ns / 8.14 ns |
+| uint32_t: 32                        |   35.6 ns / 13 ns |  25.1 ns / 12.2 ns |   15 ns / 11.2 ns |             15 ns / 11.2 ns | 34.7 ns / 13.3 ns |        14.7 ns / 12.1 ns |
+| uint32_t: 64                        |   40.2 ns / 13 ns |      26 ns / 13 ns | 16.7 ns / 12.1 ns |           16.8 ns / 12.2 ns | 39.4 ns / 13.2 ns |        16.6 ns / 13.1 ns |
+| uint32_t: 128                       |   44 ns / 14.1 ns |  26.8 ns / 12.8 ns |   18 ns / 13.1 ns |           18.4 ns / 13.1 ns | 42.8 ns / 13.9 ns |            18 ns / 14 ns |
+| uint32_t: 256                       | 47.2 ns / 17.2 ns |  28.2 ns / 14.9 ns | 20.4 ns / 14.1 ns |             20.7 ns / 14 ns | 46.1 ns / 17.1 ns |          20.4 ns / 15 ns |
+| uint32_t: 512                       | 50.8 ns / 20.9 ns |  31.8 ns / 14.8 ns | 23.2 ns / 16.2 ns |           23.4 ns / 15.2 ns | 48.9 ns / 20.8 ns |        23.1 ns / 16.2 ns |
+| uint32_t: 1 024                     | 53.3 ns / 22.7 ns |  33.4 ns / 15.2 ns | 26.8 ns / 16.2 ns |           27.1 ns / 16.2 ns | 52.5 ns / 22.6 ns |        26.9 ns / 17.3 ns |
+| uint32_t: 2 048                     | 58.9 ns / 26.8 ns |  34.2 ns / 15.9 ns | 32.6 ns / 17.2 ns |           33.4 ns / 17.4 ns | 57.3 ns / 26.7 ns |        32.7 ns / 18.5 ns |
+| uint32_t: 4 096                     | 63.6 ns / 30.5 ns |    34.6 ns / 16 ns | 42.7 ns / 19.1 ns |           43.7 ns / 19.3 ns | 62.1 ns / 31.7 ns |        43.3 ns / 20.2 ns |
+| std::string of 12 characters: 2     | 18.8 ns / 13.1 ns |    26.9 ns / 10 ns | 17.3 ns / 11.8 ns |           11.4 ns / 11.8 ns | 10.1 ns / 13.6 ns |          10 ns / 13.1 ns |
+| std::string of 12 characters: 4     | 23.8 ns / 19.5 ns |  23.3 ns / 11.4 ns | 22.4 ns / 17.3 ns |             17 ns / 17.9 ns | 14.6 ns / 20.6 ns |        14.5 ns / 19.9 ns |
+| std::string of 12 characters: 8     | 32.2 ns / 25.3 ns |  25.4 ns / 15.7 ns | 28.8 ns / 19.9 ns |             25 ns / 20.5 ns | 22.6 ns / 27.4 ns |        21.9 ns / 26.9 ns |
+| std::string of 12 characters: 16    | 45.7 ns / 32.1 ns |  34.7 ns / 22.7 ns | 37.8 ns / 27.7 ns |           35.9 ns / 28.5 ns | 47.8 ns / 44.9 ns |            48 ns / 45 ns |
+| std::string of 12 characters: 32    | 56.9 ns / 38.6 ns |  40.2 ns / 18.8 ns | 52.6 ns / 32.3 ns |           53.1 ns / 33.7 ns | 82.6 ns / 38.8 ns |        70.9 ns / 32.9 ns |
+| std::string of 12 characters: 64    | 66.1 ns / 44.2 ns |  39.1 ns / 17.7 ns | 75.8 ns / 39.9 ns |           77.4 ns / 40.7 ns | 77.4 ns / 44.2 ns |        87.3 ns / 41.3 ns |
+| std::string of 12 characters: 128   | 75.9 ns / 50.4 ns |  39.6 ns / 18.3 ns |  115 ns / 47.8 ns |            118 ns / 48.1 ns | 80.2 ns / 50.5 ns |         119 ns / 48.2 ns |
+| std::string of 12 characters: 256   |   83.2 ns / 58 ns |  39.4 ns / 22.9 ns |  181 ns / 55.5 ns |              186 ns / 56 ns | 85.1 ns / 58.2 ns |         186 ns / 55.3 ns |
+| std::string of 12 characters: 512   | 90.4 ns / 67.1 ns |  42.8 ns / 23.2 ns |  311 ns / 62.4 ns |            313 ns / 62.8 ns | 90.3 ns / 66.7 ns |         315 ns / 62.6 ns |
+| std::string of 12 characters: 1 024 | 99.8 ns / 75.8 ns |  45.3 ns / 24.5 ns |  565 ns / 72.6 ns |            569 ns / 73.9 ns |  100 ns / 77.9 ns |         564 ns / 72.2 ns |
+| std::string of 12 characters: 2 048 |  112 ns / 88.2 ns |  46.2 ns / 25.1 ns | 1.07 µs / 83.3 ns |           1.05 µs / 87.2 ns |  109 ns / 86.6 ns |        1.05 µs / 83.4 ns |
+| std::string of 12 characters: 4 096 |  121 ns / 97.9 ns |  45.6 ns / 25.6 ns | 2.03 µs / 94.7 ns |             2.04 µs / 98 ns |  121 ns / 98.7 ns |        2.07 µs / 95.3 ns |
 
 </details>
 

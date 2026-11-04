@@ -13,7 +13,8 @@ Only needs the Python standard library.
          --benchmark_out=<dir>/vectors-gcc13-$((++n)).json --benchmark_out_format=json
      done
 
-   and the same for sets_benchmark (sets-gcc13-<n>.json), and for other compilers (vectors-clang23-<n>.json...).
+   and the same for sets_benchmark (sets-gcc13-<n>.json) and smallsets_benchmark (smallsets-gcc13-<n>.json), and for
+   other compilers (vectors-clang23-<n>.json...).
    The compiler tag 'gcc13' is displayed as 'GCC 13', 'clang23' as 'Clang 23'.
 
 2. python3 benchmark/plot_benchmarks.py --import <dir>
@@ -44,11 +45,16 @@ TIME_UNITS_NS = {"ns": 1.0, "us": 1e3, "ms": 1e6, "s": 1e9}
 # Series, in fixed order: the color follows the container, whatever the chart.
 STD_ORDERED, STD_HASHED, AMC = "ref", "uno", "amc"
 AMC_VECTOR = "amcv"  # amc::vector beside amc::SmallVector
+# SmallSets: diamonds (and dashed lines) of the color of the container of their large state (std::set or amc::FlatSet)
+SMALL_SET, SMALL_FLAT_SET = "small", "smallflat"
+FLAT_SET_SMALL_VECTOR = "flatsv"  # amc::FlatSet over a SmallVector, only in the tables
+DIAMONDS = (SMALL_SET, SMALL_FLAT_SET)
 
 FONT = "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
 
 # Light values: GitHub light 'subtle canvas' surface. Dark values: GitHub dark one. The 3 series colors are validated
-# for color vision deficiencies against both surfaces.
+# for color vision deficiencies against both surfaces. The SmallSet series reuse the colors of std::set and amc::FlatSet
+# (the containers of their large state), told apart by their diamond markers and dashed lines rather than by color.
 STYLE = """
 :root { --bg: #f6f8fa; --ink: #1f2328; --ink2: #59636e; --grid: #e1e4e8; --axis: #c8d1da;
         --s-ref: #eb6834; --s-uno: #1baf7a; --s-amc: #2a78d6; }
@@ -76,6 +82,13 @@ text { font-family: %s; fill: var(--ink); }
 .line.ref { stroke: var(--s-ref); fill: none; } .line.uno { stroke: var(--s-uno); fill: none; }
 .line.amc { stroke: var(--s-amc); fill: none; }
 """ % FONT
+
+# Only in the charts with SmallSet series, so that the other ones do not change
+SMALL_SET_STYLE = """.diamond { stroke: var(--bg); stroke-width: 1.5; }
+.diamond.small { fill: var(--s-ref); } .diamond.smallflat { fill: var(--s-amc); }
+.line.small { stroke: var(--s-ref); stroke-dasharray: 6 4; fill: none; }
+.line.smallflat { stroke: var(--s-amc); stroke-dasharray: 6 4; fill: none; }
+"""
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -180,7 +193,7 @@ def fmt_tick_time(ns):
 
 def fmt_count(n):
     for suffix, scale in (("M", 1e6), ("k", 1e3)):
-        if n >= scale:
+        if n >= scale and n % scale == 0:
             return f"{n / scale:g}{suffix}"
     return f"{n:g}"
 
@@ -207,6 +220,7 @@ class Svg:
     def __init__(self, width):
         self.width = width
         self.items = []
+        self.small_sets = False  # whether SMALL_SET_STYLE is needed
 
     def add(self, item):
         self.items.append(item)
@@ -218,8 +232,14 @@ class Svg:
         self.add(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" class="{cls}"/>')
 
     def dot(self, x, y, series):
-        """Filled dot for amc, ring for the std containers: they stay visible on top of each other."""
-        if series in (AMC, AMC_VECTOR):
+        """Filled dot for amc, ring for the std containers, diamond for SmallSet: they stay visible on top of each
+        other."""
+        if series in DIAMONDS:
+            self.small_sets = True
+            r = 6.5
+            points = f"{x:.1f},{y - r:.1f} {x + r:.1f},{y:.1f} {x:.1f},{y + r:.1f} {x - r:.1f},{y:.1f}"
+            self.add(f'<polygon points="{points}" class="diamond {series}"/>')
+        elif series in (AMC, AMC_VECTOR):
             self.add(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" class="dot {series}"/>')
         else:
             self.add(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" class="ring {series}"/>')
@@ -230,7 +250,7 @@ class Svg:
             f'viewBox="0 0 {self.width} {height:.0f}" role="img" aria-labelledby="title desc">',
             f"<title id=\"title\">{escape(title)}</title>",
             f"<desc id=\"desc\">{escape(description)}</desc>",
-            f"<style>{STYLE}</style>",
+            f"<style>{STYLE + (SMALL_SET_STYLE if self.small_sets else '')}</style>",
             f'<rect class="bg" width="{self.width}" height="{height:.0f}" rx="12"/>',
         ]
         with open(path, "w") as f:
@@ -260,9 +280,14 @@ class LogScale:
         return [10.0**e for e in range(math.ceil(self.lo - 1e-9), math.floor(self.hi + 1e-9) + 1)]
 
 
-def legend(svg, x, y, entries, line_key=False):
-    """Legend row: a colored key beside each name (text keeps the ink color)."""
+def legend(svg, x, y, entries, line_key=False, max_x=None):
+    """Legend rows: a colored key beside each name (text keeps the ink color). Entries going beyond 'max_x' wrap to
+    the next row. Returns the y of the last row."""
+    x0 = x
     for series, name in entries:
+        entry_w = (30 if line_key else 18) + 8.2 * len(name)
+        if max_x is not None and x > x0 and x + entry_w > max_x:
+            x, y = x0, y + 22
         if line_key:
             svg.add(f'<line x1="{x:.1f}" y1="{y - 4:.1f}" x2="{x + 22:.1f}" y2="{y - 4:.1f}" class="line {series}"/>')
             svg.dot(x + 11, y - 4, series)
@@ -272,6 +297,7 @@ def legend(svg, x, y, entries, line_key=False):
             x += 18
         svg.text(x, y, name, "label")
         x += 8.2 * len(name) + 24
+    return y
 
 
 def header(svg, left, title, subtitle):
@@ -284,9 +310,9 @@ def header(svg, left, title, subtitle):
     return y + 12
 
 
-def dumbbell_chart(path, title, subtitle, series, panels, ratio_title, description):
-    """One row per operation: a dot per container on a shared log time axis, and the speedup of the AMC series over the
-    STD_ORDERED one.
+def dumbbell_chart(path, title, subtitle, series, panels, ratio_title, description, ratio_series=AMC):
+    """One row per operation: a dot per container on a shared log time axis, and the speedup of the 'ratio_series'
+    series over the STD_ORDERED one.
 
     'series' is the ordered list of (series, container name), 'panels' a list of (panel title, rows), a row being
     (label, {series: time in ns}).
@@ -299,8 +325,9 @@ def dumbbell_chart(path, title, subtitle, series, panels, ratio_title, descripti
 
     svg = Svg(width)
     legend_y = header(svg, left, title, subtitle)
-    legend(svg, left, legend_y, series)
-    svg.text(width - right, legend_y, ratio_title, "subtitle", anchor="end")
+    first_legend_y = legend_y
+    legend_y = legend(svg, left, legend_y, series, max_x=width - right - 7 * len(ratio_title) - 24)
+    svg.text(width - right, first_legend_y, ratio_title, "subtitle", anchor="end")
 
     y = legend_y + 22
     for panel_title, rows in panels:
@@ -318,13 +345,20 @@ def dumbbell_chart(path, title, subtitle, series, panels, ratio_title, descripti
             for s, _ in series:  # amc is last: on top
                 if s in row:
                     svg.dot(scale(row[s]), cy, s)
-            number, word = fmt_ratio(row[STD_ORDERED], row[AMC])
+            number, word = fmt_ratio(row[STD_ORDERED], row[ratio_series])
             tspans = f'<tspan class="word">{word}</tspan>'
             if number:
                 tspans = f'<tspan font-weight="600">{number}</tspan> ' + tspans
             svg.add(f'<text x="{width - right}" y="{cy + 4.5:.1f}" class="ratio" text-anchor="end">{tspans}</text>')
         y = bottom + axis_h + panel_gap
     svg.save(path, y, title, description)
+
+
+def thin_ticks(xs, scale, min_gap=34):
+    """Every other tick of 'xs' while they are closer than 'min_gap' pixels, for the labels to stay readable."""
+    while len(xs) > 2 and min(scale(b) - scale(a) for a, b in zip(xs, xs[1:])) < min_gap:
+        xs = xs[::2]
+    return xs
 
 
 def lines_chart(path, title, subtitle, series, panels, description):
@@ -341,7 +375,7 @@ def lines_chart(path, title, subtitle, series, panels, description):
 
     svg = Svg(width)
     legend_y = header(svg, left, title, subtitle)
-    legend(svg, left, legend_y, series, line_key=True)
+    legend_y = legend(svg, left, legend_y, series, line_key=True, max_x=width - right)
 
     y = legend_y + 22
     for row in panels:
@@ -355,7 +389,7 @@ def lines_chart(path, title, subtitle, series, panels, description):
             for d in sy.decades():
                 svg.line(x0 + y_label_w, sy(d), x0 + panel_w, sy(d), "grid")
                 svg.text(x0 + y_label_w - 6, sy(d) + 4, fmt_tick_time(d), "tick", anchor="end")
-            for xv in sorted({x for pts in lines.values() for x, _ in pts}):
+            for xv in thin_ticks(sorted({x for pts in lines.values() for x, _ in pts}), sx):
                 svg.text(sx(xv), bottom + 18, fmt_count(xv), "tick", anchor="middle")
             svg.line(x0 + y_label_w, bottom, x0 + panel_w, bottom, "axis")
             for s, _ in series:
@@ -471,6 +505,46 @@ def lookup_lines(bench, family):
     return lines
 
 
+# SmallSet: kSmallSize of smallsets_benchmark.cpp, also the inline capacity of the SmallVector of a FlatSet
+SMALL_SET_SIZE = 16
+SMALL_SET_TYPES = [("Int", "uint32_t"), ("String", "std::string of 12 characters")]
+SMALL_SET_SERIES = [(STD_ORDERED, "std::set"), (STD_HASHED, "std::unordered_set"), (AMC, "amc::FlatSet"),
+                    (SMALL_SET, f"SmallSet<T, {SMALL_SET_SIZE}>"),
+                    (SMALL_FLAT_SET, f"SmallSet<T, {SMALL_SET_SIZE}, FlatSet>")]
+# The tables also show a FlatSet over a SmallVector, the other inline storage of a set
+SMALL_SET_TABLE_SERIES = (SMALL_SET_SERIES[:3] +
+                          [(FLAT_SET_SMALL_VECTOR, f"FlatSet, SmallVector<T, {SMALL_SET_SIZE}>")] +
+                          SMALL_SET_SERIES[3:])
+SMALL_SET_PREFIX = {STD_ORDERED: "REF", STD_HASHED: "REFUno", AMC: "AMCFlat", FLAT_SET_SMALL_VECTOR: "AMCFlatSmallVec",
+                    SMALL_SET: "AMCSmall", SMALL_FLAT_SET: "AMCSmallFlat"}
+
+
+def small_set_rows(bench, type_suffix, series):
+    """Rows of the SmallSet chart: one per percentage of small sets."""
+    rows = []
+    percents = sorted({int(k.split("/")[1]) for k in bench if k.startswith(f"SmallSizes<AMCSmall{type_suffix}>/")})
+    for percent in percents:
+        row = {s: bench.get(f"SmallSizes<{SMALL_SET_PREFIX[s]}{type_suffix}>/{percent}") for s, _ in series}
+        if None not in row.values():
+            label = {0: "All large", 100: "All small"}.get(percent, f"{percent} % small")
+            rows.append((label, row))
+    return rows
+
+
+def small_set_lines(bench, family, type_suffix, series, per_element):
+    """{series: [(number of elements, time in ns)]} of a SmallSet benchmark by number of elements."""
+    lines = {}
+    for s, _ in series:
+        pts = []
+        for name, v in bench.items():
+            m = re.fullmatch(rf"{family}<{SMALL_SET_PREFIX[s]}{type_suffix}>/(\d+)", name)
+            if m:
+                n = int(m.group(1))
+                pts.append((n, v / n if per_element else v))
+        lines[s] = sorted(pts)
+    return lines
+
+
 def machine(context):
     l2 = next((c["size"] for c in context["caches"] if c["level"] == 2), None)
     l3 = next((c["size"] for c in context["caches"] if c["level"] == 3), None)
@@ -579,6 +653,55 @@ def main():
             rows.append(row)
         tables.append((f"uint32_t lookups (independent / chained), {compiler_name(tag)}",
                        markdown_table(["Elements"] + [name for _, name in SET_SERIES], rows)))
+
+    # SmallSet
+    if "smallsets" in results[args.main]:
+        bench = results[args.main]["smallsets"]
+        panels = [(name, small_set_rows(bench, suffix, SMALL_SET_SERIES)) for suffix, name in SMALL_SET_TYPES]
+        dumbbell_chart(
+            os.path.join(DOCS, "bench_smallset.svg"), f"amc::SmallSet<T, {SMALL_SET_SIZE}> vs std::set",
+            [f"A set is filled by insertions, its elements and as many absent values are looked up, it is read and "
+             f"destroyed.", f"Small sets have 1 to {SMALL_SET_SIZE} elements, large ones {SMALL_SET_SIZE + 1} to "
+             f"{4 * SMALL_SET_SIZE}.", f"Time per set, log scale - lower is better · {main_name} · {where}"],
+            SMALL_SET_SERIES, panels, "SmallSet with FlatSet vs std::set",
+            "Time to fill, look up, read and destroy sets, from all small to all large, for std::set, "
+            "std::unordered_set, amc::FlatSet and amc::SmallSet with a std::set or an amc::FlatSet.",
+            ratio_series=SMALL_FLAT_SET)
+        panels = [[(f"{type_name} · {label}", small_set_lines(bench, family, suffix, SMALL_SET_SERIES, per_element))
+                   for suffix, type_name in SMALL_SET_TYPES]
+                  for family, label, per_element in (("Fill", "fill, per element", True), ("LookUp", "lookup", False))]
+        lines_chart(
+            os.path.join(DOCS, "bench_smallset_sizes.svg"), "Sets by number of elements",
+            [f"Fill: insertions in random order in an empty set, then destruction. Lookups: half of the values are "
+             f"present.", f"Log-log scale - lower is better · {main_name} · {where}"], SMALL_SET_SERIES, panels,
+            "Fill time per element and lookup time of std::set, std::unordered_set, amc::FlatSet and amc::SmallSet "
+            "from 2 to 4096 elements.")
+    for tag in tags:
+        bench = results[tag].get("smallsets")
+        if bench is None:
+            continue
+        rows = []
+        for suffix, type_name in SMALL_SET_TYPES:
+            for label, row in small_set_rows(bench, suffix, SMALL_SET_TABLE_SERIES):
+                number, word = fmt_ratio(row[STD_ORDERED], row[SMALL_FLAT_SET])
+                rows.append([f"{type_name}: {label}"] + [fmt_time(row[s]) for s, _ in SMALL_SET_TABLE_SERIES] +
+                            [f"{number} {word}" if number else word])
+        columns = ["Sets"] + [name for _, name in SMALL_SET_TABLE_SERIES] + ["SmallSet with FlatSet vs std::set"]
+        tables.append((f"SmallSet, {compiler_name(tag)}", markdown_table(columns, rows)))
+    for tag in tags:
+        bench = results[tag].get("smallsets")
+        if bench is None:
+            continue
+        rows = []
+        for suffix, type_name in SMALL_SET_TYPES:
+            fills = small_set_lines(bench, "Fill", suffix, SMALL_SET_TABLE_SERIES, True)
+            lookups = small_set_lines(bench, "LookUp", suffix, SMALL_SET_TABLE_SERIES, False)
+            for i, (n, _) in enumerate(fills[STD_ORDERED]):
+                rows.append([f"{type_name}: {fmt_count_long(n)}"] +
+                            [f"{fmt_time(fills[s][i][1])} / {fmt_time(lookups[s][i][1])}"
+                             for s, _ in SMALL_SET_TABLE_SERIES])
+        tables.append((f"Sets by number of elements (fill per element / lookup), {compiler_name(tag)}",
+                       markdown_table(["Elements"] + [name for _, name in SMALL_SET_TABLE_SERIES], rows)))
 
     # README tables
     with open(README) as f:
