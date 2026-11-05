@@ -1371,18 +1371,19 @@ class VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy, false>
             std::forward<Args&&>(args)...) {}
 };
 
-/// This macro allows usage of incomplete type for amc::vector, while keeping possibility for a FixedCapacityVector of a
-/// trivially destructible type to stay trivially destructible
-template <class T, bool WithInlineElements>
+/// Whether VectorDestr defines a destructor: only for elements which are not trivially destructible, so that a
+/// FixedCapacityVector of a trivially destructible type is trivially destructible (also without capacity). amc::vector
+/// always defines it, as it may be instantiated with an incomplete type: the other vectors store elements inline.
+template <class T, bool WithInlineElements, class GrowingPolicy>
 struct DefineDestructor : std::integral_constant<bool, !std::is_trivially_destructible<T>::value> {};
 
 template <class T>
-struct DefineDestructor<T, false> : std::integral_constant<bool, true> {};
+struct DefineDestructor<T, false, DynamicGrowingPolicy> : std::integral_constant<bool, true> {};
 
 /// Implementation class with definitions independent from the traits of type T and number of elements
 template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy>
 class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy,
-                                      DefineDestructor<T, WithInlineElements>::value> {
+                                      DefineDestructor<T, WithInlineElements, GrowingPolicy>::value> {
  public:
   using value_type = T;
   using iterator = T*;
@@ -1853,7 +1854,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class... Args>
   explicit VectorImpl(Args&&... args) noexcept
       : VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy,
-                    DefineDestructor<T, WithInlineElements>::value>(std::forward<Args&&>(args)...) {}
+                    DefineDestructor<T, WithInlineElements, GrowingPolicy>::value>(std::forward<Args&&>(args)...) {}
 };
 
 /// Add inplace storage when needed
@@ -1928,7 +1929,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   using const_reference = typename Base::const_reference;
   using size_type = SizeType;
 
-  static constexpr size_type kInlineCapacity = N;
+  static constexpr SizeType kInlineCapacity = N;
 
   Vector() noexcept : Base(N) {}
 
@@ -2093,5 +2094,12 @@ inline void swap(Vector<T, A, S, G, N>& lhs,
                  Vector<T, A, S, G, N>& rhs) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) {
   lhs.swap(rhs);
 }
+
+#ifndef AMC_CXX17
+// Before C++17, a static constexpr data member which is odr-used (bound to a reference, like by std::min) needs a
+// definition outside of its class. From C++17, it is implicitly inline, and this redeclaration is deprecated.
+template <class T, class A, class S, class G, S N>
+constexpr S Vector<T, A, S, G, N>::kInlineCapacity;
+#endif
 
 }  // namespace amc

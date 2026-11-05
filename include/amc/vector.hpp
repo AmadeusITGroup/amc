@@ -18,7 +18,9 @@ namespace amc {
  *           all combinations are possible between the 3 types of vectors.
  *           Note that implementation is not noexcept, adjust capacity needs to be called for both operands.
  *
- * In addition, size_type can be configured and is uint32_t by default.
+ * In addition, size_type can be configured and is uint32_t by default. Like with std::vector, the counts taken by the
+ * methods (constructors, assign, insert, resize, reserve...) are of type size_type: a larger count is converted to it
+ * by the call (wrapping around for an unsigned type), before the vector can check it against max_size().
  *
  * If 'Alloc' provides this additional optional method
  *  * T *reallocate(pointer p, size_type oldCapacity, size_type newCapacity, size_type nConstructedElems);

@@ -225,6 +225,21 @@ template <class T, class BasicAllocator>
 struct is_trivially_relocatable<BasicAllocatorWrapper<T, BasicAllocator> > : is_trivially_relocatable<BasicAllocator> {
 };
 
+namespace alloc_details {
+/// Constants of SimpleAllocator. Before C++17, an odr-used static constexpr data member (bound to a reference, like by
+/// std::min) needs a definition outside of its class, which can only be in a header for a member of a class template.
+template <class = void>
+struct SimpleAllocatorConstants {
+  /// Largest number of bytes of a block reallocated by a copy rather than by 'realloc'.
+  static constexpr std::size_t kMaxCopiedSize = 1024;
+};
+
+#ifndef AMC_CXX17
+template <class Dummy>
+constexpr std::size_t SimpleAllocatorConstants<Dummy>::kMaxCopiedSize;
+#endif
+}  // namespace alloc_details
+
 /**
  * Basic allocator using malloc, realloc and free.
  * A basic allocator is a class that provides methods:
@@ -232,7 +247,7 @@ struct is_trivially_relocatable<BasicAllocatorWrapper<T, BasicAllocator> > : is_
  * void *reallocate(void *p, size_t oldSz, size_t newSz)
  * void deallocate(void *p, size_t n)
  */
-struct SimpleAllocator {
+struct SimpleAllocator : alloc_details::SimpleAllocatorConstants<> {
   void* allocate(std::size_t n) {
     void* ptr = std::malloc(n);
     if (AMC_UNLIKELY(!ptr)) {
@@ -254,9 +269,6 @@ struct SimpleAllocator {
   }
 
   void deallocate(void* p, std::size_t) { std::free(p); }
-
-  /// Largest number of bytes of a block reallocated by a copy rather than by 'realloc'.
-  static constexpr std::size_t kMaxCopiedSize = 1024;
 
  private:
   /// Kept out of 'reallocate' for GCC to inline 'reallocate' into the growth of the vectors (20 % faster).

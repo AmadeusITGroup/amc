@@ -628,6 +628,11 @@ In the unlikely event that the vector attempts to grow beyond its maximum capaci
 Compared to a `SmallVector` that would never grow, `FixedCapacityVector` will be slightly more efficient (less checks) and make the intent clear, with nice additional iterator validity properties (`begin()` is never invalidated, iterators before any insert / erase are never invalidated).
 In addition, if type is trivially destructible, `FixedCapacityVector` will be itself trivially destructible.
 
+#### Size type
+
+The vectors take their `size_type` as a template parameter: `std::uint32_t` by default for `amc::vector` and `SmallVector`, and the smallest unsigned type able to hold `N` for `FixedCapacityVector`. A smaller `size_type` makes a smaller vector, but bounds its `max_size()`.
+Like with `std::vector`, the counts given to the methods (constructors, `assign`, `insert`, `resize`, `reserve`...) are of type `size_type`: a larger count is converted by the call, before the vector can check it. For instance, `amc::SmallVector<int, 4, amc::allocator<int>, std::uint8_t>(300)` has 44 elements, and `amc::FixedCapacityVector<int, 10>::reserve(260)` reserves 4 elements without throwing. GCC and Clang warn about these conversions by default for constant counts, and with `-Wconversion` for the other ones.
+
 ### Sets
 
 #### FlatSet
@@ -642,6 +647,7 @@ If the new elements (at least 32) start with a sorted prefix of at least two thi
 The insertion of a range then merges the new elements only with the present elements which are not less than the smallest new one: inserting `k` elements greater than all the `n` present ones (like increasing keys) costs `O(log(n) + k log(k))`, and `O(log(n) + k)` if they are sorted, independently of the size of the set.
 
 Besides, the vector container is templated and thus can be combined with above vectors variations to optimize memory allocations (`SmallVector` or `FixedCapacityVector`).
+Like with `std::set`, the comparator may be a function pointer or a `final` class. Empty comparators take no space.
 
 ```cpp
 #include <cstdint>

@@ -104,12 +104,17 @@ add_unit_test(
   sets_test.cpp
 )
 
-# amc emulations of standard library features, only used before C++17 (C++14 is the oldest standard of MSVC)
+# amc emulations of standard library features, only used before C++17 (C++14 is the oldest standard of MSVC).
+# Compiled in C++11, or in C++14 if it is the standard of the build: GoogleTest imposes C++17 on the other tests.
+set(AMC_CXX11_TEST_STANDARD 11)
+if (CMAKE_CXX_STANDARD EQUAL 14)
+  set(AMC_CXX11_TEST_STANDARD 14)
+endif()
 add_unit_test(
   cxx11_test
   cxx11_test.cpp
   NO_GTEST
-  CXX_STANDARD 11
+  CXX_STANDARD ${AMC_CXX11_TEST_STANDARD}
 )
 if (NOT MSVC)
   # A missing return statement is undefined behavior, make it a compilation error (it is an error by default for MSVC).

@@ -124,6 +124,46 @@ struct IsAmcVector : std::false_type {};
 template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N>
 struct IsAmcVector<Vector<T, Alloc, SizeType, GrowingPolicy, N>> : std::true_type {};
 
+#ifdef AMC_CXX14
+template <class T>
+using IsFinal = std::is_final<T>;
+#else
+/// std::is_final is C++14: in C++11, its compiler intrinsic is used (GCC and Clang, MSVC has no C++11 mode).
+template <class T>
+struct IsFinal : std::integral_constant<bool, __is_final(T)> {};
+#endif
+
+/// Holds the comparator of a FlatSet. Classes are derived from, so that empty ones (the usual case) take no space
+/// (empty base optimization). Like with std::set, the comparator may also be a function pointer or a final class,
+/// which cannot be derived from: it is then held as a member.
+/// Like the one of std::set, the comparator is value initialized by default: a function pointer is then null.
+template <class Compare, bool = std::is_class<Compare>::value && !IsFinal<Compare>::value>
+class CompareHolder : private Compare {
+ public:
+  template <class C = Compare, typename std::enable_if<std::is_default_constructible<C>::value, bool>::type = true>
+  CompareHolder() noexcept(std::is_nothrow_default_constructible<C>::value) : Compare() {}
+
+  explicit CompareHolder(const Compare& comp) : Compare(comp) {}
+
+  Compare& get() noexcept { return *this; }
+  const Compare& get() const noexcept { return *this; }
+};
+
+template <class Compare>
+class CompareHolder<Compare, false> {
+ public:
+  template <class C = Compare, typename std::enable_if<std::is_default_constructible<C>::value, bool>::type = true>
+  CompareHolder() noexcept(std::is_nothrow_default_constructible<C>::value) : _comp() {}
+
+  explicit CompareHolder(const Compare& comp) : _comp(comp) {}
+
+  Compare& get() noexcept { return _comp; }
+  const Compare& get() const noexcept { return _comp; }
+
+ private:
+  Compare _comp;
+};
+
 }  // namespace flatset_details
 
 /**
@@ -151,7 +191,10 @@ struct IsAmcVector<Vector<T, Alloc, SizeType, GrowingPolicy, N>> : std::true_typ
  * Elements a, b are considered the same if !Compare(a, b) && !Compare(b, a)
  */
 template <class T, class Compare = std::less<T>, class Alloc = amc::allocator<T>, class VecType = amc::vector<T, Alloc>>
-class FlatSet : private Compare {
+class FlatSet : private flatset_details::CompareHolder<Compare> {
+ private:
+  using CompareBase = flatset_details::CompareHolder<Compare>;
+
  public:
   using key_type = T;
   using value_type = T;
@@ -179,38 +222,38 @@ class FlatSet : private Compare {
       typename std::conditional<is_trivially_relocatable<Compare>::value && is_trivially_relocatable<VecType>::value,
                                 std::true_type, std::false_type>::type;
 
-  key_compare key_comp() const { return *this; }
-  value_compare value_comp() const { return *this; }
+  key_compare key_comp() const { return compRef(); }
+  value_compare value_comp() const { return compRef(); }
   allocator_type get_allocator() const { return _sortedVector.get_allocator(); }
 
   FlatSet() noexcept(std::is_nothrow_default_constructible<Compare>::value &&
                      std::is_nothrow_default_constructible<VecType>::value) = default;
 
-  explicit FlatSet(const Compare& comp, const Alloc& alloc = Alloc()) : Compare(comp), _sortedVector(alloc) {}
+  explicit FlatSet(const Compare& comp, const Alloc& alloc = Alloc()) : CompareBase(comp), _sortedVector(alloc) {}
 
   explicit FlatSet(const Alloc& alloc) : _sortedVector(alloc) {}
 
   /// Linear time if [first, last) is already sorted by 'comp': it is not sorted again.
   template <class InputIt>
   FlatSet(InputIt first, InputIt last, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
-      : Compare(comp), _sortedVector(first, last, alloc) {
+      : CompareBase(comp), _sortedVector(first, last, alloc) {
     eraseDuplicates(sortIfUnsorted(mbegin()));
   }
 
   template <class InputIt>
   FlatSet(InputIt first, InputIt last, const Alloc& alloc) : FlatSet(first, last, Compare(), alloc) {}
 
-  FlatSet(const FlatSet& o, const Alloc& alloc) : Compare(o.key_comp()), _sortedVector(o._sortedVector, alloc) {}
+  FlatSet(const FlatSet& o, const Alloc& alloc) : CompareBase(o.compRef()), _sortedVector(o._sortedVector, alloc) {}
 
   /// Like the move constructor, moves the comparator. If 'alloc' is not equal to the allocator of 'o', the elements are
   /// moved one by one (by the vector).
   FlatSet(FlatSet&& o,
           const Alloc& alloc) noexcept(std::is_nothrow_move_constructible<Compare>::value &&
                                        std::is_nothrow_constructible<VecType, VecType&&, const Alloc&>::value)
-      : Compare(std::move(static_cast<Compare&>(o))), _sortedVector(std::move(o._sortedVector), alloc) {}
+      : CompareBase(std::move(static_cast<CompareBase&>(o))), _sortedVector(std::move(o._sortedVector), alloc) {}
 
   FlatSet(std::initializer_list<value_type> list, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
-      : Compare(comp), _sortedVector(alloc) {
+      : CompareBase(comp), _sortedVector(alloc) {
     insert(list.begin(), list.end());
   }
 
@@ -234,7 +277,7 @@ class FlatSet : private Compare {
   FlatSet& operator=(const FlatSet& o) {
     if (this != &o) {
       try {
-        static_cast<Compare&>(*this) = static_cast<const Compare&>(o);
+        compRef() = o.compRef();
         _sortedVector = o._sortedVector;
       } catch (...) {
         _sortedVector.clear();
@@ -259,7 +302,7 @@ class FlatSet : private Compare {
   /// Non standard constructor of a FlatSet from a Vector, stealing its dynamic memory.
   /// Linear time if 'v' is already sorted by 'comp': it is not sorted again.
   explicit FlatSet(vector_type&& v, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
-      : Compare(comp), _sortedVector(std::move(v), alloc) {
+      : CompareBase(comp), _sortedVector(std::move(v), alloc) {
     eraseDuplicates(sortIfUnsorted(mbegin()));
   }
 
@@ -432,13 +475,14 @@ class FlatSet : private Compare {
 
   void swap(FlatSet& o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType&>())) &&
                                  amc::is_nothrow_swappable<Compare>::value) {
-    std::swap(static_cast<Compare&>(*this), static_cast<Compare&>(o));
+    std::swap(compRef(), o.compRef());
     _sortedVector.swap(o._sortedVector);
   }
 
 #ifdef AMC_CXX17
   node_type extract(const_iterator position) {
-    node_type nt(std::move(*const_cast<miterator>(position)), get_allocator());
+    // the iterators of the vector may not be pointers (std::vector): no const_cast
+    node_type nt(std::move(*(mbegin() + (position - begin()))), get_allocator());
     _sortedVector.erase(position);
     return nt;
   }
@@ -499,6 +543,14 @@ class FlatSet : private Compare {
   const_iterator upper_bound(const_reference v) const { return upperBound(v); }
 
 #ifdef AMC_CXX14
+  /// Unlike a key_type, a key of another type may be equivalent to several elements (like with std::set).
+  template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
+                                             bool>::type = true>
+  std::pair<const_iterator, const_iterator> equal_range(const K& k) const {
+    const const_iterator first = lower_bound(k);
+    return std::pair<const_iterator, const_iterator>(first, std::upper_bound(first, end(), k, compRef()));
+  }
+
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
   const_iterator lower_bound(const K& k) const {
@@ -523,9 +575,10 @@ class FlatSet : private Compare {
 #endif
 
 #ifdef AMC_CXX20
+  /// Like the iterators of a set, the predicate only has a const access to the elements.
   template <class Pred>
   friend size_type erase_if(FlatSet& c, Pred pred) {
-    return erase_if(c._sortedVector, pred);
+    return erase_if(c._sortedVector, [&pred](const_reference v) { return pred(v); });
   }
 #endif
 
@@ -540,13 +593,13 @@ class FlatSet : private Compare {
   using miterator = typename VecType::iterator;  // Custom non const iterator to allow modification of content
 
   void moveAssign(FlatSet& o, std::true_type) noexcept {
-    static_cast<Compare&>(*this) = std::move(static_cast<Compare&>(o));
+    compRef() = std::move(o.compRef());
     _sortedVector = std::move(o._sortedVector);
   }
 
   void moveAssign(FlatSet& o, std::false_type) {
     try {
-      static_cast<Compare&>(*this) = std::move(static_cast<Compare&>(o));
+      compRef() = std::move(o.compRef());
       _sortedVector = std::move(o._sortedVector);
     } catch (...) {
       _sortedVector.clear();
@@ -686,8 +739,8 @@ class FlatSet : private Compare {
     }
   }
 
-  Compare& compRef() { return static_cast<Compare&>(*this); }
-  const Compare& compRef() const { return static_cast<const Compare&>(*this); }
+  Compare& compRef() noexcept { return CompareBase::get(); }
+  const Compare& compRef() const noexcept { return CompareBase::get(); }
 
   /// Moves each element of 'o' which is not already present in 'this' at its position according to our comparator,
   /// whatever the order of 'o'.
