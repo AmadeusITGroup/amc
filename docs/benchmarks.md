@@ -11,7 +11,7 @@ How the amc containers compare to the standard ones, as measured by the benchmar
 
 ## Method
 
-The charts are drawn by [benchmark/plot_benchmarks.py](../benchmark/plot_benchmarks.py) from the results stored in [docs/benchmarks](benchmarks). Each benchmark runs in its own process, pinned to a single core of an idle machine, and the median of 5 repetitions is kept. The standard library is libstdc++ 13. The `SmallSet` benchmarks are built in C++20 (`-DCMAKE_CXX_STANDARD=20`), which its single comparison per element requires (see [SmallSet](#smallset)), and the other ones in C++17. Beyond the L3 cache, results vary by about 15 % between runs.
+The charts are drawn by [benchmark/plot_benchmarks.py](../benchmark/plot_benchmarks.py) from the results stored in [docs/benchmarks](benchmarks). Each benchmark runs in its own process, pinned to a single core of an idle machine, and the median of 5 repetitions is kept. The standard library is libstdc++ 13. The `SmallSet` benchmarks are built in C++20 (`-DCMAKE_CXX_STANDARD=20`), which its single comparison per element requires (see [SmallSet](#smallset)), and the other ones in C++17 (`-DCMAKE_CXX_STANDARD=17`, as the default is C++20). Beyond the L3 cache, results vary by about 15 % between runs.
 
 The script docstring explains how to run the benchmarks and refresh the charts and the [tables](#numbers) of this page.
 

@@ -209,11 +209,11 @@ void CommonUsage(benchmark::State& state) {
           if (v.size() > 1) {
             v.erase(v.begin());
           } else {
-            v.emplace_back(value % kMaxValue);
+            v.emplace_back(static_cast<uint32_t>(value % kMaxValue));
           }
           break;
         default:
-          v.emplace_back(value % kMaxValue);
+          v.emplace_back(static_cast<uint32_t>(value % kMaxValue));
           break;
       }
       int sum = 0;

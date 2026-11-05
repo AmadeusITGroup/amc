@@ -1,50 +1,41 @@
-cmake_minimum_required (VERSION 3.14)
+# 3.21: PROJECT_IS_TOP_LEVEL, and no MSVC warning flag (/W3) in the default CMAKE_CXX_FLAGS (policy CMP0092): the
+# warning level is set on our targets only
+cmake_minimum_required (VERSION 3.21)
 
-# No MSVC warning flag (/W3) in the default CMAKE_CXX_FLAGS: the warning level is set on our targets only
-if (POLICY CMP0092)
-  cmake_policy(SET CMP0092 NEW)
-endif()
-
-project(amc 
+project(amc
   VERSION 2.8.0
   DESCRIPTION "Header base library of C++ containers"
   LANGUAGES CXX
 )
 
-##
-## MAIN_PROJECT CHECK
-## determine if amc is built as a subproject or if it is the main project
-##
-set(MAIN_PROJECT OFF)
-if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-  set(MAIN_PROJECT ON)
-endif()
-
 # This library needs C++11, except for SmallSet which requires std::variant from C++17.
 # Emulations of newer C++ functions is provided for non C++14 / C++17 compilers.
-# Default standard of the unit tests and benchmarks, not set for a project including amc.
-if (MAIN_PROJECT)
-  set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard")
+# Default standard of the unit tests and benchmarks, not set for a project including amc: C++20, the standard of the
+# module, in which SmallSet and FlatSet are faster.
+if (PROJECT_IS_TOP_LEVEL)
+  set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard")
   set(CMAKE_CXX_EXTENSIONS OFF CACHE STRING "Deactivate C++ extensions for maximum portability")
 endif()
 
 # By default, build benchmarks only if not Debug and main project (benchs do not make sense in Debug)
-set(BENCH_BUILD ${MAIN_PROJECT})
+set(BENCH_BUILD ${PROJECT_IS_TOP_LEVEL})
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(BENCH_BUILD OFF)
 endif()
 
-option(AMC_ENABLE_TESTS "Build the unit tests" ${MAIN_PROJECT})
+option(AMC_ENABLE_TESTS "Build the unit tests" ${PROJECT_IS_TOP_LEVEL})
 option(AMC_ENABLE_BENCHMARKS "Build the benchmarks" ${BENCH_BUILD})
 option(AMC_ENABLE_ASAN "Compile with AddressSanitizer" OFF)
 option(AMC_ENABLE_COVERAGE "Instrument the unit tests for LLVM source-based code coverage and add a 'coverage' target (Clang only)" OFF)
 option(AMC_PEDANTIC "If set, only standard API (in respect to STL) will be defined. Additional features are enabled when OFF" OFF)
 option(AMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors in Debug builds of the unit tests and benchmarks" OFF)
+option(AMC_ENABLE_MODULE "Add the amc::module target, providing the amc C++20 module (CMake 3.28 or later)" OFF)
+option(AMC_MODULE_NONSTD_FEATURES "Build the amc module with the non standard extensions, and define AMC_NONSTD_FEATURES for the targets linking amc::module" OFF)
 
 if (AMC_PEDANTIC)
-  message(STATUS "AMC - Compile without non standard features")
+  message(STATUS "[amc] Compile without non standard features")
 else()
-  message(STATUS "AMC - Compile with non standard features")
+  message(STATUS "[amc] Compile with non standard features")
 endif()
 
 # Compilation options of the unit tests and benchmarks (AmcSetProjectProperties), never set globally
@@ -64,6 +55,32 @@ target_include_directories(
 
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
 
+# C++20 module 'amc' ('import amc;'): a static library holding the module interface unit, whose BMI is built in the
+# build of its consumers. Static, as it has nothing to export from a shared library.
+if (AMC_ENABLE_MODULE)
+  if (CMAKE_VERSION VERSION_LESS 3.28)
+    message(FATAL_ERROR "AMC_ENABLE_MODULE requires CMake 3.28 or later (C++20 modules), not ${CMAKE_VERSION}")
+  endif()
+  add_library(${PROJECT_NAME}_module STATIC)
+  add_library(${PROJECT_NAME}::module ALIAS ${PROJECT_NAME}_module)
+  set_target_properties(${PROJECT_NAME}_module PROPERTIES EXPORT_NAME module)
+  target_sources(${PROJECT_NAME}_module
+                 PUBLIC FILE_SET CXX_MODULES
+                        BASE_DIRS ${PROJECT_SOURCE_DIR}/include
+                        FILES ${PROJECT_SOURCE_DIR}/include/amc/amc.cppm)
+  target_compile_features(${PROJECT_NAME}_module PUBLIC cxx_std_20)
+  # The importers can include the headers too: they must see the same class definitions
+  target_link_libraries(${PROJECT_NAME}_module PUBLIC ${PROJECT_NAME})
+  if (AMC_MODULE_NONSTD_FEATURES)
+    target_compile_definitions(${PROJECT_NAME}_module PUBLIC AMC_NONSTD_FEATURES)
+  endif()
+  if (AMC_ENABLE_TESTS)
+    # Same warnings and sanitizers as the test importing it (the BMI must be compatible with it)
+    AmcSetProjectProperties(${PROJECT_NAME}_module NO_NONSTD_FEATURES MODULE)
+  endif()
+  message(STATUS "[amc] C++20 module 'amc' (target amc::module), non standard features: ${AMC_MODULE_NONSTD_FEATURES}")
+endif()
+
 if (AMC_ENABLE_TESTS)
   enable_testing()
   
@@ -79,6 +96,15 @@ install(TARGETS ${PROJECT_NAME}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+set(AMC_EXPORT_MODULE_ARGS)
+if (AMC_ENABLE_MODULE)
+  install(TARGETS ${PROJECT_NAME}_module
+          EXPORT ${PROJECT_NAME}_Targets
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          FILE_SET CXX_MODULES DESTINATION include)  # include/amc/amc.cppm, next to the headers
+  set(AMC_EXPORT_MODULE_ARGS CXX_MODULES_DIRECTORY cxx-modules)
+endif()
 
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
@@ -97,7 +123,8 @@ configure_package_config_file(
 install(EXPORT ${PROJECT_NAME}_Targets
         FILE ${PROJECT_NAME}Targets.cmake
         NAMESPACE ${PROJECT_NAME}::
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}/cmake)
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}/cmake
+        ${AMC_EXPORT_MODULE_ARGS})
 
 install(FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
               "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"

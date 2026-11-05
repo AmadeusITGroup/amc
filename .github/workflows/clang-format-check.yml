@@ -22,5 +22,7 @@ jobs:
         uses: jidicula/clang-format-action@v4.18.0
         with:
           check-path: ${{ matrix.path }}
+          # The default of the action, with the C++ module interface units (.cppm)
+          include-regex: '^.*\.((((c|C)(c|pp|xx|\+\+)?$)|((h|H)h?(pp|xx|\+\+)?$))|(cppm|ino|pde|proto|cu))$'
           fallback-style: "Google"
           clang-format-version: '22'

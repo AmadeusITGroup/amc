@@ -13,7 +13,7 @@ Header-only C++ library of containers with the interface of `std::vector` and `s
 - **Trivially relocatable elements**, which are most types (integers, pointers, `std::unique_ptr`, structures of them...): the containers move them in bulk with `memcpy`, `memmove` or `realloc` when they grow, insert or erase, instead of calling a move constructor and a destructor per element.
 - **Small sizes**: up to a compile-time capacity `N`, the elements are stored in the container object itself, without any allocation.
 
-The library needs C++11 (C++17 for `SmallSet`), and is tested up to C++23 with GCC, Clang, MSVC, clang-cl and Apple Clang.
+The library needs C++11 (C++17 for `SmallSet`), and is tested up to C++23 with GCC, Clang, MSVC, clang-cl and Apple Clang. From C++20, it is also a [module](#c20-module): `import amc;`.
 
 ## Containers
 
@@ -94,7 +94,7 @@ The [compatibility page](docs/compatibility.md) lists, container by container, w
 
 amc is a CMake interface library: link the `amc::amc` target, or add its `include` directory to the include path of any build system.
 
-With [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html):
+With [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html) or `add_subdirectory` (CMake 3.21 or later):
 
 ```cmake
 include(FetchContent)
@@ -117,9 +117,33 @@ target_link_libraries(my_target PRIVATE amc::amc)
 
 A few non-standard members (`append`, `pop_back_val`, `swap2`, the vector stealing of `FlatSet`...) are only declared if `AMC_NONSTD_FEATURES` is defined. Define it in all the translation units of the program, as it changes the class definitions: `target_compile_definitions(my_target PUBLIC AMC_NONSTD_FEATURES)`. See the [list of extensions](docs/containers.md#non-standard-extensions).
 
+### C++20 module
+
+`import amc;` provides all the containers without parsing their headers. On a translation unit using 6 vector types, it compiles 19 to 25 % faster than with `#include <amc/vector.hpp>` at `-O0`, and 5 to 17 % at `-O2` (Clang 23 and libstdc++ 13, in C++20 and C++23).
+
+With CMake 3.28 or later, the `AMC_ENABLE_MODULE` option adds the `amc::module` target, which builds the module interface unit `include/amc/amc.cppm` in the build of its consumers:
+
+```cmake
+cmake_minimum_required(VERSION 3.28)  # scans the C++20 sources for imports
+
+set(AMC_ENABLE_MODULE ON)  # before FetchContent_MakeAvailable(amc), or -DAMC_ENABLE_MODULE=ON when installing amc
+# ...
+target_link_libraries(my_target PRIVATE amc::module)
+```
+
+```cpp
+#include <cstdint>  // the module does not export the standard names it uses
+
+import amc;
+
+amc::SmallVector<std::uint32_t, 8> path;
+```
+
+It needs a generator and a compiler supporting C++20 modules in CMake: Ninja or Visual Studio, and Clang with `clang-scan-deps`, GCC 15 or later (not with `-fsanitize=undefined`, which makes GCC crash building any module), or MSVC 2022. The module exports the public names of the headers, which declare the same entities: a program can import it in some translation units and include the headers in others, or do both in the same one (headers first). Like with the headers, `AMC_NONSTD_FEATURES` must be defined in the whole program or nowhere, and compilers do not diagnose a mismatch: `-DAMC_MODULE_NONSTD_FEATURES=ON` builds the module with the extensions, and defines `AMC_NONSTD_FEATURES` for the targets linking `amc::module`. Modules do not export macros: include `<amc/config.hpp>` for the `AMC_*` ones.
+
 ## Building the tests and benchmarks
 
-The unit tests ([GoogleTest](https://github.com/google/googletest)) and the benchmarks ([Google Benchmark](https://github.com/google/benchmark)) are built when amc is the main project. CMake fetches them if they are not installed (CMake 3.14 or later).
+The unit tests ([GoogleTest](https://github.com/google/googletest)) and the benchmarks ([Google Benchmark](https://github.com/google/benchmark)) are built when amc is the main project (CMake 3.21 or later), in C++20 unless `CMAKE_CXX_STANDARD` says otherwise. CMake fetches them if they are not installed.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
@@ -127,14 +151,16 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-| CMake option             | Description                                                                                                           | Default                              |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `AMC_ENABLE_TESTS`       | Build the unit tests                                                                                                  | `ON` for the main project            |
-| `AMC_ENABLE_BENCHMARKS`  | Build the benchmarks                                                                                                  | `ON` for the main project, not Debug |
-| `AMC_ENABLE_ASAN`        | Build with the address and undefined behavior sanitizers (GCC and Clang)                                              | `OFF`                                |
-| `AMC_ENABLE_COVERAGE`    | Instrument the unit tests for code coverage, and add a `coverage` target (Clang)                                      | `OFF`                                |
-| `AMC_WARNINGS_AS_ERRORS` | Treat warnings as errors in Debug builds of the unit tests and benchmarks                                             | `OFF`                                |
-| `AMC_PEDANTIC`           | Build the unit tests and benchmarks without the [non-standard extensions](docs/containers.md#non-standard-extensions) | `OFF`                                |
+| CMake option                 | Description                                                                                                               | Default                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `AMC_ENABLE_TESTS`           | Build the unit tests                                                                                                      | `ON` for the main project            |
+| `AMC_ENABLE_BENCHMARKS`      | Build the benchmarks                                                                                                      | `ON` for the main project, not Debug |
+| `AMC_ENABLE_ASAN`            | Build with the address and undefined behavior sanitizers (GCC and Clang)                                                  | `OFF`                                |
+| `AMC_ENABLE_COVERAGE`        | Instrument the unit tests for code coverage, and add a `coverage` target (Clang)                                          | `OFF`                                |
+| `AMC_WARNINGS_AS_ERRORS`     | Treat warnings as errors in Debug builds of the unit tests and benchmarks                                                 | `OFF`                                |
+| `AMC_PEDANTIC`               | Build the unit tests and benchmarks without the [non-standard extensions](docs/containers.md#non-standard-extensions)     | `OFF`                                |
+| `AMC_ENABLE_MODULE`          | Add the `amc::module` target, providing the [C++20 module](#c20-module) `amc` (CMake 3.28 or later)                       | `OFF`                                |
+| `AMC_MODULE_NONSTD_FEATURES` | Build the module with the non-standard extensions, and define `AMC_NONSTD_FEATURES` for the targets linking `amc::module` | `OFF`                                |
 
 Code coverage uses [LLVM source-based code coverage](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html), so it needs Clang, and `llvm-profdata` and `llvm-cov` of the same version (package `llvm-<version>` on Debian and Ubuntu):
 
@@ -145,7 +171,7 @@ cmake --build build --target coverage
 
 It runs the unit tests and prints the coverage of each header. The report, with line and branch counts, is written to `build/coverage/html/index.html`, and an lcov export to `build/coverage/amc.lcov`.
 
-The CI builds and tests amc with GCC 8 to 13, Clang 17, 19, 20 and 21 (Linux), MSVC 2022 and clang-cl (Windows, 32 and 64-bit) and Apple Clang (macOS), in C++17, C++20 and C++23, with and without the sanitizers and the non-standard extensions.
+The CI builds and tests amc with GCC 8 to 13, Clang 17, 19, 20 and 21 (Linux), MSVC 2022 and clang-cl (Windows, 32 and 64-bit) and Apple Clang (macOS), in C++17, C++20 and C++23, with and without the sanitizers and the non-standard extensions. It tests the C++20 module with Clang 19 and 21, GCC 15 and MSVC 2022.
 
 ## Documentation
 

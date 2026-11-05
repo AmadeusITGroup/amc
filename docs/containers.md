@@ -11,7 +11,7 @@
 - [Node handles](#node-handles)
 - [Non-standard extensions](#non-standard-extensions)
 
-Each container has its own header in `include/amc/`. All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
+Each container has its own header in `include/amc/`, and from C++20 the module `amc` provides all of them (`import amc;`, see the [README](../README.md#c20-module)). All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
 
 ## Choosing a container
 
@@ -173,7 +173,7 @@ Like the node handles of `std::set`, the `node_type` of `FlatSet` and `SmallSet`
 
 ## Non-standard extensions
 
-These members are only declared if `AMC_NONSTD_FEATURES` is defined before including the amc headers. As it changes the definition of the classes, define it in all the translation units of a program, for instance with `target_compile_definitions(my_target PUBLIC AMC_NONSTD_FEATURES)`. The `AMC_PEDANTIC` CMake option only applies to the unit tests and benchmarks of amc: they are built with the extensions, unless it is `ON`.
+These members are only declared if `AMC_NONSTD_FEATURES` is defined before including the amc headers. As it changes the definition of the classes, define it in all the translation units of a program, for instance with `target_compile_definitions(my_target PUBLIC AMC_NONSTD_FEATURES)`. The `AMC_PEDANTIC` CMake option only applies to the unit tests and benchmarks of amc: they are built with the extensions, unless it is `ON`. The C++20 module is built with the extensions if the CMake option `AMC_MODULE_NONSTD_FEATURES` is `ON`, which also defines `AMC_NONSTD_FEATURES` for the targets linking `amc::module`.
 
 All vectors:
 
