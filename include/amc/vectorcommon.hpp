@@ -1016,7 +1016,7 @@ class SmallVectorBase : private Alloc {
   /// The inline elements of 'vSmall' are relocated to the inline storage of 'vDynBuf', which shares its first bytes
   /// with the pointer to its dynamic storage: if a move throws, this pointer is restored.
   /// (not declared noexcept(is_swap_noexcept<T>::value), as GCC warns about the rethrow when it is true)
-  static inline void SwapDynamicBuffer(SmallVectorBase& vDynBuf, SmallVectorBase& vSmall) {
+  static void SwapDynamicBuffer(SmallVectorBase& vDynBuf, SmallVectorBase& vSmall) {
     T* oDynStorage = vDynBuf._storage.dyn();
     try {
       (void)amc::uninitialized_relocate_n(vSmall._storage.ptr(), vSmall._capa, vDynBuf._storage.ptr());
@@ -1249,13 +1249,13 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   friend void swap2_deep(V1& lhs, V2& rhs);
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
-  inline void adjustCapacity(std::uintmax_t neededCapacity) {
+  void adjustCapacity(std::uintmax_t neededCapacity) {
     if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       this->grow(neededCapacity);
     }
   }
 
-  inline T* adjustCapacity(std::uintmax_t neededCapacity, const T* position) {
+  T* adjustCapacity(std::uintmax_t neededCapacity, const T* position) {
     if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       SizeType idx = static_cast<SizeType>(position - this->begin());  // pos will be invalidated
       this->grow(neededCapacity);
@@ -1264,7 +1264,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     return const_cast<T*>(position);
   }
 
-  inline const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v) {
+  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v) {
     if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       const T* ptr = std::addressof(v);
       std::ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
@@ -1276,7 +1276,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     return v;
   }
 
-  inline const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v, const T** position) {
+  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v, const T** position) {
     if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
       const T* ptr = std::addressof(v);
       std::ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
@@ -1825,9 +1825,9 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   template <class ForwardIt>
   iterator insertN(const_iterator position, ForwardIt first, std::uintmax_t count) {
-    iterator pos;
+    iterator pos = const_cast<iterator>(position);
     if (count > 0) {
-      pos = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, position);
+      pos = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, pos);
       const SizeType n = static_cast<SizeType>(count);
       const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
       if (nElemsToShift == 0) {
@@ -1842,8 +1842,6 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
         }
       }
       this->setSize(static_cast<SizeType>(this->size() + count));
-    } else {
-      pos = const_cast<iterator>(position);
     }
     return pos;
   }
@@ -1851,8 +1849,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class InputIt, class Sentinel>
   iterator insertInput(const_iterator position, InputIt first, Sentinel last) {
     // append new elements at the end, then rotate them to their final position
-    const auto idx = position - this->cbegin();  // position may be invalidated by append
-    const auto oldSize = this->size();
+    const size_type idx = static_cast<size_type>(position - this->cbegin());  // position may be invalidated by append
+    const size_type oldSize = this->size();
     appendInput(std::move(first), last);
     const iterator pos = this->begin() + idx;
     std::rotate(pos, this->begin() + oldSize, end());
