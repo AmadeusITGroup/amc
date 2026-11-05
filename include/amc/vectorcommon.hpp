@@ -15,13 +15,10 @@
 
 #include "config.hpp"
 #include "hasreallocate.hpp"
+#include "isdetected.hpp"
 #include "memory.hpp"
 #include "type_traits.hpp"
 #include "utility.hpp"
-
-#ifndef AMC_CXX17
-#include "isdetected.hpp"
-#endif
 
 #ifdef AMC_CXX23
 #include <ranges>
@@ -43,6 +40,16 @@ struct is_shift_nothrow : std::integral_constant<bool, amc::is_trivially_relocat
 template <class T>
 struct is_move_construct_nothrow : std::integral_constant<bool, amc::is_trivially_relocatable<T>::value ||
                                                                     std::is_nothrow_move_constructible<T>::value> {};
+
+/// 'std::true_type' if 'Cond', 'Trait' otherwise. Unlike 'Cond || Trait::value', which instantiates 'Trait' even when
+/// 'Cond' holds (the '||' only skips the evaluation of its second operand), 'Trait' is then not instantiated.
+/// The exception specifications of the move operations and swap of a vector without inline elements must not
+/// instantiate any trait of T: T may hold a vector of itself ('struct Node { amc::vector<Node> v; };'), the exception
+/// specifications of the implicit move operations of Node then depend on the ones of the vector, and the traits of
+/// Node on them in turn. GCC rejects this cycle, Clang computes wrong traits for Node or rejects it, depending on what
+/// it instantiates first.
+template <bool Cond, class Trait>
+using LazyOr = typename std::conditional<Cond, std::true_type, Trait>::type;
 
 /// Tells whether 'p' points to one of the 'n' elements starting at 'first'.
 /// 'p' may point to an object unrelated to this range: the result of the built-in relational operators is then
@@ -1077,6 +1084,8 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
     return *this->constructBack(std::forward<Args>(args)...);
   }
 
+  // Like the ones of C++26 std::inplace_vector, the 'try_' methods return a pointer to the new element (null when the
+  // vector is full), the 'unchecked_' ones (which must not be called on a full vector) a reference to it.
   template <class... Args>
   pointer try_emplace_back(Args&&... args) {
     if (this->size() == this->capacity()) {
@@ -1094,9 +1103,9 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
 
   pointer try_push_back(T&& value) { return try_emplace_back(std::move(value)); }
 
-  pointer unchecked_push_back(const T& value) { return this->constructBack(value); }
+  reference unchecked_push_back(const T& value) { return unchecked_emplace_back(value); }
 
-  pointer unchecked_push_back(T&& value) { return this->constructBack(std::move(value)); }
+  reference unchecked_push_back(T&& value) { return unchecked_emplace_back(std::move(value)); }
 
  protected:
   template <class... Args>
@@ -1380,6 +1389,15 @@ struct DefineDestructor : std::integral_constant<bool, !std::is_trivially_destru
 template <class T>
 struct DefineDestructor<T, false, DynamicGrowingPolicy> : std::integral_constant<bool, true> {};
 
+template <class It>
+using IteratorCategory = typename std::iterator_traits<It>::iterator_category;
+
+/// Whether 'It' is an input iterator: like for the standard containers, the overloads taking a range of iterators only
+/// participate in overload resolution for them, so that two values of another type (two doubles, two enumerators...)
+/// are a count and a value. 'std::iterator_traits' has no member for the types which are not iterators.
+template <class It>
+using IsInputIterator = std::is_convertible<amc::detected_or_t<void, IteratorCategory, It>, std::input_iterator_tag>;
+
 /// Implementation class with definitions independent from the traits of type T and number of elements
 template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy>
 class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy,
@@ -1459,7 +1477,12 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   bool operator!=(const VectorImpl& o) const { return !(*this == o); }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const VectorImpl& o) const {
+  /// Like the one of std::vector, only defined for elements which 'synth_three_way' can compare (see
+  /// SynthThreeWayComparable). A constraint rather than an explicit return type, which would be computed when the class
+  /// is instantiated, possibly with an incomplete element type.
+  auto operator<=>(const VectorImpl& o) const
+    requires algorithm_details::SynthThreeWayComparable<T>
+  {
     return amc::lexicographical_compare_three_way(this->begin(), end(), o.begin(), o.end(), amc::synth_three_way());
   }
 #else
@@ -1510,7 +1533,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   /// Replaces the contents of the container.
   /// The behavior is undefined if either argument is an iterator into *this.
-  template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
+  template <class InputIt, typename std::enable_if<IsInputIterator<InputIt>::value, bool>::type = true>
   void assign(InputIt first, InputIt last) {
     assignImpl(first, last, typename std::iterator_traits<InputIt>::iterator_category());
   }
@@ -1583,7 +1606,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   /// Inserts elements at the specified location in the container.
   /// The behavior is undefined if first and last are iterators into *this
-  template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
+  template <class InputIt, typename std::enable_if<IsInputIterator<InputIt>::value, bool>::type = true>
   iterator insert(const_iterator position, InputIt first, InputIt last) {
     assert(position >= this->cbegin() && position <= cend());
     return insertImpl(position, first, last, typename std::iterator_traits<InputIt>::iterator_category());
@@ -1669,7 +1692,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   /// Append elements to the end of the vector. Similar to: vec.insert(vec.end(), ...).
   /// The behavior is undefined if first and last are iterators into *this
-  template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
+  template <class InputIt, typename std::enable_if<IsInputIterator<InputIt>::value, bool>::type = true>
   void append(InputIt first, InputIt last) {
     appendImpl(first, last, typename std::iterator_traits<InputIt>::iterator_category());
   }
@@ -1935,7 +1958,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   explicit Vector(const Alloc& alloc) noexcept : Base(N, alloc) {}
 
-  template <class InputIt, typename std::enable_if<!std::is_integral<InputIt>::value, bool>::type = true>
+  template <class InputIt, typename std::enable_if<vec::IsInputIterator<InputIt>::value, bool>::type = true>
   Vector(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : Base(N, alloc) {
     this->append(first, last);
   }
@@ -1948,7 +1971,8 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   Vector(const Vector& o, const Alloc& alloc) : Base(N, alloc) { this->append(o.begin(), o.end()); }
 
-  Vector(Vector&& o) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) : Base(N, o.get_allocator()) {
+  Vector(Vector&& o) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value)
+      : Base(N, o.get_allocator()) {
     this->move_construct(o, N);
   }
 
@@ -1962,8 +1986,8 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   }
 
   /// If 'alloc' is not equal to the allocator of 'o', its elements are moved one by one.
-  Vector(Vector&& o,
-         const Alloc& alloc) noexcept((N == 0 || vec::is_move_construct_nothrow<T>::value) && IsAlwaysEqual::value)
+  Vector(Vector&& o, const Alloc& alloc) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value &&
+                                                  IsAlwaysEqual::value)
       : Base(N, alloc) {
     moveConstruct(o, IsAlwaysEqual());
   }
@@ -1981,7 +2005,8 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   }
 
   // Move assignment operator only defined here as it requires same N
-  Vector& operator=(Vector&& o) noexcept((N == 0 || vec::is_shift_nothrow<T>::value) && CanStealOnMoveAssign::value) {
+  Vector& operator=(Vector&& o) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value &&
+                                         CanStealOnMoveAssign::value) {
     if (AMC_LIKELY(this != &o)) {
       moveAssign(o, CanStealOnMoveAssign());
     }
@@ -1996,7 +2021,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   }
 
   // Define swap here instead of VectorImpl as noexcept swap is possible only for same inplace capacity
-  void swap(Vector& o) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) {
+  void swap(Vector& o) noexcept(vec::LazyOr<N == 0, vec::is_swap_noexcept<T> >::value) {
     this->swap_impl(o);
     swapAllocators(o, typename AllocTraits::propagate_on_swap());
   }
@@ -2038,7 +2063,8 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   template <class, class, class, class>
   friend class FlatSet;
 
-  void moveConstruct(Vector& o, std::true_type) noexcept(N == 0 || vec::is_move_construct_nothrow<T>::value) {
+  void moveConstruct(Vector& o,
+                     std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value) {
     this->move_construct(o, N);
   }
 
@@ -2074,7 +2100,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   }
 
   /// Our allocator is equal to the one of 'o', or it propagates: we can steal the memory of 'o'.
-  void moveAssign(Vector& o, std::true_type) noexcept(N == 0 || vec::is_shift_nothrow<T>::value) {
+  void moveAssign(Vector& o, std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value) {
     propagateAllocator(o, PropagateOnMove());
     this->move_assign(o, N);
   }
@@ -2091,7 +2117,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
 template <class T, class A, class S, class G, S N>
 inline void swap(Vector<T, A, S, G, N>& lhs,
-                 Vector<T, A, S, G, N>& rhs) noexcept(N == 0 || vec::is_swap_noexcept<T>::value) {
+                 Vector<T, A, S, G, N>& rhs) noexcept(vec::LazyOr<N == 0, vec::is_swap_noexcept<T> >::value) {
   lhs.swap(rhs);
 }
 

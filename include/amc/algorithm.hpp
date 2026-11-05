@@ -54,12 +54,31 @@ concept ThreeWayComparableWith = std::three_way_comparable_with<T, U>;
 template <class T, class U>
 concept ThreeWayComparableWith = requires(const T& t, const U& u) { t <=> u; };
 #endif
+
+/// Emulation of the exposition only 'boolean-testable' concept (without std::convertible_to, which needs <concepts>).
+template <class B>
+concept BooleanTestableImpl = std::is_convertible_v<B, bool>;
+
+template <class B>
+concept BooleanTestable = BooleanTestableImpl<B> && requires(B&& b) {
+  { !std::forward<B>(b) } -> BooleanTestableImpl;
+};
+
+/// Constraint of the exposition only 'synth-three-way': 'T' and 'U' are ordered with operator< (which operator<=>
+/// provides too). Like the standard containers, the amc ones only define operator<=> for elements satisfying it, so
+/// that type traits such as std::three_way_comparable tell that the containers of other elements are not ordered.
+template <class T, class U = T>
+concept SynthThreeWayComparable = requires(const T& t, const U& u) {
+  { t < u } -> BooleanTestable;
+  { u < t } -> BooleanTestable;
+};
 }  // namespace algorithm_details
 
 /// Emulation of the exposition only 'synth-three-way' used by the comparison operators of the standard containers:
 /// elements are compared with operator<=> if they can, otherwise with operator< (giving a std::weak_ordering).
 struct synth_three_way {
   template <class T, class U>
+    requires algorithm_details::SynthThreeWayComparable<T, U>
   constexpr auto operator()(const T& t, const U& u) const {
     if constexpr (algorithm_details::ThreeWayComparableWith<T, U>) {
       return t <=> u;

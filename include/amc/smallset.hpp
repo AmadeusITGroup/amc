@@ -157,7 +157,7 @@ class FlatSet;
  * It does not allow duplicated elements.
  * Elements a, b are equivalent if !Compare(a, b) && !Compare(b, a)
  *
- * Differences with std::set, by design (see the README for details):
+ * Differences with std::set, by design (see docs/compatibility.md for details):
  *  - In the small state, the elements are iterated in insertion order, not sorted: begin() is not the smallest
  *    element, and the algorithms requiring sorted ranges (std::includes, std::set_union...) do not apply. The
  *    comparison operators sort the elements, they compare like the ones of std::set.
@@ -204,15 +204,17 @@ class SmallSet {
   using reverse_iterator = std::reverse_iterator<iterator>;
   using const_iterator = iterator;
   using const_reverse_iterator = reverse_iterator;
-  using reference = const T&;
-  using const_reference = reference;
+  // Like the ones of std::set, 'reference' and 'pointer' are not const, but the elements are only accessible through
+  // const ones (iterators included): modifying them could break the order (of the large state).
+  using reference = value_type&;
+  using const_reference = const value_type&;
   using size_type = typename std::conditional<sizeof(typename VecType::size_type) < sizeof(typename SetType::size_type),
                                               typename SetType::size_type, typename VecType::size_type>::type;
 
   using key_compare = Compare;
   using value_compare = Compare;
-  using pointer = const T*;
-  using const_pointer = const T*;
+  using pointer = value_type*;
+  using const_pointer = const value_type*;
 
   /// Shared with the FlatSets and SmallSets of the same value and allocator types (see set_details::NodeHandle).
   using node_type = set_details::NodeHandle<T, Alloc>;
@@ -551,7 +553,10 @@ class SmallSet {
   bool operator!=(const SmallSet& o) const { return !(*this == o); }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const SmallSet& o) const {
+  /// Like the one of std::set, only defined for elements which 'synth_three_way' can compare.
+  auto operator<=>(const SmallSet& o) const
+    requires algorithm_details::SynthThreeWayComparable<T>
+  {
     if (!isSmall() && !o.isSmall()) {
       return _set <=> o._set;
     }
@@ -856,8 +861,10 @@ class SmallSet {
   SetType _set;
 };
 
+/// Like the one of std::set, has the exception specification of the member swap.
 template <class T, std::uintmax_t N, class Compare, class Alloc, class SetType>
-inline void swap(SmallSet<T, N, Compare, Alloc, SetType>& lhs, SmallSet<T, N, Compare, Alloc, SetType>& rhs) {
+inline void swap(SmallSet<T, N, Compare, Alloc, SetType>& lhs,
+                 SmallSet<T, N, Compare, Alloc, SetType>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
 }
 

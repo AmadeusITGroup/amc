@@ -24,6 +24,7 @@
 #include <ranges>
 #endif
 
+#include "testhelpers.hpp"
 #include "testmallocfailure.hpp"
 #include "testtypes.hpp"
 
@@ -166,6 +167,34 @@ TYPED_TEST(SetListTest, IteratorOperators) {
 
   EXPECT_EQ(begIt, s.begin());
   EXPECT_NE(begIt, s.end());
+}
+
+// Same member types as std::set: 'reference' and 'pointer' are not const, but the iterators only give const access to
+// the elements, whose modification could break the order.
+TYPED_TEST(SetListTest, MemberTypes) {
+  using SetType = TypeParam;
+  using T = typename SetType::value_type;
+  using StdSet = std::set<T>;
+  static_assert(std::is_same<typename SetType::reference, T&>::value, "");
+  static_assert(std::is_same<typename SetType::const_reference, const T&>::value, "");
+  static_assert(std::is_same<typename SetType::pointer, T*>::value, "");
+  static_assert(std::is_same<typename SetType::const_pointer, const T*>::value, "");
+  static_assert(std::is_same<typename SetType::reference, typename StdSet::reference>::value, "");
+  static_assert(std::is_same<typename SetType::const_reference, typename StdSet::const_reference>::value, "");
+  static_assert(std::is_same<typename SetType::pointer, typename StdSet::pointer>::value, "");
+  static_assert(std::is_same<typename SetType::const_pointer, typename StdSet::const_pointer>::value, "");
+
+  using Iterator = typename SetType::iterator;
+  using ConstIterator = typename SetType::const_iterator;
+  static_assert(std::is_same<typename std::iterator_traits<Iterator>::reference, const T&>::value, "");
+  static_assert(std::is_same<typename std::iterator_traits<Iterator>::pointer, const T*>::value, "");
+  static_assert(std::is_same<typename std::iterator_traits<ConstIterator>::reference, const T&>::value, "");
+  static_assert(std::is_same<typename std::iterator_traits<ConstIterator>::pointer, const T*>::value, "");
+  static_assert(std::is_same<decltype(*std::declval<const Iterator&>()), const T&>::value, "");
+  static_assert(std::is_same<decltype(*std::declval<SetType&>().begin()), const T&>::value, "");
+  static_assert(std::is_same<decltype(*std::declval<SetType&>().rbegin()), const T&>::value, "");
+  static_assert(std::is_same<decltype(*std::declval<SetType&>().find(std::declval<const T&>())), const T&>::value, "");
+  static_assert(std::is_same<decltype(*std::declval<SetType&>().insert(std::declval<T>()).first), const T&>::value, "");
 }
 
 TYPED_TEST(SetListTest, SpecialMembers) {
@@ -330,6 +359,13 @@ TYPED_TEST(SetListTest, Swap) {
   s1.swap(s2);
   EXPECT_EQ(s1, TypeParam({3, 4, 5}));
   EXPECT_EQ(s2, TypeParam({1, 2, 3, 4}));
+
+  // like the one of std::set, the free swap has the exception specification of the member swap
+  static_assert(amc::is_nothrow_swappable<TypeParam>::value == noexcept(s1.swap(s2)), "");
+  using std::swap;
+  swap(s1, s2);
+  EXPECT_EQ(s1, TypeParam({1, 2, 3, 4}));
+  EXPECT_EQ(s2, TypeParam({3, 4, 5}));
 }
 
 // Like std::set, merge moves the elements which are not already present, the other ones stay in the source set.
@@ -568,6 +604,38 @@ TYPED_TEST(SetListTest, ComparisonOperators) {
     EXPECT_LT(s, TypeParam({1, 3, 5}));
   }
 }
+
+#ifdef AMC_CXX20
+// Like the one of std::set, operator<=> is only defined for elements ordered by operator<=> or operator<: type traits
+// tell that sets of other elements (ordered by another comparator) are not three-way comparable, instead of failing to
+// compile.
+TEST(SetTest, ThreeWayComparableLikeStdSet) {
+  using NonComparableVector = std::vector<NonComparableType, amc::allocator<NonComparableType>>;
+  static_assert(HasThreeWayComparisonOf<FlatSet<int>, std::set<int>>());        // std::strong_ordering
+  static_assert(HasThreeWayComparisonOf<FlatSet<double>, std::set<double>>());  // std::partial_ordering
+  static_assert(HasThreeWayComparisonOf<FlatSet<LessComparableType>, std::set<LessComparableType>>());  // weak
+  static_assert(HasThreeWayComparisonOf<FlatSet<NonComparableType, NonComparableTypeLess>,
+                                        std::set<NonComparableType, NonComparableTypeLess>>());
+  static_assert(
+      HasThreeWayComparisonOf<
+          FlatSet<NonComparableType, NonComparableTypeLess, amc::allocator<NonComparableType>, NonComparableVector>,
+          std::set<NonComparableType, NonComparableTypeLess>>());
+#ifdef AMC_SMALLSET
+  static_assert(HasThreeWayComparisonOf<SmallSet<int, 4>, std::set<int>>());
+  static_assert(HasThreeWayComparisonOf<SmallSet<double, 4>, std::set<double>>());
+  static_assert(HasThreeWayComparisonOf<SmallSet<LessComparableType, 4>, std::set<LessComparableType>>());
+  static_assert(HasThreeWayComparisonOf<SmallSet<NonComparableType, 4, NonComparableTypeLess>,
+                                        std::set<NonComparableType, NonComparableTypeLess>>());
+  static_assert(HasThreeWayComparisonOf<SmallSet<LessComparableType, 4, std::less<LessComparableType>,
+                                                 amc::allocator<LessComparableType>, FlatSet<LessComparableType>>,
+                                        std::set<LessComparableType>>());
+  static_assert(
+      HasThreeWayComparisonOf<SmallSet<NonComparableType, 4, NonComparableTypeLess, amc::allocator<NonComparableType>,
+                                       FlatSet<NonComparableType, NonComparableTypeLess>>,
+                              std::set<NonComparableType, NonComparableTypeLess>>());
+#endif
+}
+#endif
 
 #ifdef AMC_CXX20
 // Like the iterators of a set, the predicate only has a const access to the elements.
@@ -916,6 +984,67 @@ TEST(SetTest, NothrowMove) {
   static_assert(
       IsOnlyMovable<SmallSet<int32_t, 2, Compare, amc::allocator<int32_t>, FlatSet<int32_t, Compare>>>::value);
   static_assert(IsOnlyMovable<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>::value);
+#endif
+}
+
+// Like for std::set, the free swap of the sets cannot throw, unless the swap of their comparator, of the elements of an
+// inline storage, or of the set of a SmallSet can.
+TEST(SetTest, NothrowSwap) {
+  static_assert(amc::is_nothrow_swappable<std::set<int>>::value, "");
+  static_assert(amc::is_nothrow_swappable<FlatSet<int>>::value, "");
+  static_assert(
+      amc::is_nothrow_swappable<FlatSet<char, std::less<char>, amc::allocator<char>, SmallVector<char, 4>>>::value, "");
+  static_assert(!amc::is_nothrow_swappable<FlatSet<int32_t, PotentiallyThrowingMoveCompare>>::value, "");
+  using T = ThrowingMoveType;
+  static_assert(!amc::is_nothrow_swappable<FlatSet<T, std::less<T>, amc::allocator<T>, SmallVector<T, 4>>>::value, "");
+#ifdef AMC_SMALLSET
+  static_assert(amc::is_nothrow_swappable<SmallSet<int, 4>>::value);
+  static_assert(amc::is_nothrow_swappable<SmallSet<int, 4, std::less<int>, amc::allocator<int>, FlatSet<int>>>::value);
+  static_assert(!amc::is_nothrow_swappable<SmallSet<T, 4>>::value);
+#endif
+}
+
+// Like std::set, the sets swap their comparators with the swap found by argument dependent lookup, whose exception
+// specification is the one their swap checks: a comparator with a noexcept swap is not copied, nor moved.
+TEST(SetTest, SwapComparatorsWithTheirSwap) {
+  using Compare = NothrowSwapModuloCompare;
+  using Set = FlatSet<int32_t, Compare>;
+  static_assert(!std::is_nothrow_copy_constructible<Compare>::value, "");
+  static_assert(amc::is_nothrow_swappable<Compare>::value, "");
+  static_assert(amc::is_nothrow_swappable<Set>::value, "");
+
+  Set s1({23, 1, 12}, Compare(10));
+  Set s2({105, 3}, Compare(100));
+  const int nbSwaps = Compare::NbSwaps();
+  s1.swap(s2);
+  EXPECT_EQ(Compare::NbSwaps(), nbSwaps + 1);
+  EXPECT_EQ(s1.key_comp()._modulo, 100);
+  EXPECT_EQ(s2.key_comp()._modulo, 10);
+  EXPECT_EQ(s1, Set({3, 105}, Compare(100)));
+  EXPECT_EQ(s2, Set({1, 12, 23}, Compare(10)));
+  EXPECT_FALSE(s1.insert(203).second);  // equivalent to 3 with a modulo of 100
+  EXPECT_FALSE(s2.insert(33).second);   // equivalent to 23 with a modulo of 10
+
+  swap(s1, s2);
+  EXPECT_EQ(Compare::NbSwaps(), nbSwaps + 2);
+  EXPECT_EQ(s1.key_comp()._modulo, 10);
+  EXPECT_EQ(s2.key_comp()._modulo, 100);
+  EXPECT_EQ(s1, Set({1, 12, 23}, Compare(10)));
+  EXPECT_EQ(s2, Set({3, 105}, Compare(100)));
+
+#ifdef AMC_SMALLSET
+  // the comparator of a SmallSet is the one of its set, swapped by the swap of the sets, in both states
+  using SmallSetType = SmallSet<int32_t, 2, Compare, amc::allocator<int32_t>, Set>;
+  static_assert(amc::is_nothrow_swappable<SmallSetType>::value, "");
+  SmallSetType small({1}, Compare(10));
+  SmallSetType large({3, 105, 7}, Compare(100));
+  swap(small, large);
+  EXPECT_EQ(Compare::NbSwaps(), nbSwaps + 3);
+  EXPECT_EQ(small.key_comp()._modulo, 100);
+  EXPECT_EQ(large.key_comp()._modulo, 10);
+  EXPECT_EQ(small.size(), 3U);
+  EXPECT_EQ(large.size(), 1U);
+  EXPECT_FALSE(large.insert(11).second);  // equivalent to 1 with a modulo of 10
 #endif
 }
 
@@ -2003,6 +2132,12 @@ TEST(FlatSetTest, SpecificPointerMethods) {
   EXPECT_EQ(s[1], 0);
   EXPECT_EQ(s.at(2), 2);
   EXPECT_THROW(s.at(7), std::out_of_range);
+  // like the iterators, they only give const access to the elements
+  static_assert(std::is_same<decltype(s.data()), const int*>::value, "");
+  static_assert(std::is_same<decltype(s[1]), const int&>::value, "");
+  static_assert(std::is_same<decltype(s.at(1)), const int&>::value, "");
+  static_assert(std::is_same<decltype(s.front()), const int&>::value, "");
+  static_assert(std::is_same<decltype(s.back()), const int&>::value, "");
 }
 
 // capacity, reserve and shrink_to_fit are the ones of the vector: the elements are kept, and they do not move while

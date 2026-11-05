@@ -209,6 +209,29 @@ struct PotentiallyThrowingMoveCompare {
   bool operator()(int32_t lhs, int32_t rhs) const { return lhs < rhs; }
 };
 
+/// Stateful comparator of integers (see ModuloCompare) whose copies are not noexcept (even though they never throw),
+/// and which has no move operations, but whose swap, found by argument dependent lookup, is noexcept: swapping it with
+/// std::swap would copy it. Its swap counts its calls.
+struct NothrowSwapModuloCompare : ModuloCompare {
+  NothrowSwapModuloCompare() = default;
+  explicit NothrowSwapModuloCompare(int32_t modulo) : ModuloCompare(modulo) {}
+  NothrowSwapModuloCompare(const NothrowSwapModuloCompare& o) noexcept(false) : ModuloCompare(o) {}
+  NothrowSwapModuloCompare& operator=(const NothrowSwapModuloCompare& o) noexcept(false) {
+    _modulo = o._modulo;
+    return *this;
+  }
+
+  friend void swap(NothrowSwapModuloCompare& lhs, NothrowSwapModuloCompare& rhs) noexcept {
+    std::swap(lhs._modulo, rhs._modulo);
+    ++NbSwaps();
+  }
+
+  static int& NbSwaps() noexcept {
+    static int nbSwaps = 0;
+    return nbSwaps;
+  }
+};
+
 struct CompareException {};
 
 /// Comparator of integers with operator<, which throws CompareException once 'NbComparisonsBeforeThrow()' comparisons
@@ -254,6 +277,16 @@ struct LessComparableType {
   bool operator<(const LessComparableType& o) const { return _i < o._i; }
 
   int32_t _i;
+};
+
+/// Type without any comparison operator (nor conversion to a comparable type), ordered by NonComparableTypeLess: from
+/// C++20, like the standard ones, containers of this type are not three-way comparable (which type traits must tell).
+struct NonComparableType {
+  int32_t _i;
+};
+
+struct NonComparableTypeLess {
+  bool operator()(const NonComparableType& lhs, const NonComparableType& rhs) const { return lhs._i < rhs._i; }
 };
 
 /// Type ordered by its key only, while operator== also compares its value: values of the same key are equivalent (for
