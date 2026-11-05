@@ -56,16 +56,16 @@ struct UseBranchlessSearch : std::integral_constant<bool, std::is_scalar<T>::val
 
 /// Ranges smaller than this size are searched without prefetching: they likely fit in the L1 data cache, where the
 /// prefetches would only cost instructions.
-constexpr std::size_t kPrefetchMinRangeBytes = 64U * 1024U;
+AMC_INLINE_VARIABLE constexpr std::size_t kPrefetchMinRangeBytes = 64U * 1024U;
 
 /// The prefetching stops when the remaining range is smaller than this size: its few cache lines are already being
 /// loaded.
-constexpr std::size_t kPrefetchStopRangeBytes = 256U;
+AMC_INLINE_VARIABLE constexpr std::size_t kPrefetchStopRangeBytes = 256U;
 
 /// Unsorted input starting with a sorted prefix of at least two thirds of its elements is not sorted at once: the other
 /// elements are sorted, then merged with the prefix. Smaller input is always sorted at once: std::sort is then faster
 /// than the allocation of the buffer of std::inplace_merge.
-constexpr std::size_t kMinSizeToMergeSortedPrefix = 32U;
+AMC_INLINE_VARIABLE constexpr std::size_t kMinSizeToMergeSortedPrefix = 32U;
 
 /// Returns 'it + offset' if 'cond', 'it' otherwise, without a branch, which would be mispredicted half of the time on a
 /// random condition.

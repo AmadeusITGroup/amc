@@ -127,7 +127,10 @@ struct alignas(64) OverAlignedType {
   operator int32_t() const { return _i; }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const OverAlignedType& o) const = default;
+  // Not defaulted: they would compare the padding too, and make the type trivially equality comparable, for which the
+  // vectorized std::find of the MSVC STL 14.51 compiled by clang-cl asserts that the element size is 1, 2, 4 or 8.
+  bool operator==(const OverAlignedType& o) const { return _i == o._i; }
+  std::strong_ordering operator<=>(const OverAlignedType& o) const { return _i <=> o._i; }
 #endif
 
   int32_t _i;

@@ -89,3 +89,11 @@
 #endif
 
 #endif
+
+// Namespace scope constants of the headers: inline from C++17, which gives them external linkage (the C++20 module must
+// not expose entities with internal linkage to the code importing it).
+#ifdef AMC_CXX17
+#define AMC_INLINE_VARIABLE inline
+#else
+#define AMC_INLINE_VARIABLE
+#endif

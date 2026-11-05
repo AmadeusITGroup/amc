@@ -1,5 +1,17 @@
 
 
+# From C++20, gtest-printers.h of GoogleTest 1.17 converts a char8_t to a char32_t, which Clang 22 warns about by default
+# (-Wcharacter-conversion): GoogleTest compiles itself with -WX with clang-cl, and its headers may not be system headers
+# of the tests with the Visual Studio generators.
+set(AMC_GTEST_COMPILE_OPTIONS)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  include(CheckCXXCompilerFlag)
+  check_cxx_compiler_flag(-Wcharacter-conversion AMC_HAS_WCHARACTER_CONVERSION)
+  if (AMC_HAS_WCHARACTER_CONVERSION)
+    set(AMC_GTEST_COMPILE_OPTIONS -Wno-character-conversion)
+  endif()
+endif()
+
 find_package(GTest CONFIG)
 if (NOT GTest_FOUND)
 
@@ -27,6 +39,9 @@ if (NOT GTest_FOUND)
       set_target_properties(${gtest_target} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${gtest_include_dirs}")
     endif()
   endforeach()
+  foreach(gtest_target gtest gtest_main gmock gmock_main)
+    target_compile_options(${gtest_target} PRIVATE ${AMC_GTEST_COMPILE_OPTIONS})
+  endforeach()
 endif()
 
 enable_testing()
@@ -50,14 +65,15 @@ if (AMC_ENABLE_COVERAGE)
   endif()
 
   set(AMC_COVERAGE_DIR ${PROJECT_BINARY_DIR}/coverage)
-  message(STATUS "AMC - Code coverage with ${AMC_LLVM_COV}, run target 'coverage' for a report in ${AMC_COVERAGE_DIR}")
+  message(STATUS "[amc] Code coverage with ${AMC_LLVM_COV}, run target 'coverage' for a report in ${AMC_COVERAGE_DIR}")
 endif()
 
 # Create a unit test with google test.
 # NO_GTEST: plain executable reporting failures with its exit code, for tests compiled with a standard older than C++17
 #           (that google test requires), set with CXX_STANDARD.
+# MODULE: test importing the amc C++20 module, which defines AMC_NONSTD_FEATURES for it (AMC_MODULE_NONSTD_FEATURES).
 function(add_unit_test name)
-   set(options NO_GTEST)
+   set(options NO_GTEST MODULE)
    set(oneValueArgs CXX_STANDARD)
    set(multiValueArgs)
    cmake_parse_arguments(PARSE_ARGV 1 MY "${options}" "${oneValueArgs}" "${multiValueArgs}")
@@ -65,12 +81,20 @@ function(add_unit_test name)
    add_executable(${name} ${MY_UNPARSED_ARGUMENTS})
    if (NOT MY_NO_GTEST)
      target_link_libraries(${name} PRIVATE GTest::gtest GTest::gmock GTest::gmock_main)
+     target_compile_options(${name} PRIVATE ${AMC_GTEST_COMPILE_OPTIONS})
    endif()
    if (MY_CXX_STANDARD)
      set_target_properties(${name} PROPERTIES CXX_STANDARD ${MY_CXX_STANDARD} CXX_STANDARD_REQUIRED ON)
    endif()
    target_include_directories(${name} PRIVATE ../include)
-   AmcSetProjectProperties(${name})
+   if (MY_MODULE)
+     target_link_libraries(${name} PRIVATE amc::module)
+     # Not scanned by default: the policy CMP0155 is not set, as the project supports CMake versions without modules
+     set_target_properties(${name} PROPERTIES CXX_SCAN_FOR_MODULES ON)
+     AmcSetProjectProperties(${name} NO_NONSTD_FEATURES MODULE)
+   else()
+     AmcSetProjectProperties(${name})
+   endif()
 
    add_test(NAME ${name} COMMAND ${name})
    if (AMC_ENABLE_ASAN AND NOT MSVC)
@@ -103,6 +127,15 @@ add_unit_test(
   sets_test
   sets_test.cpp
 )
+
+if (AMC_ENABLE_MODULE)
+  add_unit_test(
+    module_test
+    module_test.cpp
+    module_test_headers.cpp
+    MODULE
+  )
+endif()
 
 # amc emulations of standard library features, only used before C++17 (C++14 is the oldest standard of MSVC).
 # Compiled in C++11, or in C++14 if it is the standard of the build: GoogleTest imposes C++17 on the other tests.

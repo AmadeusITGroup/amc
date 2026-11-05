@@ -17,7 +17,7 @@ namespace vec {
 
 /// Capacities of fewer bytes double when a vector grows, larger ones grow by a factor of 1.5: reallocating a small
 /// block costs more than the memory left unused, and the smaller factor saves memory for large blocks.
-constexpr std::size_t kMaxDoublingBytes = 4096;
+AMC_INLINE_VARIABLE constexpr std::size_t kMaxDoublingBytes = 4096;
 
 /// Capacity below which a vector of T doubles its capacity when growing (see kMaxDoublingBytes).
 template <class T>

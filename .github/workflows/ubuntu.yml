@@ -11,7 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: [g++-9, g++-11, g++-13]
+        # C++20 by default, C++17 for the compilers whose C++20 mode is pre-standard (__cplusplus 201709L)
+        include:
+          - { compiler: g++-9, standard: 17 }
+          - { compiler: g++-11, standard: 20 }
+          - { compiler: g++-13, standard: 20 }
     steps:
       - uses: actions/checkout@v5
       - name: Install compiler
@@ -20,7 +24,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Release
       - name: build
         run: cmake --build build --parallel
       - name: test
@@ -30,7 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: [g++-8, g++-10, g++-12]
+        include:
+          - { compiler: g++-8, standard: 17 }
+          - { compiler: g++-10, standard: 17 }
+          - { compiler: g++-12, standard: 20 }
     steps:
       - uses: actions/checkout@v5
       - name: Install compiler
@@ -39,7 +46,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
         run: cmake --build build --parallel
       - name: test
@@ -97,6 +104,40 @@ jobs:
           sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
+      - name: build
+        run: cmake --build build --parallel
+      - name: test
+        run: cd build && ctest -j --output-on-failure
+
+  # C++20 module (CMake 3.28, Ninja, a compiler scanning module dependencies: Clang with clang-scan-deps, GCC 14 or
+  # later). With GCC, the module and its test are built without the undefined behavior sanitizer (see
+  # SetProjectProperties.cmake)
+  ci_module:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, compiler: clang++-21, llvm: "21", standard: 23, nonstd: "ON" }
+          - { os: ubuntu-latest, compiler: clang++-19, llvm: "19", standard: 20, nonstd: "OFF" }
+          - { os: ubuntu-26.04, compiler: g++-15, standard: 23, nonstd: "ON" }  # GCC 15 is not in Ubuntu 24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          if [ -n "${{ matrix.llvm }}" ]; then
+            wget --retry-connrefused --waitretry=5 --tries=5 https://apt.llvm.org/llvm.sh
+            chmod +x llvm.sh
+            sudo ./llvm.sh ${{ matrix.llvm }}
+            sudo apt-get install -y clang-tools-${{ matrix.llvm }}
+          else
+            sudo apt-get install -y ${{ matrix.compiler }}
+          fi
+          # apt takes a missing package name as a regular expression ('+' in 'g++-15'), and installs what matches it
+          ${{ matrix.compiler }} --version
+      - name: cmake
+        run: cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_MODULE=ON -DAMC_MODULE_NONSTD_FEATURES=${{ matrix.nonstd }} -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
         run: cmake --build build --parallel
       - name: test

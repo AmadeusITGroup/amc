@@ -13,16 +13,36 @@ jobs:
       matrix:
         build_type: [Debug, Release]
         architecture: [Win32, x64]
+        standard: [20]
+        include:
+          - { build_type: Debug, architecture: x64, standard: 17 }
 
     steps:
       - uses: actions/checkout@v5
       - name: cmake
         # warnings are only treated as errors in Debug
-        run: cmake -S . -B build -A ${{ matrix.architecture }} -DAMC_WARNINGS_AS_ERRORS=ON
+        run: cmake -S . -B build -A ${{ matrix.architecture }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
       - name: test
         run: cd build && ctest -j -C ${{ matrix.build_type }} --output-on-failure
+
+  msvc2022-module:
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        include:
+          - { standard: 20, nonstd: "OFF" }
+          - { standard: 23, nonstd: "ON" }
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: cmake
+        run: cmake -S . -B build -A x64 -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DAMC_ENABLE_MODULE=ON -DAMC_MODULE_NONSTD_FEATURES=${{ matrix.nonstd }} -DAMC_WARNINGS_AS_ERRORS=ON
+      - name: build
+        run: cmake --build build --config Debug --parallel
+      - name: test
+        run: cd build && ctest -j -C Debug --output-on-failure
 
   clang-cl-11:
     runs-on: windows-latest
