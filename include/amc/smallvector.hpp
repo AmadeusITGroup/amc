@@ -290,7 +290,10 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
  * A SmallVector can be built from a rvalue amc::vector: it steals its dynamic storage if its capacity is larger than
  * N, otherwise it relocates its elements inline. Indeed, a 'Large' SmallVector always has a capacity larger than N.
  *
- * In addition, size_type can be configured and is uint32_t by default.
+ * In addition, size_type can be configured and is uint32_t by default. Like with std::vector, the counts taken by the
+ * methods (constructors, assign, insert, resize, reserve...) are of type size_type: a larger count is converted to it
+ * by the call (wrapping around for an unsigned type), before the vector can check it against max_size(). For
+ * instance, SmallVector<int, 4, amc::allocator<int>, uint8_t>(300) has 44 elements.
  *
  * If 'Alloc' provides this additional optional method
  *  * T *reallocate(pointer p, size_type oldCapacity, size_type newCapacity, size_type nConstructedElems);

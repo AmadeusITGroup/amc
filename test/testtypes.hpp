@@ -176,6 +176,30 @@ struct ModuloCompare {
   int32_t _modulo = std::numeric_limits<int32_t>::max();
 };
 
+/// Comparator of integers with operator>, which cannot be derived from (unlike most comparators).
+struct FinalGreaterCompare final {
+  bool operator()(int32_t lhs, int32_t rhs) const { return lhs > rhs; }
+};
+
+/// Comparison functions of integers, for the sets whose comparator is a function pointer.
+inline bool LessInt32(int32_t lhs, int32_t rhs) { return lhs < rhs; }
+inline bool GreaterInt32(int32_t lhs, int32_t rhs) { return lhs > rhs; }
+
+/// Key of the integers of a ten (from 10 * _tens to 10 * _tens + 9), for TensCompare.
+struct Tens {
+  int32_t _tens;
+};
+
+/// Transparent comparator of non negative integers, which also compares them with a key of their ten: a key is
+/// equivalent to several elements.
+struct TensCompare {
+  using is_transparent = void;
+
+  bool operator()(int32_t lhs, int32_t rhs) const { return lhs < rhs; }
+  bool operator()(int32_t lhs, Tens rhs) const { return lhs / 10 < rhs._tens; }
+  bool operator()(Tens lhs, int32_t rhs) const { return lhs._tens < rhs / 10; }
+};
+
 /// Comparator of integers with operator<, whose copies and moves are not noexcept (even though they never throw).
 struct PotentiallyThrowingMoveCompare {
   PotentiallyThrowingMoveCompare() = default;
@@ -687,6 +711,15 @@ class CountingAllocator {
       --NbLiveAllocations();
     }
     free(p);
+  }
+};
+
+/// CountingAllocator as a singleton, for BasicSingletonAllocatorAdaptor (which calls the methods of its 'instance()').
+class SingletonCountingAllocator : public CountingAllocator {
+ public:
+  static SingletonCountingAllocator& instance() {
+    static SingletonCountingAllocator allocator;
+    return allocator;
   }
 };
 

@@ -1,15 +1,20 @@
 // Tests of the emulations of standard library features that amc provides before C++17, and of the containers available
 // in C++11 (instantiating their templates in C++11).
-// GoogleTest requires C++17, so this test is a plain executable compiled in C++11 (C++14 for MSVC), reporting failures
-// with its exit code. Its checks hold for the standard library features as well, from C++17.
+// GoogleTest requires C++17, so this test is a plain executable compiled in C++11 (C++14 for MSVC, and in the builds
+// whose standard is C++14), reporting failures with its exit code. Its checks hold for the standard library features
+// as well, from C++17.
 
+#include <algorithm>
+#include <amc/allocator.hpp>
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
 #include <amc/memory.hpp>
 #include <amc/smallvector.hpp>
 #include <amc/type_traits.hpp>
 #include <amc/vector.hpp>
+#include <cstddef>
 #include <cstdio>
+#include <string>
 #include <type_traits>
 
 namespace {
@@ -92,6 +97,24 @@ void CheckVector(const char* description) {
   Check(emptyCopy.empty(), description);
 }
 
+/// Before C++20, the emulation of std::construct_at must not take an rvalue of the element type followed by other
+/// arguments for a move (std::string(std::string&&, pos) constructs the substring from 'pos').
+template <class VectorType>
+void CheckEmplaceRvalueWithMoreArguments(const char* description) {
+  VectorType v;
+  v.emplace_back(std::string("hello"), std::string::size_type{1});
+  v.emplace(v.begin(), std::string("world"), std::string::size_type{2});
+  v.emplace(v.begin() + 1, std::string("amc"), std::string::size_type{1}, std::string::size_type{1});
+  Check(v.size() == 3U && v[0] == "rld" && v[1] == "m" && v[2] == "ello", description);
+}
+
+bool GreaterInt(int lhs, int rhs) { return lhs > rhs; }
+
+/// Comparator which cannot be derived from: std::is_final is emulated before C++14
+struct FinalLess final {
+  bool operator()(int lhs, int rhs) const { return lhs < rhs; }
+};
+
 }  // namespace
 
 static_assert(amc::is_nothrow_swappable<int>::value, "");
@@ -149,6 +172,28 @@ int main() {
     s.insert(2);
     Check(s == amc::FlatSet<int>{1, 2, 3, 4}, "FlatSet<int>");
   }
+
+  CheckEmplaceRvalueWithMoreArguments<amc::vector<std::string>>("vector<string> emplace of an rvalue and a position");
+  CheckEmplaceRvalueWithMoreArguments<amc::SmallVector<std::string, 2>>(
+      "SmallVector<string, 2> emplace of an rvalue and a position");
+  CheckEmplaceRvalueWithMoreArguments<amc::FixedCapacityVector<std::string, 4>>(
+      "FixedCapacityVector<string, 4> emplace of an rvalue and a position");
+  {
+    // Before C++17, a static constexpr data member which is odr-used (here, whose address is taken) must be defined
+    // outside of its class: this links
+    using SmallVectorType = amc::SmallVector<int, 4>;
+    const SmallVectorType::size_type* volatile inlineCapacity = &SmallVectorType::kInlineCapacity;
+    const std::size_t* volatile maxCopiedSize = &amc::SimpleAllocator::kMaxCopiedSize;
+    Check(*inlineCapacity == 4U && *maxCopiedSize == 1024U, "odr-used static constexpr data members");
+    const SmallVectorType::size_type count = 10;
+    Check(std::min(count, SmallVectorType::kInlineCapacity) == 4U, "kInlineCapacity bound to a reference");
+  }
+  {
+    amc::FlatSet<int, bool (*)(int, int)> greater({1, 3, 2}, &GreaterInt);
+    amc::FlatSet<int, FinalLess> less{3, 1, 2};
+    Check(*greater.begin() == 3 && *less.begin() == 1, "FlatSet of a function pointer or a final comparator");
+  }
+  static_assert(std::is_trivially_destructible<amc::FixedCapacityVector<int, 0>>::value, "");
 
   if (gNbFailures != 0) {
     std::fprintf(stderr, "%d failure(s)\n", gNbFailures);

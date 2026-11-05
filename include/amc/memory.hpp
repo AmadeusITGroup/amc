@@ -126,8 +126,10 @@ struct construct_at {
   }
 };
 
-template <class T, class B, class... Args>
-struct construct_at<typename std::enable_if<std::is_same<B, T>::value>::type, T, B, Args...> {
+/// Construction from a single rvalue of T, which may be copied with memcpy. Only selected for exactly one argument:
+/// an rvalue of T followed by other arguments goes to the primary template (like std::string(std::string&&, pos)).
+template <class T, class B>
+struct construct_at<typename std::enable_if<std::is_same<B, T>::value>::type, T, B> {
   typedef typename std::conditional<std::is_trivially_copyable<T>::value, TriviallyCopyable,
                                     typename std::conditional<std::is_array<T>::value, NonTriviallyCopyableArray,
                                                               NonTriviallyCopyable>::type>::type TypeTraits;

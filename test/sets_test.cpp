@@ -570,11 +570,17 @@ TYPED_TEST(SetListTest, ComparisonOperators) {
 }
 
 #ifdef AMC_CXX20
+// Like the iterators of a set, the predicate only has a const access to the elements.
 TYPED_TEST(SetListTest, EraseIf) {
   using ValueType = typename TypeParam::value_type;
   using SizeType = typename TypeParam::size_type;
   TypeParam s1{1, 2, 3};
-  EXPECT_EQ(erase_if(s1, [](const ValueType& v) { return v > ValueType{2}; }), SizeType{1});
+  EXPECT_EQ(erase_if(s1,
+                     [](auto& v) {
+                       static_assert(std::is_const_v<std::remove_reference_t<decltype(v)>>);
+                       return v > ValueType{2};
+                     }),
+            SizeType{1});
   EXPECT_EQ(s1, TypeParam({1, 2}));
 
   TypeParam s2{1, 4, 3};
@@ -920,10 +926,14 @@ class SetListExtractTest : public ::testing::Test {
   using List = typename std::list<T>;
 };
 
-using SetsExtractType = ::testing::Types<FlatSet<NonCopyableType>, SmallSet<NonCopyableType, 2>,
-                                         SmallSet<NonCopyableType, 4>, SmallSet<NonCopyableType, 3>,
-                                         SmallSet<NonCopyableType, 2, std::less<NonCopyableType>,
-                                                  amc::allocator<NonCopyableType>, FlatSet<NonCopyableType>>>;
+// The iterators of a std::vector are not pointers: FlatSet::extract cannot const_cast them.
+using SetsExtractType =
+    ::testing::Types<FlatSet<NonCopyableType>,
+                     FlatSet<NonCopyableType, std::less<NonCopyableType>, amc::allocator<NonCopyableType>,
+                             std::vector<NonCopyableType, amc::allocator<NonCopyableType>>>,
+                     SmallSet<NonCopyableType, 2>, SmallSet<NonCopyableType, 4>, SmallSet<NonCopyableType, 3>,
+                     SmallSet<NonCopyableType, 2, std::less<NonCopyableType>, amc::allocator<NonCopyableType>,
+                              FlatSet<NonCopyableType>>>;
 
 TYPED_TEST_SUITE(SetListExtractTest, SetsExtractType, );
 
@@ -1555,6 +1565,70 @@ TEST(FlatSetTest, MergeDifferentCompare) {
   EXPECT_EQ(s1, SetType({-5, -2, 0, 2, 3, 4, 6, 17, 19, 23, 30}));
 }
 
+// Like std::set, a FlatSet accepts comparators which cannot be derived from: a function pointer and a final class. It
+// holds them as a member, the empty ones taking no space otherwise. A function pointer is a comparator with a state:
+// two sets of the same type may be ordered by different functions. It is null in a default constructed set.
+TEST(FlatSetTest, FunctionPointerAndFinalComparators) {
+  using Values = std::vector<int32_t>;
+  using Compare = bool (*)(int32_t, int32_t);
+  using SetType = FlatSet<int32_t, Compare>;
+  static_assert(sizeof(FlatSet<int32_t>) == sizeof(vector<int32_t>), "an empty comparator takes no space");
+  static_assert(std::is_nothrow_move_constructible<SetType>::value && std::is_nothrow_move_assignable<SetType>::value,
+                "");
+  EXPECT_TRUE(SetType().key_comp() == nullptr);
+
+  SetType greater({1, 3, 2}, &GreaterInt32);
+  SetType less(&LessInt32);
+  less.insert({5, 1, 4});
+  EXPECT_TRUE(greater.key_comp() == &GreaterInt32);
+  EXPECT_TRUE(less.value_comp() == &LessInt32);
+  EXPECT_EQ(Values(greater.begin(), greater.end()), Values({3, 2, 1}));
+  EXPECT_EQ(greater.find(2) - greater.begin(), 1);
+  EXPECT_EQ(greater.lower_bound(4), greater.begin());
+
+  // the elements of a set ordered by another function are merged one by one, the present ones (1 and 4) stay
+  greater.insert(4);
+  less.merge(greater);
+  EXPECT_EQ(Values(less.begin(), less.end()), Values({1, 2, 3, 4, 5}));
+  EXPECT_EQ(Values(greater.begin(), greater.end()), Values({4, 1}));
+  EXPECT_TRUE(greater.key_comp() == &GreaterInt32);
+
+  // the copies, moves and swaps of the sets copy, move and swap their comparators
+  SetType copy(less);
+  EXPECT_TRUE(copy.key_comp() == &LessInt32);
+  EXPECT_EQ(copy, less);
+  SetType moved(std::move(copy), less.get_allocator());
+  EXPECT_TRUE(moved.key_comp() == &LessInt32);
+  moved.swap(greater);
+  EXPECT_TRUE(moved.key_comp() == &GreaterInt32);
+  EXPECT_TRUE(greater.key_comp() == &LessInt32);
+  EXPECT_EQ(Values(greater.begin(), greater.end()), Values({1, 2, 3, 4, 5}));
+  copy = moved;
+  EXPECT_TRUE(copy.key_comp() == &GreaterInt32);
+  greater = std::move(copy);
+  EXPECT_TRUE(greater.key_comp() == &GreaterInt32);
+  greater.insert({6, 5});
+  EXPECT_EQ(Values(greater.begin(), greater.end()), Values({6, 5, 4, 1}));
+
+  using FinalSetType = FlatSet<int32_t, FinalGreaterCompare>;
+  FinalSetType f{1, 3, 2};
+  f.merge(FinalSetType{4, 2});
+  EXPECT_EQ(Values(f.begin(), f.end()), Values({4, 3, 2, 1}));
+  EXPECT_EQ(f.upper_bound(3) - f.begin(), 2);
+  FinalSetType other{5};
+  f.swap(other);
+  EXPECT_EQ(f, FinalSetType({5}));
+  EXPECT_EQ(other, FinalSetType({1, 2, 3, 4}));
+
+#ifdef AMC_SMALLSET
+  // in the large state of a SmallSet
+  SmallSet<int32_t, 2, Compare, amc::allocator<int32_t>, SetType> smallSet(&GreaterInt32);
+  smallSet.insert({1, 3, 2});
+  EXPECT_EQ(Values(smallSet.begin(), smallSet.end()), Values({3, 2, 1}));
+  EXPECT_TRUE(smallSet.key_comp() == &GreaterInt32);
+#endif
+}
+
 #ifdef AMC_CXX14
 template <typename T>
 class SetListEquivalentType : public ::testing::Test {
@@ -1597,6 +1671,22 @@ TEST(FlatSetTest, BoundsEquivalentType) {
   EXPECT_EQ(s.upper_bound(2.0), s.begin() + 2);
   EXPECT_EQ(s.lower_bound(SelfMoveUnsafeType(2)), s.begin() + 1);
   EXPECT_EQ(s.upper_bound(SelfMoveUnsafeType(2)), s.begin() + 2);
+  EXPECT_EQ(s.equal_range(2.0), std::make_pair(s.begin() + 1, s.begin() + 2));
+  EXPECT_EQ(s.equal_range(3.5), std::make_pair(s.begin() + 2, s.begin() + 2));
+}
+
+// Unlike a key of the element type, a key of another type may be equivalent to several elements.
+TEST(FlatSetTest, EqualRangeOfKeyEquivalentToSeveralElements) {
+  const std::vector<int32_t> values{1, 12, 15, 18, 25, 41};
+  const FlatSet<int32_t, TensCompare> s(values.begin(), values.end());
+  const std::set<int32_t, TensCompare> ref(values.begin(), values.end());
+  for (int32_t tens = 0; tens <= 5; ++tens) {
+    const auto range = s.equal_range(Tens{tens});
+    const auto refRange = ref.equal_range(Tens{tens});
+    EXPECT_EQ(range.first - s.begin(), std::distance(ref.begin(), refRange.first)) << "tens " << tens;
+    EXPECT_EQ(range.second - s.begin(), std::distance(ref.begin(), refRange.second)) << "tens " << tens;
+  }
+  EXPECT_EQ(s.equal_range(Tens{1}), std::make_pair(s.begin() + 1, s.begin() + 4));
 }
 #endif
 
@@ -1609,6 +1699,49 @@ TEST(SmallSetTest, MergeDifferentCompare) {
   s1.merge(s2);
   EXPECT_EQ(s1, SetType({'A', 'B', 'C', 'D', 'E', 'G', 'H'}));
   EXPECT_EQ(s2, RevSetType({'E'}));
+}
+
+// The sets of the large states may be of types which cannot merge each other: a std::set and a FlatSet, or FlatSets of
+// different vector types. Their elements are then moved one by one, and like with std::set::merge, the ones already
+// present stay in the source. All the combinations of small (up to 2 elements) and large states are merged.
+template <class SetType1, class SetType2>
+void ExpectMergeOfOtherSetType() {
+  using Values = std::vector<int>;
+  const Values valuesList[] = {{}, {1, 4}, {0, 1, 2, 4, 6, 8}, {1, 3, 4, 5, 7, 8, 9}};
+  for (const Values& values1 : valuesList) {
+    for (const Values& values2 : valuesList) {
+      SetType1 s1(values1.begin(), values1.end());
+      SetType2 s2(values2.begin(), values2.end());
+      std::set<int> ref1(values1.begin(), values1.end());
+      std::set<int> ref2(values2.begin(), values2.end());
+      s1.merge(s2);
+      ref1.merge(ref2);
+      EXPECT_EQ(s1, SetType1(ref1.begin(), ref1.end()));
+      EXPECT_EQ(s2, SetType2(ref2.begin(), ref2.end()));
+    }
+  }
+  SetType1 s{1, 2};
+  s.merge(SetType2{2, 3, 4, 5, 6});  // a temporary
+  EXPECT_EQ(s, SetType1({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(SmallSetTest, MergeDifferentSetTypes) {
+  using StdSetBased = SmallSet<int, 2>;
+  using FlatSetBased = SmallSet<int, 2, std::less<int>, amc::allocator<int>, FlatSet<int>>;
+  using SmallVectorFlatSetBased = SmallSet<int, 2, std::greater<int>, amc::allocator<int>,
+                                           FlatSet<int, std::greater<int>, amc::allocator<int>, SmallVector<int, 4>>>;
+  using StdSet = std::set<int, std::less<int>, amc::allocator<int>>;
+  static_assert(smallset_details::CanMerge<StdSet, std::set<int, std::greater<int>, amc::allocator<int>>>::value);
+  static_assert(!smallset_details::CanMerge<StdSet, FlatSet<int>>::value);
+  static_assert(!smallset_details::CanMerge<FlatSet<int>, StdSet>::value);
+  static_assert(smallset_details::CanMerge<FlatSet<int>, FlatSet<int, std::greater<int>>>::value);
+  static_assert(
+      !smallset_details::CanMerge<FlatSet<int>,
+                                  FlatSet<int, std::less<int>, amc::allocator<int>, SmallVector<int, 4>>>::value);
+  ExpectMergeOfOtherSetType<StdSetBased, FlatSetBased>();
+  ExpectMergeOfOtherSetType<FlatSetBased, StdSetBased>();
+  ExpectMergeOfOtherSetType<FlatSetBased, SmallVectorFlatSetBased>();
+  ExpectMergeOfOtherSetType<SmallVectorFlatSetBased, StdSetBased>();
 }
 
 template <typename T>
@@ -1870,6 +2003,38 @@ TEST(FlatSetTest, SpecificPointerMethods) {
   EXPECT_EQ(s[1], 0);
   EXPECT_EQ(s.at(2), 2);
   EXPECT_THROW(s.at(7), std::out_of_range);
+}
+
+// capacity, reserve and shrink_to_fit are the ones of the vector: the elements are kept, and they do not move while
+// the set does not exceed the reserved capacity.
+template <class SetType>
+void ExpectCapacityMethods(int reserved, int expectedShrunkCapacity) {
+  using SizeType = typename SetType::size_type;
+  SetType s{3, 1, 2};
+  s.reserve(static_cast<SizeType>(reserved));
+  EXPECT_GE(s.capacity(), static_cast<SizeType>(reserved));
+  const auto* data = s.data();
+  for (int i = 4; i <= reserved; ++i) {
+    s.insert(i);
+  }
+  EXPECT_EQ(s.data(), data);
+  EXPECT_EQ(s.size(), static_cast<SizeType>(reserved));
+  s.erase(s.begin() + 3, s.end());
+  s.shrink_to_fit();
+  EXPECT_EQ(s.capacity(), static_cast<SizeType>(expectedShrunkCapacity));
+  EXPECT_EQ(s, SetType({1, 2, 3}));
+}
+
+TEST(FlatSetTest, CapacityMethods) {
+  ExpectCapacityMethods<FlatSet<int>>(20, 3);
+  // back to the inline storage
+  ExpectCapacityMethods<FlatSet<int, std::less<int>, amc::allocator<int>, SmallVector<int, 8>>>(20, 8);
+  ExpectCapacityMethods<FlatSet<int, std::less<int>, std::allocator<int>, std::vector<int>>>(20, 3);
+  using FixedSetType =
+      FlatSet<int, std::less<int>, FixedCapacityVector<int, 20>::allocator_type, FixedCapacityVector<int, 20>>;
+  ExpectCapacityMethods<FixedSetType>(20, 20);
+  FixedSetType s;
+  EXPECT_THROW(s.reserve(21), std::out_of_range);
 }
 
 TEST(FlatSetTest, CreateFromVector) {

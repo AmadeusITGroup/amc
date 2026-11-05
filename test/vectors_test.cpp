@@ -544,8 +544,11 @@ TEST(VectorTest, CustomOperations) {
 
   static_assert(std::is_trivially_destructible<IntVectorType>::value,
                 "FixedCapacityVector of a trivially copyable type should be trivially destructible");
+  static_assert(std::is_trivially_destructible<FixedCapacityVector<int, 0>>::value,
+                "FixedCapacityVector without capacity of a trivially copyable type should be trivially destructible");
   static_assert(!std::is_trivially_destructible<OtherVectorType>::value,
                 "FixedCapacityVector of a non trivially copyable type should not be trivially destructible");
+  static_assert(!std::is_trivially_destructible<FixedCapacityVector<NonTriviallyRelocatableType, 0>>::value, "");
   static_assert(!std::is_trivially_destructible<SmallVector<int, 10>>::value,
                 "SmallVector should not be trivially destructible");
 
@@ -616,6 +619,38 @@ TEST(VectorTest, CustomOperations) {
     v.insert(v.begin(), kTab2 + 2, kTab2 + 4);
     ChecksAgainstTab(v, {18, 2, 2, 18, 18, 2, 18, 17, 18, 2});
   }
+}
+
+// A FixedCapacityVector without capacity is always empty: any growth goes through its growing policy.
+TEST(VectorTest, FixedCapacityVectorWithoutCapacity) {
+  using VectorType = FixedCapacityVector<int, 0>;
+  using SizeType = VectorType::size_type;
+  static_assert(is_trivially_relocatable<VectorType>::value, "");
+  VectorType v;
+  EXPECT_TRUE(v.empty());
+  EXPECT_EQ(v.capacity(), 0U);
+  EXPECT_EQ(v.max_size(), 0U);
+  EXPECT_EQ(v.begin(), v.end());
+  v.reserve(0);
+  v.resize(0);
+  v.shrink_to_fit();
+  v.insert(v.begin(), SizeType{0}, 1);
+  EXPECT_THROW(v.push_back(1), std::out_of_range);
+  EXPECT_THROW(v.emplace(v.begin(), 1), std::out_of_range);
+  EXPECT_THROW(v.insert(v.begin(), SizeType{2}, 1), std::out_of_range);
+  EXPECT_THROW(v.reserve(1), std::out_of_range);
+  EXPECT_THROW(v.resize(1), std::out_of_range);
+  EXPECT_EQ(v.try_push_back(1), nullptr);
+  VectorType copy(v);
+  VectorType moved(std::move(copy));
+  moved = v;
+  moved.swap(v);
+  EXPECT_EQ(moved, v);
+  EXPECT_TRUE(v.empty());
+
+  FixedCapacityVector<std::string, 0> strings;
+  EXPECT_THROW(strings.emplace_back("abc"), std::out_of_range);
+  EXPECT_THROW((inplace_vector<int, 0>().push_back(1)), std::bad_alloc);
 }
 
 #ifdef AMC_CXX23
@@ -1362,6 +1397,37 @@ TEST(VectorTest, EmplaceFromPointerToShiftedElement) {
   CheckEmplaceFromPointerToShiftedElement<SmallVector<ComplexNonTriviallyRelocatableType, 4>>();
   CheckEmplaceFromPointerToShiftedElement<FixedCapacityVector<ComplexTriviallyRelocatableType, 4>>();
   CheckEmplaceFromPointerToShiftedElement<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 4>>();
+}
+
+// An rvalue of the element type may be followed by other constructor arguments (std::string(std::string&&, pos)
+// constructs the substring from 'pos'): before C++20, the emulation of std::construct_at took them for a move and did
+// not compile. Elements are emplaced at the end and in the middle, with and without growth.
+template <class VectorType>
+void CheckEmplaceRvalueWithMoreArguments() {
+  using size_type = std::string::size_type;
+  VectorType v;
+  EXPECT_EQ(v.emplace_back(std::string("hello"), size_type{1}), "ello");
+  v.emplace_back(std::string("world"), size_type{2});
+  EXPECT_EQ(*v.emplace(v.begin(), std::string("abc"), size_type{1}), "bc");
+  v.emplace(v.end(), std::string("xyz"), size_type{2});
+  EXPECT_EQ(*v.emplace(v.begin() + 1, std::string("ok"), size_type{0}, size_type{1}), "o");
+  v.shrink_to_fit();  // the next emplace grows a growable vector
+  v.emplace(v.begin() + 2, std::string("amc"), size_type{2});
+  EXPECT_EQ(v, VectorType({"bc", "o", "c", "ello", "rld", "z"}));
+}
+
+TEST(VectorTest, EmplaceRvalueWithMoreArguments) {
+  CheckEmplaceRvalueWithMoreArguments<vector<std::string>>();
+  CheckEmplaceRvalueWithMoreArguments<vector<std::string, std::allocator<std::string>>>();
+  CheckEmplaceRvalueWithMoreArguments<SmallVector<std::string, 2>>();
+  CheckEmplaceRvalueWithMoreArguments<FixedCapacityVector<std::string, 8>>();
+  // the allocator constructs the elements of a std::vector with amc::construct_at
+  CheckEmplaceRvalueWithMoreArguments<std::vector<std::string, amc::allocator<std::string>>>();
+
+  FixedCapacityVector<std::string, 2> v;
+  EXPECT_EQ(*v.try_emplace_back(std::string("hello"), std::string::size_type{1}), "ello");
+  EXPECT_EQ(v.unchecked_emplace_back(std::string("world"), std::string::size_type{2}), "rld");
+  EXPECT_EQ(v.try_emplace_back(std::string("full"), std::string::size_type{1}), nullptr);
 }
 
 // When the vector is full, emplace methods construct the new element before relocating the elements (arguments may
@@ -2255,6 +2321,34 @@ TEST(VectorTest, BasicAllocatorWrapperOfStatelessAllocatorsAreEqual) {
   using CharAlloc = BasicAllocatorWrapper<char, SimpleAllocator>;
   EXPECT_TRUE(IntAlloc() == CharAlloc());
   EXPECT_FALSE(IntAlloc() != CharAlloc());
+}
+
+// BasicSingletonAllocatorAdaptor is a basic allocator calling the singleton 'instance()' of a class: the vectors grow
+// with its 'reallocate' for trivially relocatable elements, with 'allocate' and 'deallocate' otherwise.
+TEST(VectorTest, BasicSingletonAllocatorAdaptor) {
+  using BasicAlloc = BasicSingletonAllocatorAdaptor<SingletonCountingAllocator>;
+  using Type = ComplexNonTriviallyRelocatableType;
+  static_assert(is_trivially_relocatable<BasicAllocatorWrapper<int, BasicAlloc>>::value, "");
+  EXPECT_TRUE((BasicAllocatorWrapper<int, BasicAlloc>() == BasicAllocatorWrapper<char, BasicAlloc>()));
+  const int64_t nbLiveAllocations = CountingAllocator::NbLiveAllocations();
+  {
+    vector<int, BasicAllocatorWrapper<int, BasicAlloc>> v;
+    SmallVector<Type, 2, BasicAllocatorWrapper<Type, BasicAlloc>> sv;
+    for (int i = 0; i < 100; ++i) {
+      v.push_back(i);
+      sv.emplace_back(static_cast<uint32_t>(i));
+    }
+    EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations + 2);
+    v.erase(v.begin() + 1, v.end());
+    sv.erase(sv.begin() + 1, sv.end());
+    v.shrink_to_fit();
+    sv.shrink_to_fit();  // back to the inline storage
+    EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations + 1);
+    EXPECT_EQ(v, (vector<int, BasicAllocatorWrapper<int, BasicAlloc>>{0}));
+    ASSERT_EQ(sv.size(), 1U);
+    EXPECT_EQ(sv.front(), Type(0U));
+  }
+  EXPECT_EQ(CountingAllocator::NbLiveAllocations(), nbLiveAllocations);
 }
 
 // Wrappers of basic allocators with a state compare them: an allocator is equal to itself and to its copies.

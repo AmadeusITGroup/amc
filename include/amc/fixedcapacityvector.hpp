@@ -83,7 +83,11 @@ struct UncheckedGrowingPolicy {
  *           all combinations are possible between the 3 types of vectors.
  *           Note that implementation is not noexcept, adjust capacity needs to be called for both operands.
  *
- * In addition, size_type can be configured and is the smallest unsigned integral type able to hold N elements.
+ * In addition, size_type can be configured and is the smallest unsigned integral type able to hold N elements. Like
+ * with std::vector, the counts taken by the methods (constructors, assign, insert, resize, reserve...) are of type
+ * size_type: a larger count is converted to it by the call (wrapping around for an unsigned type), before the vector
+ * can check it against its capacity. For instance, FixedCapacityVector<int, 10>::reserve(260) reserves 4 elements
+ * (uint8_t size_type) and does not throw.
  *
  * Exception safety:
  *   It provides at least Basic exception safety.

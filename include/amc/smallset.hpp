@@ -28,9 +28,18 @@
 
 namespace amc {
 
-#ifdef AMC_CXX20
 namespace smallset_details {
 
+/// Tells whether a set of type 'Set' merges a set of type 'Set2' with its 'merge' method: a std::set merges the
+/// std::sets of other comparators (moving their nodes), a FlatSet the FlatSets of the same vector type.
+template <class Set, class Set2, class = void>
+struct CanMerge : std::false_type {};
+
+template <class Set, class Set2>
+struct CanMerge<Set, Set2, std::void_t<decltype(std::declval<Set&>().merge(std::declval<Set2&>()))>> : std::true_type {
+};
+
+#ifdef AMC_CXX20
 /// Tells whether 'Compare' orders values of type 'T' with their operator< or operator>: std::less and std::greater, of
 /// 'T' or transparent, and their std::ranges versions.
 template <class Compare, class T>
@@ -55,9 +64,9 @@ struct OrdersByRelationalOperators<std::ranges::less, T> : std::true_type {};
 template <class T>
 struct OrdersByRelationalOperators<std::ranges::greater, T> : std::true_type {};
 #endif
+#endif
 
 }  // namespace smallset_details
-#endif
 
 /**
  * Bidirectional iterator of a SmallSet whose set iterator is not a pointer. It holds either an iterator of the inline
@@ -484,13 +493,15 @@ class SmallSet {
   /// Merge elements from 'o' set into 'this'.
   /// If the merge can occur without grow, 'this' will stay small.
   /// No grow is performed on 'o'.
+  /// The sets of the large states may be of different types (a std::set and a FlatSet): if ours cannot merge the one of
+  /// 'o', its elements are moved one by one.
   template <std::uintmax_t N2, class C2, class SetType2>
   void merge(SmallSet<T, N2, C2, Alloc, SetType2>& o) {
     if (!o.isSmall()) {
       if (isSmall()) {
         grow();
       }
-      _set.merge(o._set);
+      mergeSet(o._set);
       return;
     }
     bool small = isSmall();
@@ -632,6 +643,27 @@ class SmallSet {
   template <class V>
   std::pair<iterator, bool> insert_set(V&& v) {
     return _set.insert(std::forward<V>(v));
+  }
+
+  /// Merges 'set', the set of a large SmallSet, into ours (empty or in the large state). A set that ours cannot merge
+  /// with its 'merge' method (a FlatSet into a std::set for instance) is merged element by element: each new element is
+  /// moved to our set, then erased from 'set'. Elements whose move may throw are copied instead: if it throws, 'set'
+  /// is unchanged, instead of keeping a moved from element among its sorted ones.
+  template <class S>
+  void mergeSet(S& set) {
+    if constexpr (smallset_details::CanMerge<SetType, S>::value) {
+      _set.merge(set);
+    } else {
+      for (auto it = set.begin(); it != set.end();) {
+        // the elements of a set are const, but they are only moved from just before their erasure, which does not
+        // compare them. Like std::set, our set does not move from an element which it does not insert.
+        if (_set.insert(std::move_if_noexcept(const_cast<T&>(*it))).second) {
+          it = set.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
   }
 
   template <class K>
