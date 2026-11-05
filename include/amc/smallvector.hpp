@@ -38,7 +38,7 @@ inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::
   if (exact) {
     return static_cast<SizeType>(newSize);
   }
-  const auto capa = static_cast<std::uintmax_t>(oldCapa);
+  const std::uintmax_t capa = static_cast<std::uintmax_t>(oldCapa);
   const std::uintmax_t grownCapa = capa < maxDoublingCapa ? 2U * capa : (3U * capa + 1U) / 2U;
   // Except if the minimum requested size is larger (choose it in this case)
   return static_cast<SizeType>(std::min(std::max(grownCapa, newSize), maxCapa));

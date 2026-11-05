@@ -14,20 +14,22 @@
 #include "allocator.hpp"
 #include "config.hpp"
 #include "memory.hpp"
-#include "setnode.hpp"
 #include "type_traits.hpp"
 #include "vector.hpp"
 
+#ifdef AMC_CXX14
+#include "istransparent.hpp"
+#ifdef AMC_CXX17
+#include "setnode.hpp"
 #ifdef AMC_CXX20
 #include "algorithm.hpp"
 #endif
-
-#ifdef AMC_CXX14
-#include "istransparent.hpp"
 #ifdef AMC_CXX23
 #include <ranges>
 #endif
 #endif
+#endif
+
 namespace amc {
 
 namespace flatset_details {
@@ -582,6 +584,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
 
 #ifdef AMC_NONSTD_FEATURES
   /// Get the underlying vector of elements of this FlatSet, by returning a newly move constructed vector.
+  /// After this call, the FlatSet will be empty.
   vector_type steal_vector() {
     vector_type ret(std::move(_sortedVector));
     // Make sure our sorted vector is cleared to avoid unspecified state (not necessarily in order)
@@ -824,14 +827,14 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
       return;
     }
     _sortedVector.adjustCapacity(maxMergedSize);
-    T* const first1 = _sortedVector.data();
-    T* const first2 = o._sortedVector.data();
-    T* last1 = first1 + size1;  // end of our elements not merged yet
-    T* const end1 = last1 + size2;
-    T* const end2 = first2 + size2;
-    T* last2 = end2;   // end of the elements of 'o' not merged yet
-    T* merged = end1;  // merged elements are [merged, end1)
-    T* kept = end2;    // elements kept in 'o' are [kept, end2)
+    pointer first1 = _sortedVector.data();
+    pointer first2 = o._sortedVector.data();
+    pointer last1 = first1 + size1;  // end of our elements not merged yet
+    pointer end1 = last1 + size2;
+    pointer end2 = first2 + size2;
+    pointer last2 = end2;   // end of the elements of 'o' not merged yet
+    pointer merged = end1;  // merged elements are [merged, end1)
+    pointer kept = end2;    // elements kept in 'o' are [kept, end2)
     auto commit = [&]() noexcept {
       if (merged != last1) {
         amc::uninitialized_relocate(merged, end1, last1);
@@ -898,8 +901,8 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     if (sortedLast == last) {
       return notLess;
     }
-    const auto nbSorted = static_cast<std::size_t>(sortedLast - first);
-    const auto nbUnsorted = static_cast<std::size_t>(last - sortedLast);
+    const std::size_t nbSorted = static_cast<std::size_t>(sortedLast - first);
+    const std::size_t nbUnsorted = static_cast<std::size_t>(last - sortedLast);
     if (nbSorted + nbUnsorted < flatset_details::kMinSizeToMergeSortedPrefix || nbSorted < 2U * nbUnsorted) {
       std::sort(first, last, comp);
       return first;

@@ -1,8 +1,5 @@
 #pragma once
 
-#include "config.hpp"
-
-#ifdef AMC_CXX17
 #include <cstdint>
 #include <optional>
 #include <type_traits>
@@ -127,4 +124,3 @@ class NodeHandle : private Alloc {
 
 }  // namespace set_details
 }  // namespace amc
-#endif

@@ -13,17 +13,21 @@
 #include <variant>
 
 #include "allocator.hpp"
+#include "config.hpp"
 #include "fixedcapacityvector.hpp"
 #include "istransparent.hpp"
-#include "setnode.hpp"
 #include "type_traits.hpp"
+
+#ifdef AMC_CXX17
+#include "setnode.hpp"
 
 #ifdef AMC_CXX20
 #include "algorithm.hpp"
-#endif
 
 #ifdef AMC_CXX23
 #include <ranges>
+#endif
+#endif
 #endif
 
 namespace amc {

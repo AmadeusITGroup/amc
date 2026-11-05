@@ -24,8 +24,12 @@ constexpr auto lexicographical_compare_three_way(I1 f1, I1 l1, I2 f2, I2 l2, Cmp
                 "The return type must be a comparison category type.");
 
   for (; f1 != l1; ++f1, ++f2) {
-    if (f2 == l2) return std::strong_ordering::greater;
-    if (auto c = comp(*f1, *f2); c != 0) return c;
+    if (f2 == l2) {
+      return std::strong_ordering::greater;
+    }
+    if (auto c = comp(*f1, *f2); c != 0) {
+      return c;
+    }
   }
   return (f2 == l2) <=> true;
 }
