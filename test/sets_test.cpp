@@ -11,10 +11,14 @@
 #include <list>
 #include <set>
 #include <sstream>
+#include <string>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 #ifdef AMC_SMALLSET
 #include <amc/smallset.hpp>
+#include <string_view>
 #endif
 #ifdef AMC_CXX23
 #include <ranges>
@@ -1605,6 +1609,117 @@ TEST(SmallSetTest, MergeDifferentCompare) {
   s1.merge(s2);
   EXPECT_EQ(s1, SetType({'A', 'B', 'C', 'D', 'E', 'G', 'H'}));
   EXPECT_EQ(s2, RevSetType({'E'}));
+}
+
+template <typename T>
+class SmallSetStringTest : public ::testing::Test {};
+
+// Strings of various lengths and prefixes, looked up in the small and in the large state. Each type brings another
+// string type, comparator and container of the large state. A transparent comparator also looks up the elements with
+// keys of the other string type (strings among string views, and string views among strings).
+typedef ::testing::Types<
+    SmallSet<CountingString, 4>,
+    SmallSet<std::string, 4, std::greater<>, amc::allocator<std::string>, FlatSet<std::string, std::greater<>>>,
+    SmallSet<std::string_view, 4, std::less<>>>
+    SmallSetsOfStringsType;
+TYPED_TEST_SUITE(SmallSetStringTest, SmallSetsOfStringsType, );
+
+// Strings of the same length with a common prefix, prefixes of each other and the empty string: the 4 first values in
+// the small state, then all of them in the large one, and the small state again once the set is emptied.
+TYPED_TEST(SmallSetStringTest, InsertFindErase) {
+  using V = typename TypeParam::value_type;
+  using View = std::basic_string_view<typename V::value_type, typename V::traits_type>;
+  using OtherKey = std::conditional_t<std::is_same_v<V, View>,
+                                      std::basic_string<typename V::value_type, typename V::traits_type>, View>;
+  constexpr bool kTransparent = has_is_transparent<typename TypeParam::key_compare>::value;
+  const V values[] = {V("key-1"), V("key-2"), V("key"), V(""), V("key-10"), V("kez-1")};
+  const V absentValues[] = {V("key-3"), V("ke"), V("key-100"), V(" ")};
+  TypeParam s;
+  for (std::size_t n = 0; n < std::size(values); ++n) {
+    EXPECT_TRUE(s.insert(values[n]).second);
+    EXPECT_EQ(s.size(), n + 1U);
+    for (std::size_t i = 0; i <= n; ++i) {
+      EXPECT_TRUE(s.contains(values[i]));
+      const auto it = s.find(values[i]);
+      ASSERT_NE(it, s.end());
+      EXPECT_EQ(*it, values[i]);
+      EXPECT_FALSE(s.insert(values[i]).second);
+      EXPECT_FALSE(s.emplace(values[i]).second);
+      if constexpr (kTransparent) {
+        EXPECT_TRUE(s.contains(OtherKey(values[i])));
+      }
+    }
+    for (const V& absent : absentValues) {
+      EXPECT_EQ(s.find(absent), s.end());
+      EXPECT_EQ(s.count(absent), 0U);
+      if constexpr (kTransparent) {
+        EXPECT_FALSE(s.contains(OtherKey(absent)));
+      }
+    }
+  }
+  EXPECT_EQ(s.erase(absentValues[0]), 0U);
+  EXPECT_EQ(s.extract(values[0]).value(), values[0]);
+  for (std::size_t i = 1; i < std::size(values); ++i) {
+    EXPECT_EQ(s.erase(values[i]), 1U);
+    EXPECT_FALSE(s.contains(values[i]));
+  }
+  EXPECT_TRUE(s.empty());
+
+  for (std::size_t i = 0; i < 3; ++i) {
+    s.insert(values[i]);
+  }
+  EXPECT_EQ(s.extract(values[1]).value(), values[1]);
+  EXPECT_EQ(s.erase(values[3]), 0U);
+  EXPECT_EQ(s.erase(values[0]), 1U);
+  EXPECT_EQ(s, TypeParam{values[2]});
+}
+
+// The search of the small state compares the searched key once with each element with operator<=> (C++20), when the
+// comparator calls operator< or operator>: twice with the comparator otherwise. All the comparisons of the strings of
+// CountingCharTraits call its 'compare'. The absent key has the length of the elements, and the comparator does not
+// order it before any of them, so that the comparator would compare it twice with each of them.
+#ifdef AMC_CXX20
+template <class SetType, class Key, class MakeValue>
+void ExpectSearchComparesOncePerElement(const Key& absentKey, MakeValue makeValue) {
+  SetType s;
+  for (const char* value : {"key-1", "key-2", "key-3", "key-4", "key-5", "key-6", "key-7", "key-8"}) {
+    s.insert(makeValue(value));
+  }
+  int& nbCompares = CountingCharTraits::NbCompares();
+  nbCompares = 0;
+  EXPECT_FALSE(s.contains(absentKey));
+  EXPECT_EQ(nbCompares, 8);
+}
+
+// Each set brings another comparator, a composite element type, or a key of another type than the elements.
+TEST(SmallSetTest, SearchComparesOncePerElement) {
+  using View = std::basic_string_view<char, CountingCharTraits>;
+  using Pair = std::pair<CountingString, int>;
+  const auto makeString = [](const char* value) { return CountingString(value); };
+  ExpectSearchComparesOncePerElement<SmallSet<CountingString, 8>>(CountingString("key-9"), makeString);
+  ExpectSearchComparesOncePerElement<SmallSet<CountingString, 8, std::less<>>>(View("key-9"), makeString);
+  ExpectSearchComparesOncePerElement<SmallSet<CountingString, 8, std::greater<>>>("key-0", makeString);
+  ExpectSearchComparesOncePerElement<SmallSet<Pair, 8, std::greater<Pair>>>(
+      Pair("key-0", 1), [](const char* value) { return Pair(value, 1); });
+#ifdef __cpp_lib_ranges
+  using Tuple = std::tuple<int, View>;
+  ExpectSearchComparesOncePerElement<SmallSet<Tuple, 8, std::ranges::less>>(
+      Tuple(1, "key-9"), [](const char* value) { return Tuple(1, value); });
+#endif
+}
+#endif
+
+// Values of the same key are equivalent without being equal: like std::set, SmallSet finds them and does not insert
+// them again, also when it compares them with operator<=> (C++20).
+TEST(SmallSetTest, EquivalentValuesWhichAreNotEqual) {
+  SmallSet<KeyValueType, 4> s{KeyValueType(1, 10), KeyValueType(2, 20)};
+  EXPECT_FALSE(s.insert(KeyValueType(1, 11)).second);
+  EXPECT_FALSE(s.emplace(2, 21).second);
+  const auto it = s.find(KeyValueType(2, 22));
+  ASSERT_NE(it, s.end());
+  EXPECT_EQ(it->_value, 20);
+  EXPECT_EQ(s.erase(KeyValueType(1, 12)), 1U);
+  EXPECT_EQ(s.size(), 1U);
 }
 #endif
 

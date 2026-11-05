@@ -28,6 +28,37 @@
 
 namespace amc {
 
+#ifdef AMC_CXX20
+namespace smallset_details {
+
+/// Tells whether 'Compare' orders values of type 'T' with their operator< or operator>: std::less and std::greater, of
+/// 'T' or transparent, and their std::ranges versions.
+template <class Compare, class T>
+struct OrdersByRelationalOperators : std::false_type {};
+
+template <class T>
+struct OrdersByRelationalOperators<std::less<T>, T> : std::true_type {};
+
+template <class T>
+struct OrdersByRelationalOperators<std::greater<T>, T> : std::true_type {};
+
+template <class T>
+struct OrdersByRelationalOperators<std::less<>, T> : std::true_type {};
+
+template <class T>
+struct OrdersByRelationalOperators<std::greater<>, T> : std::true_type {};
+
+#ifdef __cpp_lib_ranges
+template <class T>
+struct OrdersByRelationalOperators<std::ranges::less, T> : std::true_type {};
+
+template <class T>
+struct OrdersByRelationalOperators<std::ranges::greater, T> : std::true_type {};
+#endif
+
+}  // namespace smallset_details
+#endif
+
 /**
  * Bidirectional iterator of a SmallSet whose set iterator is not a pointer. It holds either an iterator of the inline
  * vector (small state) or an iterator of the set (large state).
@@ -426,9 +457,11 @@ class SmallSet {
       _vec.erase(vecIt);
       return nt;
     }
-    auto setNt = _set.extract(ToSetIt(position));
-    node_type nt(std::move(setNt.value()), setNt.get_allocator());
-    return nt;
+    if constexpr (std::is_same_v<typename SetType::node_type, node_type>) {
+      return _set.extract(ToSetIt(position));  // the node of a FlatSet is ours: returned as is
+    } else {
+      return FromSetNode(_set.extract(ToSetIt(position)));
+    }
   }
 
   node_type extract(const key_type& key) {
@@ -441,12 +474,11 @@ class SmallSet {
       }
       return nh;
     }
-    auto setNt = _set.extract(key);
-    node_type nh(get_allocator());
-    if (setNt) {
-      nh._optV = std::move(setNt.value());
+    if constexpr (std::is_same_v<typename SetType::node_type, node_type>) {
+      return _set.extract(key);  // the node of a FlatSet is ours: returned as is
+    } else {
+      return FromSetNode(_set.extract(key));
     }
-    return nh;
   }
 
   /// Merge elements from 'o' set into 'this'.
@@ -572,6 +604,17 @@ class SmallSet {
   /// 'isSmall'): the returned iterator is then the end of the vector, to stay comparable with 'end()'.
   iterator afterSetErase(SetIt it) const noexcept { return _set.empty() ? end() : iterator(it); }
 
+  /// Our node holding the value of 'setNode', a node of another type extracted from the set (of a std::set).
+  /// Our allocator is the one of the set, the allocator of an empty std::set node cannot be read.
+  template <class SetNode>
+  node_type FromSetNode(SetNode setNode) const {
+    node_type nh(get_allocator());
+    if (setNode) {
+      nh._optV = std::move(setNode.value());
+    }
+    return nh;
+  }
+
   template <class V>
   std::pair<iterator, bool> insert_small(V&& v) {
     miterator insertIt = mfind_small(v);
@@ -595,7 +638,23 @@ class SmallSet {
   struct FindFunctor {
     FindFunctor(Compare&& comp, const K& k) : _comp(std::move(comp)), _k(k) {}
 
-    bool operator()(const_reference o) const { return !_comp(_k, o) && !_comp(o, _k); }
+    /// Tells whether 'o' is equivalent to the searched key: neither of them is less than the other for 'Compare', which
+    /// is called twice. From C++20, if 'Compare' calls operator< or operator> of a key three-way comparable with 'o'
+    /// (strings, pairs, tuples, containers of them, a string view looked up among strings...), a single operator<=>
+    /// tells it, as these operators agree with it (they are rewritten from it, unless they are declared): a lookup
+    /// among 16 strings is twice as fast. operator== is not used, as it may compare more than the ordering does.
+    bool operator()(const_reference o) const {
+#ifdef AMC_CXX20
+      if constexpr (smallset_details::OrdersByRelationalOperators<Compare, T>::value &&
+                    algorithm_details::ThreeWayComparableWith<std::decay_t<K>, T>) {  // decays a string literal
+        const auto order = _k <=> o;
+        return !(order < 0) && !(order > 0);  // like with 'Compare', unordered values are equivalent
+      } else
+#endif
+      {
+        return !_comp(_k, o) && !_comp(o, _k);
+      }
+    }
 
     Compare _comp;
     const K& _k;
