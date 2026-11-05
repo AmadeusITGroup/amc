@@ -79,6 +79,9 @@ void CheckConstructionThrows(ConstructN constructN, const char* description) {
   Check(thrown && ThrowingDefaultConstructor::sNbLive == 0, description);
 }
 
+/// Unscoped enumeration: its values convert implicitly to the size types and to the element types.
+enum SmallCount { kTwo = 2, kFortyTwo = 42 };
+
 /// Basic operations of a vector, growing it beyond its inline storage if it has one
 template <class VectorType>
 void CheckVector(const char* description) {
@@ -95,6 +98,9 @@ void CheckVector(const char* description) {
   const VectorType empty;
   const VectorType emptyCopy(empty);  // copy of no element (from a null pointer for vector)
   Check(emptyCopy.empty(), description);
+  // two values of the same type which is not an iterator are a count and a value, like for std::vector
+  const VectorType counted(kTwo, kFortyTwo);
+  Check(counted.size() == 2U && counted[0] == 42 && counted[1] == 42, description);
 }
 
 /// Before C++20, the emulation of std::construct_at must not take an rvalue of the element type followed by other
@@ -120,6 +126,16 @@ struct FinalLess final {
 static_assert(amc::is_nothrow_swappable<int>::value, "");
 static_assert(!amc::is_nothrow_swappable<ThrowingMove>::value, "");
 static_assert(!amc::is_nothrow_swappable<NonSwappable>::value, "");
+
+// the free swap of FlatSet has the exception specification of its member swap, and its member types are the ones of
+// std::set
+static_assert(amc::is_nothrow_swappable<amc::FlatSet<int>>::value, "");
+static_assert(
+    !amc::is_nothrow_swappable<amc::FlatSet<ThrowingMove, std::less<ThrowingMove>, amc::allocator<ThrowingMove>,
+                                            amc::SmallVector<ThrowingMove, 4>>>::value,
+    "");
+static_assert(std::is_same<amc::FlatSet<int>::reference, int&>::value, "");
+static_assert(std::is_same<amc::FlatSet<int>::pointer, int*>::value, "");
 
 #ifndef AMC_CXX17
 // Before C++17, std::swap is not required to be constrained on movable types (it is not with MSVC STL): whether

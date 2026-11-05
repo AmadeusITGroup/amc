@@ -18,6 +18,10 @@
 #include "type_traits.hpp"
 #include "vector.hpp"
 
+#ifdef AMC_CXX20
+#include "algorithm.hpp"
+#endif
+
 #ifdef AMC_CXX14
 #include "istransparent.hpp"
 #ifdef AMC_CXX23
@@ -202,9 +206,13 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   using size_type = typename VecType::size_type;
   using iterator = typename VecType::const_iterator;
   using const_iterator = typename VecType::const_iterator;
-  using const_reference = typename VecType::const_reference;
-  using pointer = typename VecType::const_pointer;
-  using const_pointer = typename VecType::const_pointer;
+  // Like the ones of std::set, 'reference' and 'pointer' are not const, but the elements are only accessible through
+  // const ones (iterators included): modifying them could break the order. Raw pointers, as 'Alloc' may be the empty
+  // allocator of a FixedCapacityVector.
+  using reference = value_type&;
+  using const_reference = const value_type&;
+  using pointer = value_type*;
+  using const_pointer = const value_type*;
   using key_compare = Compare;
   using value_compare = Compare;
   using allocator_type = Alloc;
@@ -464,7 +472,12 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   bool operator!=(const FlatSet& o) const { return !(*this == o); }
 
 #ifdef AMC_CXX20
-  auto operator<=>(const FlatSet& o) const { return _sortedVector <=> o._sortedVector; }
+  /// Like the one of std::set, only defined for elements which 'synth_three_way' can compare.
+  auto operator<=>(const FlatSet& o) const
+    requires algorithm_details::SynthThreeWayComparable<T>
+  {
+    return _sortedVector <=> o._sortedVector;
+  }
 #else
   bool operator<(const FlatSet& o) const { return _sortedVector < o._sortedVector; }
 
@@ -473,9 +486,12 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   bool operator>=(const FlatSet& o) const { return !(*this < o); }
 #endif
 
+  /// Like the one of std::set, the comparators are swapped with their swap found by argument dependent lookup (or
+  /// std::swap), which is the one whose exception specification 'amc::is_nothrow_swappable' checks.
   void swap(FlatSet& o) noexcept(noexcept(std::declval<VecType>().swap(std::declval<VecType&>())) &&
                                  amc::is_nothrow_swappable<Compare>::value) {
-    std::swap(compRef(), o.compRef());
+    using std::swap;
+    swap(compRef(), o.compRef());
     _sortedVector.swap(o._sortedVector);
   }
 
@@ -916,8 +932,10 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   VecType _sortedVector;
 };
 
+/// Like the one of std::set, has the exception specification of the member swap.
 template <class T, class Compare, class Alloc, class VecType>
-inline void swap(FlatSet<T, Compare, Alloc, VecType>& lhs, FlatSet<T, Compare, Alloc, VecType>& rhs) {
+inline void swap(FlatSet<T, Compare, Alloc, VecType>& lhs,
+                 FlatSet<T, Compare, Alloc, VecType>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
   lhs.swap(rhs);
 }
 

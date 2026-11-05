@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #ifdef AMC_CXX23
@@ -229,6 +230,9 @@ TYPED_TEST(VectorTest, ElementsAlignment) {
   EXPECT_TRUE(isAligned(copy));
 }
 
+/// Unscoped enumeration: its values convert implicitly to the size types and to the element types.
+enum SmallCount { kTwo = 2, kThree = 3 };
+
 TYPED_TEST(VectorTest, InputIterators) {
   using VectorType = TypeParam;
   using InputIt = std::istream_iterator<int>;
@@ -266,6 +270,28 @@ TYPED_TEST(VectorTest, InputIterators) {
   std::istringstream appendSs("15 16");
   v.append(InputIt(appendSs), InputIt());
   EXPECT_EQ(v, VectorType({8, 12, 13, 9, 10, 11, 14, 15, 16}));
+#endif
+
+  // Like for std::vector, two values of the same type which is not an iterator (an unscoped enumeration, a double...)
+  // are a count and a value: the overloads taking a range of iterators do not participate in overload resolution.
+  using RefVector = std::vector<typename VectorType::value_type>;
+  RefVector ref(kTwo, kThree);
+  VectorType counted(kTwo, kThree);
+  EXPECT_EQ(counted, VectorType(ref.begin(), ref.end()));
+
+  ref.assign(kThree, kTwo);
+  counted.assign(kThree, kTwo);
+  EXPECT_EQ(counted, VectorType(ref.begin(), ref.end()));
+
+  ref.insert(ref.begin() + 1, kTwo, kThree);
+  it = counted.insert(counted.begin() + 1, kTwo, kThree);
+  EXPECT_EQ(it, counted.begin() + 1);
+  EXPECT_EQ(counted, VectorType(ref.begin(), ref.end()));
+
+#ifdef AMC_NONSTD_FEATURES
+  ref.insert(ref.end(), kThree, kTwo);
+  counted.append(kThree, kTwo);
+  EXPECT_EQ(counted, VectorType(ref.begin(), ref.end()));
 #endif
 }
 
@@ -417,6 +443,33 @@ TYPED_TEST(VectorLessComparableTest, ComparisonOperators) {
 }
 
 #ifdef AMC_CXX20
+template <class T>
+using VectorOf = vector<T>;
+
+template <class T>
+using SmallVectorOf = SmallVector<T, 3>;
+
+template <class T>
+using FixedCapacityVectorOf = FixedCapacityVector<T, 3>;
+
+/// Tells whether the vectors 'Vec' of several element types have the three-way comparison of std::vector.
+template <template <class> class Vec>
+constexpr bool HasThreeWayComparisonOfStdVector() {
+  return HasThreeWayComparisonOf<Vec<int>, std::vector<int>>() &&        // std::strong_ordering
+         HasThreeWayComparisonOf<Vec<double>, std::vector<double>>() &&  // std::partial_ordering
+         HasThreeWayComparisonOf<Vec<LessComparableType>, std::vector<LessComparableType>>() &&  // weak
+         HasThreeWayComparisonOf<Vec<NonComparableType>, std::vector<NonComparableType>>() &&    // none
+         HasThreeWayComparisonOf<Vec<Vec<NonComparableType>>, std::vector<std::vector<NonComparableType>>>();
+}
+
+// Like the one of std::vector, operator<=> is only defined for elements ordered by operator<=> or operator<: type
+// traits tell that vectors of other elements are not three-way comparable, instead of failing to compile.
+TEST(VectorTest, ThreeWayComparableLikeStdVector) {
+  static_assert(HasThreeWayComparisonOfStdVector<VectorOf>());
+  static_assert(HasThreeWayComparisonOfStdVector<SmallVectorOf>());
+  static_assert(HasThreeWayComparisonOfStdVector<FixedCapacityVectorOf>());
+}
+
 TEST(VectorTest, Erase) {
   using VectorType = vector<int>;
 
@@ -803,11 +856,19 @@ TEST(VectorTest, RangesMethodsMoveRvalues) {
 TEST(VectorTest, TryEmplacePushBack) {
   using VectorType = FixedCapacityVector<Foo, 4>;
   VectorType v;
+  // Like for C++26 std::inplace_vector, the 'try_' methods return a pointer (null when the vector is full), the
+  // 'unchecked_' ones a reference
+  static_assert(std::is_same<decltype(v.try_push_back(std::declval<const Foo&>())), Foo*>::value, "");
+  static_assert(std::is_same<decltype(v.try_push_back(Foo())), Foo*>::value, "");
+  static_assert(std::is_same<decltype(v.try_emplace_back(1)), Foo*>::value, "");
+  static_assert(std::is_same<decltype(v.unchecked_push_back(std::declval<const Foo&>())), Foo&>::value, "");
+  static_assert(std::is_same<decltype(v.unchecked_push_back(Foo())), Foo&>::value, "");
+  static_assert(std::is_same<decltype(v.unchecked_emplace_back(1)), Foo&>::value, "");
   for (int i = 0; i < 10; ++i) {
     VectorType::pointer p;
     if (i % 2 == 0) {
       if (i == 0) {
-        p = v.unchecked_push_back(i);
+        p = &v.unchecked_push_back(i);
       } else {
         p = v.try_emplace_back(i);
       }
@@ -816,7 +877,7 @@ TEST(VectorTest, TryEmplacePushBack) {
       p = v.try_push_back(i);
     }
     if (i < 4) {
-      EXPECT_NE(p, nullptr);
+      EXPECT_EQ(p, &v.back());
       EXPECT_EQ(*p, i);
     } else {
       EXPECT_EQ(p, nullptr);
@@ -836,8 +897,8 @@ TEST(VectorTest, TryUncheckedPushBackConstructElements) {
   stats.start();
   EXPECT_NE(v.try_push_back(lvalue), nullptr);
   EXPECT_NE(v.try_push_back(ValueType(43)), nullptr);
-  EXPECT_NE(v.unchecked_push_back(lvalue), nullptr);
-  EXPECT_NE(v.unchecked_push_back(ValueType(44)), nullptr);
+  const ValueType& copy = v.unchecked_push_back(lvalue);
+  const ValueType& moved = v.unchecked_push_back(ValueType(44));
   EXPECT_EQ(v.try_push_back(lvalue), nullptr);
   stats.end();
 
@@ -846,6 +907,8 @@ TEST(VectorTest, TryUncheckedPushBackConstructElements) {
   EXPECT_EQ(stats._nbCopyConstructs, 2U);
   EXPECT_EQ(stats._nbMoveConstructs, 2U);
   EXPECT_EQ(v, VectorType({42, 43, 42, 44}));
+  EXPECT_EQ(&copy, &v[2]);
+  EXPECT_EQ(&moved, &v[3]);
 }
 
 TEST(VectorTest, NonCopyableType) {
@@ -2839,6 +2902,128 @@ TYPED_TEST(VectorTestUnalignedStorage, SmallVectorUnalignedInlineStorage) {
 // Indeed, it is only specified from C++17 that std::vector may compile with incomplete types
 // More information here: https://en.cppreference.com/w/cpp/container/vector
 // For some reason, MSVC 2017 is not able to compile this, even with CXX17 enabled. Activate only in CXX20 for MSVC
+
+/// Empty base class whose move constructor is potentially throwing unless 'NothrowMove', like the implicit one of its
+/// derived classes then.
+template <bool NothrowMove>
+struct MoveConstructorBase {
+  MoveConstructorBase() = default;
+  MoveConstructorBase(const MoveConstructorBase&) = default;
+  MoveConstructorBase(MoveConstructorBase&&) noexcept(NothrowMove) {}
+  MoveConstructorBase& operator=(const MoveConstructorBase&) = default;
+  MoveConstructorBase& operator=(MoveConstructorBase&&) = default;
+};
+
+/// Node of a tree, holding a vector of its children: the element type of the vector is incomplete where the vector is
+/// declared, like in 'struct Node { std::vector<Node> children; };'. The exception specifications of the implicit move
+/// operations of the node depend on the ones of the vector, which thus must not depend on the node.
+/// 'Alloc' is the allocator of the children, 'TriviallyRelocatable' whether the node declares itself trivially
+/// relocatable (then relocated with memcpy, and grown by 'reallocate' with amc::allocator), 'NothrowMove' whether its
+/// move constructor is noexcept.
+template <template <class> class Alloc, bool TriviallyRelocatable, bool NothrowMove>
+struct TreeNode : MoveConstructorBase<NothrowMove> {
+  using trivially_relocatable = std::integral_constant<bool, TriviallyRelocatable>;
+  using Children = vector<TreeNode, Alloc<TreeNode>>;
+
+  static constexpr bool kNothrowMove = NothrowMove;
+
+  TreeNode() = default;
+  explicit TreeNode(int v) : value(v) {}
+  TreeNode(int v, std::initializer_list<TreeNode> c) : value(v), children(c) {}
+
+  bool operator==(const TreeNode& o) const { return value == o.value && children == o.children; }
+  bool operator!=(const TreeNode& o) const { return !(*this == o); }
+  bool operator<(const TreeNode& o) const { return value != o.value ? value < o.value : children < o.children; }
+
+  int value = 0;
+  Children children;
+};
+
+template <typename T>
+class VectorIncompleteTypeTest : public ::testing::Test {};
+
+using RecursiveTypes = ::testing::Types<TreeNode<allocator, false, true>, TreeNode<allocator, true, true>,
+                                        TreeNode<allocator, false, false>, TreeNode<std::allocator, false, true>>;
+TYPED_TEST_SUITE(VectorIncompleteTypeTest, RecursiveTypes, );
+
+TYPED_TEST(VectorIncompleteTypeTest, RecursiveType) {
+  using Node = TypeParam;
+  using Children = typename Node::Children;
+  // Like std::vector, a vector without inline elements is moved and swapped without throwing whatever its elements
+  static_assert(std::is_nothrow_move_constructible<Children>::value, "");
+  static_assert(std::is_nothrow_move_assignable<Children>::value, "");
+  static_assert(noexcept(std::declval<Children&>().swap(std::declval<Children&>())), "");
+  static_assert(is_trivially_relocatable<Children>::value, "");
+  // hence only the base class of the node makes its implicit move constructor potentially throwing
+  static_assert(std::is_nothrow_move_constructible<Node>::value == Node::kNothrowMove, "");
+  static_assert(std::is_nothrow_move_assignable<Node>::value, "");
+  static_assert(is_trivially_relocatable<Node>::value == Node::trivially_relocatable::value, "");
+
+  const Node expected(1, {Node(0), Node(2, {Node(3), Node(4)}), Node(5), Node(6), Node(7, {Node(8)}), Node(9)});
+  Node root(1, {Node(2, {Node(3), Node(4)}), Node(5)});
+  Children& c = root.children;
+  const Node leaf(6);
+  c.push_back(leaf);
+  c.push_back(Node(7, {Node(8)}));
+  c.emplace_back(9);
+  c.insert(c.begin(), Node(0));
+  c.insert(c.begin() + 1, 2U, leaf);
+  c.emplace(c.begin() + 2, 10);
+  EXPECT_EQ(c, Children({Node(0), Node(6), Node(10), Node(6), Node(2, {Node(3), Node(4)}), Node(5), Node(6),
+                         Node(7, {Node(8)}), Node(9)}));
+  c.erase(c.begin() + 1);
+  c.erase(c.begin() + 1, c.begin() + 3);
+  EXPECT_EQ(root, expected);
+
+  // the elements and their children are relocated when the vector grows, even from one of its own elements
+  for (int i = 0; i < 20; ++i) {
+    c.push_back(c[1]);
+  }
+  EXPECT_EQ(std::count(c.begin(), c.end(), expected.children[1]), 21);
+  c.erase(c.begin() + 6, c.end());
+  c.reserve(100);
+  EXPECT_GE(c.capacity(), 100U);
+  c.shrink_to_fit();
+  EXPECT_EQ(c.capacity(), c.size());
+  c.resize(8);
+  EXPECT_EQ(c.back(), Node());
+  c[6].children.resize(2, leaf);
+  c.resize(6);
+  EXPECT_EQ(root, expected);
+
+  Node copy(root);
+  EXPECT_EQ(copy, expected);
+  Node moved(std::move(copy));
+  EXPECT_EQ(moved, expected);
+  EXPECT_TRUE(copy.children.empty());
+  Node assigned(42);
+  assigned = moved;
+  EXPECT_EQ(assigned, expected);
+  assigned.children[1].children.push_back(leaf);
+  EXPECT_NE(assigned, expected);
+  EXPECT_LT(expected, assigned);
+  EXPECT_LT(expected.children, assigned.children);
+  assigned = std::move(moved);
+  EXPECT_EQ(assigned, expected);
+
+  Node other(3, {Node(4)});
+  swap(assigned.children, other.children);
+  EXPECT_EQ(other.children, expected.children);
+  EXPECT_EQ(assigned.children, Children{Node(4)});
+  assigned.children.swap(other.children);
+  EXPECT_EQ(assigned, expected);
+  std::swap(assigned, other);
+  EXPECT_EQ(other, expected);
+  EXPECT_EQ(assigned, Node(3, {Node(4)}));
+
+  const auto alloc = other.children.get_allocator();
+  Children stolen(std::move(other.children), alloc);
+  EXPECT_EQ(stolen, expected.children);
+  stolen.pop_back();
+  stolen.clear();
+  EXPECT_TRUE(stolen.empty());
+}
+
 TEST(VectorTest, IncompleteType) {
   struct Foo {
     amc::vector<Foo> v;
