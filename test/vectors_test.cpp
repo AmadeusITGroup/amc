@@ -1542,6 +1542,48 @@ TEST(VectorTest, InsertCopyThrowsKeepsElements) {
   CheckInsertCopyThrowsKeepsElements<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 5>>();
 }
 
+// A full vector copies the argument of push_back before growing: if the copy throws, the vector is unchanged, capacity
+// included, and its storage is not reallocated. The argument may be one of its elements.
+template <class VectorType>
+void CheckPushBackCopyThrowsKeepsVector() {
+  using Type = typename VectorType::value_type;
+  const Type value(5);
+  TypeStats& stats = TypeStats::_stats;
+  for (bool full : {false, true}) {
+    VectorType v{1, 2, 3, 4};
+    if (full) {
+      v.shrink_to_fit();
+      if (v.capacity() != v.size()) {
+        continue;  // room left in the inline storage
+      }
+    } else {
+      v.reserve(5U);
+    }
+    const auto capacity = v.capacity();
+    const Type* data = v.data();
+    stats = TypeStats();
+    stats.start();
+    stats._nbCopiesBeforeThrow = 0;
+    EXPECT_THROW(v.push_back(value), CopyException);
+    stats._nbCopiesBeforeThrow = 0;
+    EXPECT_THROW(v.push_back(v[1]), CopyException);
+    stats._nbCopiesBeforeThrow = -1;
+    stats.end();
+    EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
+    EXPECT_EQ(v.capacity(), capacity);
+    EXPECT_EQ(v.data(), data);
+    EXPECT_EQ(stats._nbConstructs + stats._nbCopyConstructs + stats._nbMoveConstructs, stats._nbDestructs);
+  }
+}
+
+TEST(VectorTest, PushBackCopyThrowsKeepsVector) {
+  CheckPushBackCopyThrowsKeepsVector<vector<ComplexTriviallyRelocatableType>>();          // grows with 'reallocate'
+  CheckPushBackCopyThrowsKeepsVector<vector<ComplexNonTriviallyRelocatableType>>();       // relocates to a new storage
+  CheckPushBackCopyThrowsKeepsVector<SmallVector<ComplexTriviallyRelocatableType, 4>>();  // from the inline storage
+  CheckPushBackCopyThrowsKeepsVector<SmallVector<ComplexNonTriviallyRelocatableType, 2>>();
+  CheckPushBackCopyThrowsKeepsVector<FixedCapacityVector<ComplexTriviallyRelocatableType, 5>>();
+}
+
 // When assigning the inserted element throws, the shifted elements are moved back. If one of these moves throws too,
 // the element constructed past the end of the vector by the shift is destroyed all the same (no leak): the vector keeps
 // its size, with valid elements of unspecified values.
@@ -1786,7 +1828,9 @@ TEST(VectorTest, ThrowingMoveDoesNotLeak) {
   {
     SV v{1, 2};
     nbMovesBeforeThrow = 0;
-    EXPECT_THROW(v.push_back(3), MoveForbiddenException);  // growth from the inline storage
+    EXPECT_THROW(v.push_back(3), MoveForbiddenException);  // growth from the inline storage around the new element
+    nbMovesBeforeThrow = 1;
+    EXPECT_THROW(v.reserve(3U), MoveForbiddenException);  // growth from the inline storage
     nbMovesBeforeThrow = -1;
     EXPECT_EQ(v, SV({1, 2}));
     EXPECT_EQ(v.capacity(), 2U);
@@ -1796,7 +1840,9 @@ TEST(VectorTest, ThrowingMoveDoesNotLeak) {
     v.push_back(3);
     v.push_back(4);
     nbMovesBeforeThrow = 1;
-    EXPECT_THROW(v.push_back(5), MoveForbiddenException);  // reallocation
+    EXPECT_THROW(v.push_back(5), MoveForbiddenException);  // reallocation around the new element
+    nbMovesBeforeThrow = 1;
+    EXPECT_THROW(v.reserve(5U), MoveForbiddenException);  // reallocation
     nbMovesBeforeThrow = -1;
     EXPECT_EQ(v, SV({1, 2, 3, 4}));
     EXPECT_EQ(v.capacity(), 4U);

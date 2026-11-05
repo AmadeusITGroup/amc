@@ -1317,8 +1317,8 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     return this->growEmplace(idx, std::forward<Args>(args)...);
   }
 
-  // An rvalue of 'T' (such as the argument of 'insert(pos, T&&)') is only moved from once the vector has grown, like in
-  // 'push_back(T&&)', so that it keeps its value if the growth throws. It may be an element of the vector:
+  // An rvalue of 'T' (such as the argument of 'push_back(T&&)' or 'insert(pos, T&&)') is only moved from once the
+  // vector has grown, so that it keeps its value if the growth throws. It may be an element of the vector:
   // 'adjustCapacity' finds it back in the grown storage. Being non-templates, these overloads win over the ones above.
   iterator emplaceBackGrowing(std::true_type, T&& v) {
     const T& newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
@@ -1628,24 +1628,17 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     return mfirst;
   }
 
-  void push_back(const_reference v) {
-    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
-    this->constructBack(newV);
-  }
+  /// Appends a copy of 'v', which may be an element of the vector: same as 'emplace_back(v)', whose check of a full
+  /// vector costs less than the generic capacity check (up to 1.8 times faster to fill a SmallVector).
+  /// A full vector copies 'v' before relocating its elements: if the copy throws, the vector is unchanged, capacity
+  /// included.
+  void push_back(const_reference v) { this->emplace_back(v); }
 
-  /// Appends the given element value to the end of the container, moving from 'v'.
-  ///
-  /// 'v' may be an rvalue reference to an element already stored in this vector (for instance
-  /// 'v.push_back(std::move(v.front()))'). If a reallocation is needed to grow the container, that element is
-  /// relocated into the freshly allocated storage and the original reference would be left dangling. We therefore
-  /// route 'v' through the same 'adjustCapacity' helper as the 'const_reference' overload: it returns a reference
-  /// to 'v' at its (possibly relocated) location, which we only read from once the growth has taken place. The
-  /// 'const_cast' is safe here because 'v' always binds to a non-const 'T' object, whether it lives inside or
-  /// outside the vector.
-  void push_back(T&& v) {
-    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
-    this->constructBack(std::move(const_cast<reference>(newV)));
-  }
+  /// Appends 'v', moving from it: same as 'emplace_back(std::move(v))'.
+  /// 'v' may be an element of the vector (for instance 'v.push_back(std::move(v.front()))'): a full vector growing with
+  /// 'reallocate' finds it back in the grown storage before moving from it, otherwise it moves it into its new storage
+  /// before relocating its elements. Either way, 'v' keeps its value if the allocation fails.
+  void push_back(T&& v) { this->emplace_back(std::move(v)); }
 
   void resize(size_type count) {
     if (this->size() < count) {

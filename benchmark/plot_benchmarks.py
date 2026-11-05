@@ -4,8 +4,10 @@ r"""Draws the benchmark charts of README.md (docs/bench_*.svg) and the tables of
 Only needs the Python standard library.
 
 1. Build the benchmarks in Release, once per compiler, and run them pinned to a single core (a core of the biggest L3
-   cache on hybrid CPUs). Run each benchmark in its own process: the state in which a benchmark leaves the heap changes
-   the times of the next ones (by up to 20 %). Name the JSON outputs <benchmark>-<compiler tag>-<n>.json, for instance:
+   cache on hybrid CPUs). Build smallsets_benchmark in C++20 (-DCMAKE_CXX_STANDARD=20): from C++20 only, the search of
+   a SmallSet compares the looked up key once with each element. Run each benchmark in its own process: the state in
+   which a benchmark leaves the heap changes the times of the next ones (by up to 20 %). Name the JSON outputs
+   <benchmark>-<compiler tag>-<n>.json, for instance:
 
      vectors_benchmark --benchmark_list_tests | while read -r name; do
        taskset -c 2 vectors_benchmark --benchmark_filter="^$(printf '%s' "$name" | sed 's/[.*+?()|^$\[]/\\&/g')\$" \

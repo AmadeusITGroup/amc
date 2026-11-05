@@ -9,6 +9,7 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -203,6 +204,23 @@ struct ThrowingCompare {
   }
 };
 
+/// Character traits of char counting the calls to 'compare', on which all the comparison operators of the strings of
+/// these traits rely.
+struct CountingCharTraits : std::char_traits<char> {
+  static int& NbCompares() {
+    static int nbCompares = 0;
+    return nbCompares;
+  }
+
+  static int compare(const char* s1, const char* s2, std::size_t n) {
+    ++NbCompares();
+    return std::char_traits<char>::compare(s1, s2, n);
+  }
+};
+
+/// String counting its comparisons (see CountingCharTraits).
+using CountingString = std::basic_string<char, CountingCharTraits>;
+
 /// Type only providing operator== and operator< (no operator<=>, no conversion to an arithmetic type): from C++20,
 /// containers of this type should still be comparable, like the standard ones which use 'synth-three-way'.
 struct LessComparableType {
@@ -212,6 +230,22 @@ struct LessComparableType {
   bool operator<(const LessComparableType& o) const { return _i < o._i; }
 
   int32_t _i;
+};
+
+/// Type ordered by its key only, while operator== also compares its value: values of the same key are equivalent (for
+/// std::less and operator<=>) without being equal, so the sets must not search them with operator==.
+struct KeyValueType {
+  KeyValueType(int32_t key = 0, int32_t value = 0) : _key(key), _value(value) {}
+
+  bool operator==(const KeyValueType& o) const { return _key == o._key && _value == o._value; }
+#ifdef AMC_CXX20
+  auto operator<=>(const KeyValueType& o) const { return _key <=> o._key; }
+#else
+  bool operator<(const KeyValueType& o) const { return _key < o._key; }
+#endif
+
+  int32_t _key;
+  int32_t _value;
 };
 
 struct CopyException {};
