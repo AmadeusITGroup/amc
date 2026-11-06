@@ -252,11 +252,13 @@ class SmallSet {
   SmallSet(const SmallSet& o, const Alloc& alloc) : _vec(o._vec), _set(o._set, alloc) {}
 
   /// If 'alloc' is not equal to the allocator of 'o', the elements of the large state are moved one by one (by its
-  /// set).
+  /// set). 'o' is left empty in both cases.
   SmallSet(SmallSet&& o,
            const Alloc& alloc) noexcept(std::is_nothrow_move_constructible<VecType>::value &&
                                         std::is_nothrow_constructible<SetType, SetType&&, const Alloc&>::value)
-      : _vec(std::move(o._vec)), _set(std::move(o._set), alloc) {}
+      : _vec(std::move(o._vec)), _set(std::move(o._set), alloc) {
+    o._set.clear();
+  }
 
   SmallSet(std::initializer_list<T> list, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : SmallSet(list.begin(), list.end(), comp, alloc) {}
@@ -291,9 +293,15 @@ class SmallSet {
     return *this;
   }
 
+  /// If an exception is thrown, the set is emptied.
   SmallSet& operator=(std::initializer_list<T> list) {
     clear();
-    insert(list.begin(), list.end());
+    try {
+      insert(list.begin(), list.end());
+    } catch (...) {
+      clearBoth();
+      throw;
+    }
     return *this;
   }
 
@@ -446,16 +454,17 @@ class SmallSet {
     if (it == _vec.end()) {
       return 0U;
     }
-    _vec.erase(it);
+    eraseFromVec(it);
     return 1U;
   }
 
+  /// In the small state, if moving an element throws, the set is emptied (see eraseFromVec).
   iterator erase(const_iterator pos) {
-    return isSmall() ? iterator(_vec.erase(ToVecIt(pos))) : afterSetErase(_set.erase(ToSetIt(pos)));
+    return isSmall() ? iterator(eraseFromVec(ToVecIt(pos))) : afterSetErase(_set.erase(ToSetIt(pos)));
   }
 
   iterator erase(const_iterator first, const_iterator last) {
-    return isSmall() ? iterator(_vec.erase(ToVecIt(first), ToVecIt(last)))
+    return isSmall() ? iterator(eraseFromVec(ToVecIt(first), ToVecIt(last)))
                      : afterSetErase(_set.erase(ToSetIt(first), ToSetIt(last)));
   }
 
@@ -469,7 +478,7 @@ class SmallSet {
     if (isSmall()) {
       auto vecIt = ToVecIt(position);
       node_type nt(std::move(*const_cast<miterator>(vecIt)), get_allocator());
-      _vec.erase(vecIt);
+      eraseFromVec(vecIt);
       return nt;
     }
     if constexpr (std::is_same_v<typename SetType::node_type, node_type>) {
@@ -485,7 +494,7 @@ class SmallSet {
       node_type nh(get_allocator());
       if (vecIt != _vec.end()) {
         nh._optV = std::move(*vecIt);
-        _vec.erase(vecIt);
+        eraseFromVec(vecIt);
       }
       return nh;
     }
@@ -516,19 +525,18 @@ class SmallSet {
       if (small) {
         if (std::none_of(_vec.begin(), _vec.end(), fFunc)) {
           if (isSmallContFull()) {
-            grow();
+            growAndInsert(std::move(*oit));
             small = false;
-            _set.insert(std::move(*oit));
           } else {
             _vec.push_back(std::move(*oit));
           }
-          oit = o._vec.erase(oit);
+          oit = o.eraseFromVec(oit);
         } else {
           ++oit;
         }
       } else {
         if (_set.insert(std::move(*oit)).second) {
-          oit = o._vec.erase(oit);
+          oit = o.eraseFromVec(oit);
         } else {
           ++oit;
         }
@@ -576,7 +584,7 @@ class SmallSet {
     // like the iterators of a set, the predicate only has a const access to the elements
     auto constPred = [&pred](const_reference v) { return pred(v); };
     if (c.isSmall()) {
-      return static_cast<size_type>(erase_if(c._vec, constPred));
+      return static_cast<size_type>(algorithm_details::EraseIfFromSetVector(c._vec, constPred));
     }
     return EraseIfFromSet(c._set, constPred);
   }
@@ -601,6 +609,7 @@ class SmallSet {
 
  private:
   using miterator = typename VecType::iterator;  // Custom iterator to allow modification of content (when small)
+  using PtrVec = FixedCapacityVector<const_pointer, N, vec::UncheckedGrowingPolicy>;
 
   template <class I>
   static inline SetIt ToSetIt(I it, typename std::enable_if<std::is_same<I, const T*>::value>::type* = 0) {
@@ -641,8 +650,7 @@ class SmallSet {
     bool newValue = insertIt == _vec.end();
     if (newValue) {
       if (isSmallContFull()) {
-        grow();
-        return _set.insert(std::forward<V>(v));
+        return growAndInsert(std::forward<V>(v));
       }
       _vec.push_back(std::forward<V>(v));
     }
@@ -682,12 +690,14 @@ class SmallSet {
     /// Tells whether 'o' is equivalent to the searched key: neither of them is less than the other for 'Compare', which
     /// is called twice. From C++20, if 'Compare' calls operator< or operator> of a key three-way comparable with 'o'
     /// (strings, pairs, tuples, containers of them, a string view looked up among strings...), a single operator<=>
-    /// tells it, as these operators agree with it (they are rewritten from it, unless they are declared): a lookup
-    /// among 16 strings is twice as fast. operator== is not used, as it may compare more than the ordering does.
+    /// tells it, as these operators are then rewritten from it: a lookup among 16 strings is twice as fast. Keys
+    /// declaring their own operator< or operator> are compared with them, as they may define another ordering.
+    /// operator== is not used, as it may compare more than the ordering does.
     bool operator()(const_reference o) const {
 #ifdef AMC_CXX20
       if constexpr (smallset_details::OrdersByRelationalOperators<Compare, T>::value &&
-                    algorithm_details::ThreeWayComparableWith<std::decay_t<K>, T>) {  // decays a string literal
+                    algorithm_details::ThreeWayComparableWith<std::decay_t<K>, T> &&  // decays a string literal
+                    !algorithm_details::DeclaresRelationalOperator<std::decay_t<K>, T>) {
         const auto order = _k <=> o;
         return !(order < 0) && !(order > 0);  // like with 'Compare', unordered values are equivalent
       } else
@@ -711,54 +721,84 @@ class SmallSet {
     return std::find_if(_vec.begin(), _vec.end(), FindFunctor<K>(key_comp(), k));
   }
 
-  /// Moves the elements of the vector to the set.
-  /// If it throws, the elements already moved to the set are moved back to the vector, which then keeps all the
-  /// elements (strong guarantee if moving T does not throw), and the set is cleared: otherwise, the moved from elements
-  /// left in the vector would reappear once the set becomes empty again.
+  /// Moves the elements of the small state to the set (see moveToEmptySet).
   void grow() {
-    moveToEmptySet(_set);
+    const PtrVec sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
+    moveToEmptySet(_set, sortedPtrs, 0U);
     _vec.clear();
   }
 
-  /// The insertion of a range in a set such as std::set inserts the elements one by one.
-  template <class S>
-  void moveToEmptySet(S& set) {
+  /// Makes the full small state grow by inserting 'v', which is not equivalent to any of its elements. If it throws,
+  /// the set stays small and unchanged, like when 'grow' throws, unless the failed insertion emptied the set (a FlatSet
+  /// of elements whose moves may throw), which then loses all its elements.
+  template <class V>
+  std::pair<iterator, bool> growAndInsert(V&& v) {
+    const PtrVec sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
+    moveToEmptySet(_set, sortedPtrs, 1U);
     try {
-      set.insert(std::make_move_iterator(_vec.begin()), std::make_move_iterator(_vec.end()));
+      std::pair<iterator, bool> ret = _set.insert(std::forward<V>(v));
+      _vec.clear();
+      return ret;
     } catch (...) {
-      // The set contains exactly the elements of the vector inserted before the exception (they are all unique), which
-      // are moved from in the vector. As the vector is unordered, they can be moved back in any order.
-      miterator vecIt = _vec.begin();
-      for (auto setIt = set.begin(); setIt != set.end(); ++setIt, (void)++vecIt) {
-        *vecIt = std::move(const_cast<T&>(*setIt));  // the set is cleared just after, it does not need to stay sorted
+      if (_set.size() == sortedPtrs.size()) {
+        restoreSmallState(_set, sortedPtrs);
+      } else {
+        clearBoth();  // the elements left in the vector are moved from
       }
-      set.clear();
       throw;
     }
   }
 
-  /// The insertion of a range in a FlatSet moves all the elements before comparing them, so they could not be moved
-  /// back if a comparison throws. Instead, they are sorted beforehand, by sorting pointers to them (which only compares
-  /// them: nothing to undo if it throws), then appended in this order to the vector of the FlatSet without comparing
-  /// them again, after a single allocation: then, only a move of an element can throw.
+  /// Moves the elements of the vector, which 'sortedPtrs' points to in increasing order, to the empty 'set', in this
+  /// order, which is the cheapest one to insert them in (each one at the end). Sorting the pointers beforehand only
+  /// compares the elements: nothing to undo if it throws. If an insertion throws, the elements already moved to 'set'
+  /// are moved back (see restoreSmallState). 'nbExtraElems' is the number of elements to be inserted just after.
+  template <class S>
+  void moveToEmptySet(S& set, const PtrVec& sortedPtrs, std::size_t) {
+    try {
+      for (const_pointer ptr : sortedPtrs) {
+        set.insert(set.end(), std::move(const_cast<T&>(*ptr)));
+      }
+    } catch (...) {
+      restoreSmallState(set, sortedPtrs);
+      throw;
+    }
+  }
+
+  /// The insertion of a range in a FlatSet moves all the elements before comparing them: instead, the sorted elements
+  /// are appended to its vector without comparing them again, after a single allocation, which leaves room for the
+  /// extra elements: their insertion then does not reallocate the vector right away.
   template <class V>
-  void moveToEmptySet(FlatSet<T, Compare, Alloc, V>& set) {
-    const PtrVec sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
+  void moveToEmptySet(FlatSet<T, Compare, Alloc, V>& set, const PtrVec& sortedPtrs, std::size_t nbExtraElems) {
     V& setVec = set._sortedVector;
     try {
-      setVec.reserve(static_cast<typename V::size_type>(sortedPtrs.size()));
+      setVec.reserve(static_cast<typename V::size_type>(sortedPtrs.size() + nbExtraElems));
       for (const_pointer ptr : sortedPtrs) {
         setVec.emplace_back(std::move(const_cast<T&>(*ptr)));
       }
     } catch (...) {
-      // The vector of the set contains the elements pointed to by the first pointers of 'sortedPtrs', in this order.
-      auto ptrIt = sortedPtrs.begin();
-      for (T& v : setVec) {
-        const_cast<T&>(**ptrIt++) = std::move(v);
-      }
-      setVec.clear();
+      restoreSmallState(set, sortedPtrs);
       throw;
     }
+  }
+
+  /// Moves back the elements of 'set' to the vector of the small state, from which they were moved in the order of
+  /// 'sortedPtrs', which is their order in 'set': each one gets back to its position, which keeps the insertion order.
+  /// 'set' is then cleared, otherwise the moved from elements would reappear once the set becomes empty again. If
+  /// moving an element back throws, the vector is cleared too: the set is emptied, instead of keeping moved from
+  /// elements.
+  template <class S>
+  void restoreSmallState(S& set, const PtrVec& sortedPtrs) noexcept {
+    try {
+      auto ptrIt = sortedPtrs.begin();
+      for (auto setIt = set.begin(); setIt != set.end(); ++setIt) {
+        // the set is cleared just after, it does not need to stay sorted
+        const_cast<T&>(**ptrIt++) = std::move(const_cast<T&>(*setIt));
+      }
+    } catch (...) {
+      _vec.clear();
+    }
+    set.clear();
   }
 
 #ifdef AMC_CXX20
@@ -795,6 +835,7 @@ class SmallSet {
   void moveAssign(SmallSet& o, std::true_type) noexcept {
     _vec = std::move(o._vec);
     _set = std::move(o._set);
+    o._set.clear();  // the elements are moved one by one between unequal allocators: 'o' could keep them
   }
 
   void moveAssign(SmallSet& o, std::false_type) {
@@ -806,9 +847,25 @@ class SmallSet {
       o.clearBoth();
       throw;
     }
+    o._set.clear();  // the elements are moved one by one between unequal allocators: 'o' could keep them
   }
 
-  using PtrVec = FixedCapacityVector<const_pointer, N, vec::UncheckedGrowingPolicy>;
+  /// Erases the element at 'pos', or the elements of ['pos', 'last'), from the vector of the small state, which shifts
+  /// the next elements. If moving an element throws, the vector is cleared: it could otherwise keep a moved from
+  /// element, which may not be unique.
+  template <class... Last>
+  miterator eraseFromVec(VecIt pos, Last... last) {
+    if constexpr (std::is_nothrow_move_assignable_v<T>) {
+      return _vec.erase(pos, last...);
+    } else {
+      try {
+        return _vec.erase(pos, last...);
+      } catch (...) {
+        _vec.clear();
+        throw;
+      }
+    }
+  }
 
   /// Pointers to the elements of 'c', sorted with comparator object 'comp' (which may hold a state).
   static PtrVec ComputeSortedPtrVec(const VecType& c, const Compare& comp) {

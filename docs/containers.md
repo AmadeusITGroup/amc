@@ -11,7 +11,7 @@
 - [Node handles](#node-handles)
 - [Non-standard extensions](#non-standard-extensions)
 
-Each container has its own header in `include/amc/`, and from C++20 the module `amc` provides all of them (`import amc;`, see the [README](../README.md#c20-module)). All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
+Each container has its own header in `include/amc/`, and from C++20 the module `amc` provides all of them (`import amc;`, see the [README](../README.md#c20-module)). All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. The containers are not designed to be base classes: deriving from them is undefined behavior. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
 
 ## Choosing a container
 
@@ -28,7 +28,7 @@ Each container has its own header in `include/amc/`, and from C++20 the module `
 
 A type is trivially relocatable if moving an object to another address and destroying the source is equivalent to copying its bytes with `memcpy` (and forgetting the source). The amc containers then move their elements in bulk, with `memcpy`, `memmove` or `realloc`, instead of calling a move constructor and a destructor per element: when they grow, insert, erase, swap or merge. The trait is not (yet) in the standard (see [P1144](https://quuxplusone.github.io/blog/2018/07/18/announcing-trivially-relocatable/)), but no special compiler is needed.
 
-Most types are trivially relocatable, including types owning memory through a pointer, such as `std::unique_ptr` or `std::vector` in the major implementations. Types holding pointers to parts of themselves are not, as moving them must update these pointers: `std::list`, `std::set` and `std::map` in some implementations, `std::string` in libstdc++ (which points to its inline buffer). More information [here](https://quuxplusone.github.io/blog/2019/02/20/p1144-what-types-are-relocatable/).
+Most types are trivially relocatable, including types owning memory through a pointer, such as `std::unique_ptr` or `std::vector` in the major implementations, although amc only knows it for the trivially copyable ones (see below). Types holding pointers to parts of themselves are not, as moving them must update these pointers: `std::list`, `std::set` and `std::map` in some implementations, `std::string` in libstdc++ (which points to its inline buffer). More information [here](https://quuxplusone.github.io/blog/2019/02/20/p1144-what-types-are-relocatable/).
 
 `amc::is_trivially_relocatable<T>` (`<amc/type_traits.hpp>`) conservatively defaults to `std::is_trivially_copyable<T>`: trivially copyable types need nothing. Other types opt in, either by declaring a public member type:
 
@@ -116,7 +116,7 @@ Compared to a `SmallVector` which would never grow, a `FixedCapacityVector` make
 
 The vectors take their `size_type` as a template parameter: `std::uint32_t` by default for `amc::vector` and `SmallVector`, and the smallest unsigned type able to hold `N` for `FixedCapacityVector`. A smaller `size_type` makes a smaller vector, but bounds its `max_size()`.
 
-Like with `std::vector`, the counts given to the member functions (constructors, `assign`, `insert`, `resize`, `reserve`...) are of type `size_type`: a larger count is converted by the call, before the vector can check it. For instance, `amc::SmallVector<int, 4, amc::allocator<int>, std::uint8_t>(300)` has 44 elements, and `amc::FixedCapacityVector<int, 10>::reserve(260)` reserves 4 elements without throwing. GCC and Clang warn about these conversions by default for constant counts, and with `-Wconversion` for the other ones. Use `std::size_t` as `size_type` to get the limits of `std::vector`.
+Like with `std::vector`, the counts given to the member functions (constructors, `assign`, `insert`, `resize`, `reserve`...) are of type `size_type`: a larger count is converted by the call, before the vector can check it. For instance, `amc::SmallVector<int, 4, amc::allocator<int>, std::uint8_t>(300)` has 44 elements, and `amc::FixedCapacityVector<int, 10>::reserve(260)` reserves 4 elements without throwing. GCC and Clang warn about these conversions by default for constant counts, and with `-Wconversion` for the other ones. With a signed `size_type`, a negative count is checked like a count exceeding `max_size()`: the vector throws (according to its `GrowingPolicy` for `FixedCapacityVector`), like `std::vector` does with the huge `size_t` a negative count converts to. Use `std::size_t` as `size_type` to remove the limit of the size type: `max_size()` is then the one of the allocator (`SIZE_MAX / sizeof(T)` for `amc::allocator`, while `std::vector` also caps it at `PTRDIFF_MAX / sizeof(T)`).
 
 ## FlatSet
 
@@ -161,7 +161,7 @@ using SeenIds = amc::SmallSet<std::uint32_t, 16, std::less<std::uint32_t>, amc::
                               amc::FlatSet<std::uint32_t>>;
 ```
 
-From C++20, when the comparator calls `operator<` or `operator>` (`std::less`, `std::greater`, transparent or not, or their `std::ranges` versions) and the looked up key is three-way comparable with the elements, the linear search of the small state compares it once with each element, with `operator<=>`, instead of twice with the comparator: lookups among strings are about twice as fast.
+From C++20, when the comparator calls `operator<` or `operator>` (`std::less`, `std::greater`, transparent or not, or their `std::ranges` versions) and the looked up key is three-way comparable with the elements without declaring its own `operator<` or `operator>` (which `operator<=>` might not agree with), the linear search of the small state compares it once with each element, with `operator<=>`, instead of twice with the comparator: lookups among strings are about twice as fast.
 
 A `SmallSet` with an `amc::FlatSet` is the fastest set for integers, enumerations, pointers or small trivially relocatable types, when most sets have at most `N` elements. For strings, the default `SmallSet` (with a `std::set`) pays off when most sets are small (see [benchmarks.md](benchmarks.md#smallset)).
 

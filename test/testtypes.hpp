@@ -308,6 +308,17 @@ struct KeyValueType {
   int32_t _value;
 };
 
+#ifdef AMC_CXX20
+/// Ordered by its tens with its own operator<, while its defaulted operator<=> compares its whole value: the sets order
+/// it with operator<, which operator<=> cannot replace.
+struct TensOrderedType {
+  auto operator<=>(const TensOrderedType&) const = default;
+  bool operator<(const TensOrderedType& o) const { return _i / 10 < o._i / 10; }
+
+  int32_t _i;
+};
+#endif
+
 struct CopyException {};
 
 struct TypeStats {
@@ -522,13 +533,18 @@ struct MoveForbidden {
 };
 
 /// Non trivially relocatable type with a value, whose moves throw MoveForbiddenException once 'NbMovesBeforeThrow()'
-/// moves have been done (never if negative). A throwing move has already written its value: relocating elements to
-/// the inline storage of a SmallVector, which shares its first bytes with the pointer to its dynamic storage, then
-/// overwrites this pointer. Counts its live objects, to detect leaks.
+/// moves have been done (never if negative). After a throw, 'NbMovesBeforeThrow()' is set to 'NbMovesBeforeNextThrow()'
+/// (-1 by default, throwing only once): the operation undoing a failed one may throw as well. A throwing move has
+/// already written its value: relocating elements to the inline storage of a SmallVector, which shares its first bytes
+/// with the pointer to its dynamic storage, then overwrites this pointer. Counts its live objects, to detect leaks.
 struct ThrowingMoveType {
   static int& NbMovesBeforeThrow() {
     static int nbMovesBeforeThrow = -1;
     return nbMovesBeforeThrow;
+  }
+  static int& NbMovesBeforeNextThrow() {
+    static int nbMovesBeforeNextThrow = -1;
+    return nbMovesBeforeNextThrow;
   }
   static int& NbLive() {
     static int nbLive = 0;
@@ -554,6 +570,7 @@ struct ThrowingMoveType {
   static void Move() {
     int& nbMovesBeforeThrow = NbMovesBeforeThrow();
     if (nbMovesBeforeThrow >= 0 && nbMovesBeforeThrow-- == 0) {
+      nbMovesBeforeThrow = NbMovesBeforeNextThrow();
       throw MoveForbiddenException();
     }
   }

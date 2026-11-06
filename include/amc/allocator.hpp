@@ -28,9 +28,11 @@ template <typename Alloc>
 class BasicSingletonAllocatorAdaptor {
  public:
   void* allocate(std::size_t n) { return Alloc::instance().allocate(n); }
+
   void* reallocate(void* p, std::size_t oldSz, std::size_t newSz) {
     return Alloc::instance().reallocate(p, oldSz, newSz);
   }
+
   void deallocate(void* p, std::size_t n) { Alloc::instance().deallocate(p, n); }
 };
 
