@@ -361,6 +361,36 @@ TYPED_TEST(VectorTest, SelfAssignment) {
   EXPECT_EQ(v, VectorType({2, 2}));
 }
 
+// A negative count of a signed size type is not taken as a smaller size: like the huge count it converts to for
+// std::vector, it exceeds max_size() and throws, leaving the vector unchanged.
+TYPED_TEST(VectorTest, NegativeCountThrows) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
+  if (!std::is_signed<SzType>::value) {
+    GTEST_SKIP() << "unsigned size type";
+  }
+  for (SzType count : {static_cast<SzType>(-1), std::numeric_limits<SzType>::min()}) {
+    VectorType v{Type(1), Type(2)};
+    if constexpr (std::is_default_constructible_v<Type>) {
+      EXPECT_THROW(v.resize(count), std::overflow_error);
+#ifdef AMC_NONSTD_FEATURES
+      EXPECT_THROW(v.append(count), std::overflow_error);
+#endif
+      EXPECT_THROW(static_cast<void>(VectorType(count)), std::overflow_error);
+    }
+    EXPECT_THROW(v.resize(count, Type(3)), std::overflow_error);
+    EXPECT_THROW(v.reserve(count), std::overflow_error);
+    EXPECT_THROW(v.assign(count, Type(3)), std::overflow_error);
+    EXPECT_THROW(v.insert(v.begin(), count, Type(3)), std::overflow_error);
+#ifdef AMC_NONSTD_FEATURES
+    EXPECT_THROW(v.append(count, Type(3)), std::overflow_error);
+#endif
+    EXPECT_EQ(v, VectorType({1, 2}));
+    EXPECT_THROW(static_cast<void>(VectorType(count, Type(3))), std::overflow_error);
+  }
+}
+
 TYPED_TEST(VectorTest, InsertEmptyRange) {
   using VectorType = TypeParam;
   using Type = typename VectorType::value_type;

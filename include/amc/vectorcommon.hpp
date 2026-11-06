@@ -61,6 +61,13 @@ inline bool IsInRange(const T* p, const T* first, SizeType n) noexcept {
          static_cast<std::uintptr_t>(n) * sizeof(T);
 }
 
+/// Count of elements 'n' as an unsigned value, to check it against the capacities: like with std::vector, whose
+/// size_type is unsigned, a negative count of a signed 'SizeType' exceeds max_size() and makes the vector throw.
+template <class SizeType>
+inline std::uintmax_t ToUnsignedCount(SizeType n) noexcept {
+  return static_cast<std::uintmax_t>(static_cast<typename std::make_unsigned<SizeType>::type>(n));
+}
+
 /// Returns 'v' as is if it is a T, otherwise explicitly converted to a T: elements of a range of another type are
 /// converted once and explicitly, instead of implicitly (MSVC warns about the narrowing ones).
 template <class T, class U,
@@ -1178,8 +1185,9 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   size_type max_size() const noexcept { return static_cast<size_type>(MaxCapacity<SizeType>(this->get_allocator())); }
 
   void reserve(size_type capacity) {
-    if (this->capacity() < capacity) {
-      this->grow(capacity, true);  // Reserve with exact capacity
+    const std::uintmax_t newCapa = ToUnsignedCount(capacity);
+    if (static_cast<std::uintmax_t>(this->capacity()) < newCapa) {
+      this->grow(newCapa, true);  // Reserve with exact capacity
     }
   }
 
@@ -1514,11 +1522,11 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   void assign(size_type count, const_reference v) {
-    if (this->size() < count) {
-      if (this->capacity() < count) {
+    if (static_cast<std::uintmax_t>(this->size()) < ToUnsignedCount(count)) {
+      if (static_cast<std::uintmax_t>(this->capacity()) < ToUnsignedCount(count)) {
         // 'v' may refer to an element (or to an object owned by one): it is not copied, as the elements are only
         // destroyed once its copies are constructed in the new storage
-        this->assignInNewStorage(static_cast<std::uintmax_t>(count),
+        this->assignInNewStorage(ToUnsignedCount(count),
                                  [&v, count](T* storage) { std::uninitialized_fill_n(storage, count, v); });
       } else {
         fill(this->begin(), this->size(), count, v);
@@ -1577,8 +1585,9 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   iterator insert(const_iterator position, size_type count, const_reference v) {
     assert(position >= this->cbegin() && position <= cend());
     iterator pos;
-    if (count > 0) {
-      const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, v, &position);
+    if (count != 0) {
+      const_reference newV =
+          this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(count), v, &position);
       pos = const_cast<iterator>(position);
       SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
       if (nElemsToShift == 0) {
@@ -1665,8 +1674,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   void push_back(T&& v) { this->emplace_back(std::move(v)); }
 
   void resize(size_type count) {
-    if (this->size() < count) {
-      this->adjustCapacity(count);
+    if (static_cast<std::uintmax_t>(this->size()) < ToUnsignedCount(count)) {
+      this->adjustCapacity(ToUnsignedCount(count));
       amc::uninitialized_value_construct_n(end(), count - this->size());
     } else {
       amc::destroy_n(this->begin() + count, this->size() - count);
@@ -1675,8 +1684,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   void resize(size_type count, const_reference v) {
-    if (this->size() < count) {
-      const_reference newV = this->adjustCapacity(count, v);
+    if (static_cast<std::uintmax_t>(this->size()) < ToUnsignedCount(count)) {
+      const_reference newV = this->adjustCapacity(ToUnsignedCount(count), v);
       std::uninitialized_fill_n(end(), count - this->size(), newV);
     } else {
       amc::destroy_n(this->begin() + count, this->size() - count);
@@ -1698,13 +1707,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   void append(size_type count) {
-    this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count);
+    this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(count));
     amc::uninitialized_value_construct_n(end(), count);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
 
   void append(size_type count, const_reference v) {
-    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, v);
+    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(count), v);
     std::uninitialized_fill_n(end(), count, newV);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
