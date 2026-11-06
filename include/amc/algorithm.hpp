@@ -5,6 +5,7 @@
 #ifdef AMC_CXX20
 #include <algorithm>
 #include <compare>
+#include <iterator>
 #include <type_traits>
 #include <utility>
 #endif
@@ -76,6 +77,50 @@ concept SynthThreeWayComparable = requires(const T& t, const U& u) {
   { t < u } -> BooleanTestable;
   { u < t } -> BooleanTestable;
 };
+
+/// Tells whether operator< or operator> is declared for 'T' and 'U' (in any order), as a member or a non-member
+/// function: unlike the expressions 't < u' and 't > u', the explicit calls of the operator functions do not consider
+/// the candidates rewritten from operator<=>, nor the built-in operators. Such declared operators may define another
+/// ordering than operator<=>.
+template <class T, class U>
+concept DeclaresRelationalOperator =
+    requires(const T& t, const U& u) { operator<(t, u); } || requires(const T& t, const U& u) { operator<(u, t); } ||
+    requires(const T& t, const U& u) { operator>(t, u); } || requires(const T& t, const U& u) { operator>(u, t); } ||
+    requires(const T& t, const U& u) { t.operator<(u); } || requires(const T& t, const U& u) { u.operator<(t); } ||
+    requires(const T& t, const U& u) { t.operator>(u); } || requires(const T& t, const U& u) { u.operator>(t); };
+
+/// Erases the elements of 'v', the vector of a set (whose elements are unique), satisfying 'pred' in a single pass,
+/// keeping the order of the other ones. If 'pred' throws, the elements already found are erased and the other ones
+/// kept, like with std::erase_if of a std::set. If moving an element may throw, 'v' is cleared instead, as it could
+/// keep a moved from element, which may break the order or be a duplicate.
+template <class Vec, class Pred>
+auto EraseIfFromSetVector(Vec& v, Pred& pred) {
+  using T = typename Vec::value_type;
+  const auto last = v.end();
+  auto dest = std::find_if(v.begin(), last, pred);
+  if (dest == last) {
+    return typename Vec::size_type{0};
+  }
+  auto it = std::next(dest);
+  try {
+    for (; it != last; ++it) {
+      if (!pred(std::as_const(*it))) {
+        *dest = std::move(*it);
+        ++dest;
+      }
+    }
+  } catch (...) {
+    if constexpr (std::is_nothrow_move_assignable_v<T>) {
+      v.erase(dest, it);
+    } else {
+      v.clear();
+    }
+    throw;
+  }
+  const auto nbErased = static_cast<typename Vec::size_type>(last - dest);
+  v.erase(dest, last);
+  return nbErased;
+}
 }  // namespace algorithm_details
 
 /// Emulation of the exposition only 'synth-three-way' used by the comparison operators of the standard containers:

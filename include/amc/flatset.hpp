@@ -256,11 +256,13 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   FlatSet(const FlatSet& o, const Alloc& alloc) : CompareBase(o.compRef()), _sortedVector(o._sortedVector, alloc) {}
 
   /// Like the move constructor, moves the comparator. If 'alloc' is not equal to the allocator of 'o', the elements are
-  /// moved one by one (by the vector).
+  /// moved one by one (by the vector). 'o' is left empty in both cases.
   FlatSet(FlatSet&& o,
           const Alloc& alloc) noexcept(std::is_nothrow_move_constructible<Compare>::value &&
                                        std::is_nothrow_constructible<VecType, VecType&&, const Alloc&>::value)
-      : CompareBase(std::move(static_cast<CompareBase&>(o))), _sortedVector(std::move(o._sortedVector), alloc) {}
+      : CompareBase(std::move(static_cast<CompareBase&>(o))), _sortedVector(std::move(o._sortedVector), alloc) {
+    o._sortedVector.clear();
+  }
 
   FlatSet(std::initializer_list<value_type> list, const Compare& comp = Compare(), const Alloc& alloc = Alloc())
       : CompareBase(comp), _sortedVector(alloc) {
@@ -319,8 +321,8 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// Linear time if 'v' is already sorted: it is not sorted again.
   /// If the comparator or a move of an element throws, the set is emptied.
   FlatSet& operator=(vector_type&& v) {
-    _sortedVector = std::move(v);
     try {
+      _sortedVector = std::move(v);
       eraseDuplicates(sortIfUnsorted(mbegin()));
     } catch (...) {
       _sortedVector.clear();
@@ -463,12 +465,13 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     if (it == end()) {
       return 0U;
     }
-    _sortedVector.erase(it);
+    EraseFromVector(_sortedVector, it);
     return 1U;
   }
 
-  iterator erase(const_iterator position) { return _sortedVector.erase(position); }
-  iterator erase(const_iterator first, const_iterator last) { return _sortedVector.erase(first, last); }
+  /// If moving an element throws, the set is emptied (see EraseFromVector).
+  iterator erase(const_iterator position) { return EraseFromVector(_sortedVector, position); }
+  iterator erase(const_iterator first, const_iterator last) { return EraseFromVector(_sortedVector, first, last); }
 
   bool operator==(const FlatSet& o) const { return _sortedVector == o._sortedVector; }
   bool operator!=(const FlatSet& o) const { return !(*this == o); }
@@ -501,7 +504,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   node_type extract(const_iterator position) {
     // the iterators of the vector may not be pointers (std::vector): no const_cast
     node_type nt(std::move(*(mbegin() + (position - begin()))), get_allocator());
-    _sortedVector.erase(position);
+    EraseFromVector(_sortedVector, position);
     return nt;
   }
 
@@ -510,7 +513,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     node_type nh(get_allocator());
     if (it != _sortedVector.end()) {
       nh._optV = std::move(*it);
-      _sortedVector.erase(it);
+      EraseFromVector(_sortedVector, it);
     }
     return nh;
   }
@@ -526,7 +529,8 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// If 'o' is ordered by our comparator (always the case for a stateless one) and the sum of both sizes does not
   /// exceed max_size(), the merge of trivially relocatable elements stored in an amc vector is linear, and an
   /// allocation failure leaves both sets unchanged. If the comparator throws, the elements already moved stay in 'this'
-  /// and the other ones in 'o': both sets are valid.
+  /// and the other ones in 'o': both sets are valid. If moving an element throws, or if an allocation fails when moving
+  /// an element may throw, both sets are emptied.
   void merge(FlatSet& o) {
     if (this == &o) {
       return;  // all the elements are already present
@@ -595,9 +599,12 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
 
 #ifdef AMC_CXX20
   /// Like the iterators of a set, the predicate only has a const access to the elements.
+  /// If 'pred' throws, the elements for which it returned true are erased, the other ones are kept. If moving an
+  /// element throws, the set is emptied (see algorithm_details::EraseIfFromSetVector).
   template <class Pred>
   friend size_type erase_if(FlatSet& c, Pred pred) {
-    return erase_if(c._sortedVector, [&pred](const_reference v) { return pred(v); });
+    auto constPred = [&pred](const_reference v) { return pred(v); };
+    return algorithm_details::EraseIfFromSetVector(c._sortedVector, constPred);
   }
 #endif
 
@@ -614,6 +621,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   void moveAssign(FlatSet& o, std::true_type) noexcept {
     compRef() = std::move(o.compRef());
     _sortedVector = std::move(o._sortedVector);
+    o._sortedVector.clear();  // the elements are moved one by one between unequal allocators: 'o' would keep them
   }
 
   void moveAssign(FlatSet& o, std::false_type) {
@@ -625,7 +633,91 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
       o._sortedVector.clear();
       throw;
     }
+    o._sortedVector.clear();  // the elements are moved one by one between unequal allocators: 'o' would keep them
   }
+
+  /// Erases the element at 'pos', or the elements of ['pos', 'last'), from 'vec', the vector of a set, which shifts the
+  /// next elements. If moving an element throws, 'vec' is cleared: it could otherwise keep a moved from element,
+  /// breaking the order of the set.
+  /// Whether moving the elements of the vector, to shift them in an insertion or an erasure, or to relocate them when
+  /// it grows, may throw, which leaves moved from elements in it. The amc vectors relocate the trivially relocatable
+  /// elements with memcpy / memmove.
+  using ElementMovesMayThrow = std::integral_constant<
+      bool, !(is_trivially_relocatable<T>::value && flatset_details::IsAmcVector<VecType>::value) &&
+                !(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value)>;
+
+  /// Erases the element at 'pos', or the elements of ['pos', 'last'), from 'vec', the vector of a set, which shifts the
+  /// next elements. If moving an element throws, 'vec' is cleared: it could otherwise keep a moved from element,
+  /// breaking the order of the set.
+  template <class... Last>
+  static miterator EraseFromVector(VecType& vec, const_iterator pos, Last... last) {
+    return EraseFromVectorImpl(ElementMovesMayThrow(), vec, pos, last...);
+  }
+
+  template <class... Last>
+  static miterator EraseFromVectorImpl(std::false_type, VecType& vec, const_iterator pos, Last... last) {
+    return vec.erase(pos, last...);
+  }
+
+  template <class... Last>
+  static miterator EraseFromVectorImpl(std::true_type, VecType& vec, const_iterator pos, Last... last) {
+    try {
+      return vec.erase(pos, last...);
+    } catch (...) {
+      vec.clear();
+      throw;
+    }
+  }
+
+  /// Inserts 'v' at 'pos' in the vector, which shifts the next elements, and may make it grow. If moving an element
+  /// throws, the set is emptied: it could otherwise keep a moved from element, breaking its order.
+  template <class V>
+  miterator insertIntoVector(const_iterator pos, V&& v) {
+    return insertIntoVector(pos, std::forward<V>(v), ElementMovesMayThrow());
+  }
+
+  template <class V>
+  miterator insertIntoVector(const_iterator pos, V&& v, std::false_type) {
+    return _sortedVector.insert(pos, std::forward<V>(v));
+  }
+
+  /// Only shifting the next elements, or relocating them to a new storage with a throwing move constructor, may leave
+  /// moved from elements: the new element is constructed at the end, or directly in the new storage, around which the
+  /// elements are move constructed. Otherwise, an exception (such as an allocation failure) leaves the vector
+  /// unchanged.
+  template <class V>
+  miterator insertIntoVector(const_iterator pos, V&& v, std::true_type) {
+    // If the vector grows, whether relocating its elements may throw, otherwise whether they are shifted.
+    const bool mayLeaveMovedFromElements =
+        _sortedVector.size() == _sortedVector.capacity() ? !std::is_nothrow_move_constructible<T>::value : pos != end();
+    try {
+      return _sortedVector.insert(pos, std::forward<V>(v));
+    } catch (...) {
+      if (mayLeaveMovedFromElements) {
+        _sortedVector.clear();
+      }
+      throw;
+    }
+  }
+
+  /// Erases the elements appended from 'oldSize' after a failed appendAndMerge (see ElementMovesMayThrow).
+  void eraseAppended(difference_type oldSize, std::false_type) noexcept {
+    _sortedVector.erase(mbegin() + oldSize, mend());
+  }
+
+  void eraseAppended(difference_type, std::true_type) noexcept { _sortedVector.clear(); }
+
+  /// After an exception thrown while moving an element in a merge, both sets are emptied if moving an element may
+  /// throw: the moved element may
+  /// be left in both of them, moved from in 'o', or the shift of the elements of one of them may have failed.
+  template <class O>
+  void afterFailedMerge(O& o, std::true_type) noexcept {
+    _sortedVector.clear();
+    o._sortedVector.clear();
+  }
+
+  template <class O>
+  void afterFailedMerge(O&, std::false_type) noexcept {}
 
   miterator mbegin() noexcept { return _sortedVector.begin(); }
   miterator mend() noexcept { return _sortedVector.end(); }
@@ -673,7 +765,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     const_iterator insertIt = lowerBound(begin(), end(), v);
     bool newValue = insertIt == end() || compRef()(v, *insertIt);
     if (newValue) {
-      insertIt = _sortedVector.insert(insertIt, std::forward<V>(v));
+      insertIt = insertIntoVector(insertIt, std::forward<V>(v));
     }
     return std::pair<iterator, bool>(insertIt, newValue);
   }
@@ -697,11 +789,11 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
           return prevIt;
         }
         // hint is correct and element not already present, insert
-        return _sortedVector.insert(hint, std::forward<V>(v));
+        return insertIntoVector(hint, std::forward<V>(v));
       } else {
         const_iterator insertIt = lowerBound(b, prevIt, v);
         if (insertIt == prevIt || compRef()(v, *insertIt)) {
-          return _sortedVector.insert(insertIt, std::forward<V>(v));
+          return insertIntoVector(insertIt, std::forward<V>(v));
         }
         return insertIt;  // no insert as equal elements
       }
@@ -711,7 +803,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
         if (nextIt != e && !compRef()(v, *nextIt)) {
           return nextIt;
         }
-        return _sortedVector.insert(nextIt, std::forward<V>(v));
+        return insertIntoVector(nextIt, std::forward<V>(v));
       }
     }
     // hint does not bring any valuable information, use standard insert
@@ -723,8 +815,9 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// and checked for duplicates: appending k elements greater than all the n previous ones costs O(log(n) + k log(k)),
   /// and O(log(n) + k) if they are already sorted.
   /// If 'append', the sort of the appended elements or the search of their merge position throws, the appended elements
-  /// are erased: the previous ones are kept. If the merge or the erasure of duplicates throws, the elements may not be
-  /// sorted anymore: the set is cleared.
+  /// are erased: the previous ones are kept, unless moving an element may throw (the growth of the vector may then have
+  /// left moved from elements among them): the set is cleared. If the merge or the erasure of duplicates throws, the
+  /// elements may not be sorted anymore: the set is cleared.
   template <class Append>
   void appendAndMerge(Append append) {
     const difference_type oldSize = static_cast<difference_type>(size());
@@ -744,7 +837,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
       // before it, and is the one kept by the erasure of duplicates.
       first = mbegin() + (lowerBound(begin(), middle, *middle) - begin());
     } catch (...) {
-      _sortedVector.erase(mbegin() + oldSize, mend());
+      eraseAppended(oldSize, ElementMovesMayThrow());
       throw;
     }
     try {
@@ -762,21 +855,30 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   const Compare& compRef() const noexcept { return CompareBase::get(); }
 
   /// Moves each element of 'o' which is not already present in 'this' at its position according to our comparator,
-  /// whatever the order of 'o'.
+  /// whatever the order of 'o'. If it throws, see afterFailedMerge.
   template <class C2>
   void mergeOneByOne(FlatSet<T, C2, Alloc, VecType>& o) {
     for (miterator oit = o.mbegin(); oit != o.mend();) {
       const_iterator lbIt = lowerBound(begin(), end(), *oit);
-      if (lbIt == end()) {
-        _sortedVector.push_back(std::move(*oit));
-        oit = o._sortedVector.erase(oit);
-      } else if (compRef()(*oit, *lbIt)) {
-        _sortedVector.insert(lbIt, std::move(*oit));
-        oit = o._sortedVector.erase(oit);
+      if (lbIt == end() || compRef()(*oit, *lbIt)) {
+        oit = moveFrom(o, oit, lbIt);
       } else {
         // equal
         ++oit;
       }
+    }
+  }
+
+  /// Moves the element 'oit' of 'o' at 'pos' in our vector, and returns the next element of 'o'. If it throws, see
+  /// afterFailedMerge. The comparisons are made outside: if one throws, both sets stay valid.
+  template <class O>
+  typename O::miterator moveFrom(O& o, typename O::miterator oit, const_iterator pos) {
+    try {
+      _sortedVector.insert(pos, std::move(*oit));
+      return o._sortedVector.erase(oit);
+    } catch (...) {
+      afterFailedMerge(o, ElementMovesMayThrow());
+      throw;
     }
   }
 
@@ -785,23 +887,29 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
       std::integral_constant<bool, is_trivially_relocatable<T>::value && flatset_details::IsAmcVector<VecType>::value>;
 
   /// Merges 'o', ordered by our comparator, by inserting each of its new elements in our vector and erasing it from
-  /// 'o': both shift the next elements.
+  /// 'o': both shift the next elements. If it throws, see afterFailedMerge.
   void mergeSorted(FlatSet& o, std::false_type) {
     // Do not use std::inplace_merge to avoid allocating memory if not needed
     miterator first1 = mbegin(), last1 = mend();
     miterator first2 = o.mbegin(), last2 = o.mend();
     while (first2 != last2) {
       if (first1 == last1) {
-        _sortedVector.insert(last1, std::make_move_iterator(first2), std::make_move_iterator(last2));
-        o._sortedVector.erase(first2, last2);
+        try {
+          _sortedVector.insert(last1, std::make_move_iterator(first2), std::make_move_iterator(last2));
+          o._sortedVector.erase(first2, last2);
+        } catch (...) {
+          afterFailedMerge(o, ElementMovesMayThrow());
+          throw;
+        }
         break;
       }
       if (compRef()(*first1, *first2)) {
         ++first1;
       } else if (compRef()(*first2, *first1)) {
-        first1 = std::next(_sortedVector.insert(first1, std::move(*first2)));
+        const difference_type pos1 = first1 - mbegin();
+        first2 = moveFrom(o, first2, first1);
+        first1 = mbegin() + pos1 + 1;
         last1 = mend();
-        first2 = o._sortedVector.erase(first2);
         last2 = o.mend();  // the erasure invalidates the end iterator
       } else {
         // equal

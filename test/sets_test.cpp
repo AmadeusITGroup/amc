@@ -662,6 +662,35 @@ TYPED_TEST(SetListTest, EraseIf) {
   TypeParam s4{1, 2, 3, 1, 2, 3, 4};
   EXPECT_EQ(erase_if(s4, [](const ValueType& v) { return v > ValueType{2}; }), SizeType{2});
   EXPECT_EQ(s4, TypeParam({1, 2, 1, 2}));
+
+  // no element satisfies the predicate, or there is none
+  auto isGreaterThan4 = [](const ValueType& v) { return v > ValueType{4}; };
+  EXPECT_EQ(erase_if(s4, isGreaterThan4), SizeType{0});
+  EXPECT_EQ(s4, TypeParam({1, 2}));
+  TypeParam empty;
+  EXPECT_EQ(erase_if(empty, isGreaterThan4), SizeType{0});
+  EXPECT_TRUE(empty.empty());
+
+  // If the predicate throws, the elements it selected before stay erased and the other ones are kept, like with
+  // std::set: the set does not keep moved from elements.
+  struct PredicateException {};
+  auto throwingPred = [](const ValueType& v) {
+    if (v == ValueType{3}) {
+      throw PredicateException();
+    }
+    return v == ValueType{1} || v == ValueType{4};
+  };
+  TypeParam s5{1, 2, 3, 4};
+  TypeParam expected;
+  bool reached = false;
+  for (const ValueType& v : s5) {  // in the order of the set
+    reached = reached || v == ValueType{3};
+    if (reached || !throwingPred(v)) {
+      expected.insert(v);
+    }
+  }
+  EXPECT_THROW(erase_if(s5, throwingPred), PredicateException);
+  EXPECT_EQ(s5, expected);
 }
 
 #ifdef AMC_SMALLSET
@@ -717,18 +746,19 @@ TEST(SetTest, SmallSetSizeTest) {
 #endif
 
 #ifdef AMC_SMALLSET
-// If moving the elements of a SmallSet to its set fails when it grows, it keeps all its elements, and they do not
-// reappear once its set becomes empty again. 'insertFailing(s, n)' inserts 5 in 's', making an operation fail after 'n'
-// successful ones, and tells whether it failed.
+// If moving the elements of a SmallSet to its set fails when it grows, it keeps all its elements, in their insertion
+// order, and they do not reappear once its set becomes empty again. 'insertFailing(s, n)' inserts 5 in 's', making an
+// operation fail after 'n' successful ones, and tells whether it failed.
 template <class SetType, class InsertFailing>
 void ExpectGrowFailureKeepsElements(InsertFailing insertFailing) {
+  using Values = std::vector<int32_t>;
   for (int nbSuccesses = 0;; ++nbSuccesses) {
-    SetType s{4, 1, 3, 2};  // unsorted: the elements are moved to a FlatSet in another order
+    SetType s{4, 1, 3, 2};  // unsorted: the elements are moved to the set in another order
     if (!insertFailing(s, nbSuccesses)) {
       EXPECT_EQ(s, SetType({1, 2, 3, 4, 5}));
       break;
     }
-    EXPECT_EQ(s, SetType({1, 2, 3, 4})) << "failure after " << nbSuccesses << " successes";
+    EXPECT_EQ(Values(s.begin(), s.end()), Values({4, 1, 3, 2})) << "failure after " << nbSuccesses << " successes";
     s.insert(5);
     EXPECT_EQ(s, SetType({1, 2, 3, 4, 5}));
     for (int i = 1; i <= 5; ++i) {
@@ -791,6 +821,86 @@ TEST(SetTest, SmallSetGrowThrowingMoveKeepsElements) {
   ExpectGrowFailureKeepsElements<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>(insertFailing);
   EXPECT_EQ(T::NbLive(), nbLive);
 }
+
+// If moving the elements back to the small state throws as well after a failed growth, the set is emptied: it does not
+// keep moved from elements, and the ones moved to its set do not reappear later.
+template <class SetType>
+void ExpectGrowRollbackFailureEmptiesSet() {
+  using T = ThrowingMoveType;
+  const int nbLive = T::NbLive();
+  T::NbMovesBeforeNextThrow() = 0;
+  for (int nbMoves = 0;; ++nbMoves) {
+    SetType s{4, 1, 3, 2};
+    T::NbMovesBeforeThrow() = nbMoves;
+    bool thrown = false;
+    try {
+      s.insert(5);
+    } catch (const MoveForbiddenException&) {
+      thrown = true;
+    }
+    T::NbMovesBeforeThrow() = -1;
+    if (!thrown) {
+      EXPECT_EQ(s, SetType({1, 2, 3, 4, 5}));
+      break;
+    }
+    if (nbMoves == 0) {
+      EXPECT_EQ(s, SetType({1, 2, 3, 4}));  // nothing to move back
+    } else {
+      EXPECT_TRUE(s.empty()) << "move " << nbMoves << " throws";
+    }
+    s.insert(6);
+    EXPECT_TRUE(s.contains(6));
+    EXPECT_FALSE(s.contains(5));
+  }
+  T::NbMovesBeforeNextThrow() = -1;
+  EXPECT_EQ(T::NbLive(), nbLive);
+}
+
+TEST(SetTest, SmallSetGrowRollbackFailureEmptiesSet) {
+  using T = ThrowingMoveType;
+  ExpectGrowRollbackFailureEmptiesSet<SmallSet<T, 4>>();
+  ExpectGrowRollbackFailureEmptiesSet<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>();
+}
+
+// If the insertion of the new element in the FlatSet of a growing SmallSet empties it (moving an element throws while
+// shifting the next ones), the SmallSet is emptied: its small state only keeps moved from elements.
+TEST(SetTest, SmallSetGrowFlatSetInsertThrowEmptiesSet) {
+  using T = ThrowingAssignmentType;
+  using SetType = SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>;
+  const int nbLive = T::NbLive();
+  for (int nbAssignments = 0;; ++nbAssignments) {
+    SetType s{1, 2, 3, 4, 5};
+    s.clear();  // the FlatSet keeps its capacity: inserting 0 in it shifts the elements with move assignments
+    s.insert({4, 1, 3, 2});
+    T::NbAssignmentsBeforeThrow() = nbAssignments;
+    bool thrown = false;
+    try {
+      s.insert(0);
+    } catch (const AssignmentException&) {
+      thrown = true;
+    }
+    T::NbAssignmentsBeforeThrow() = -1;
+    if (!thrown) {
+      EXPECT_EQ(s, SetType({0, 1, 2, 3, 4}));
+      break;
+    }
+    EXPECT_TRUE(s.empty()) << "assignment " << nbAssignments << " throws";
+  }
+  EXPECT_EQ(T::NbLive(), nbLive);
+}
+
+#ifdef AMC_CXX20
+// The lookups of the small state do not replace the operator< of a key by its operator<=>, which may order it
+// differently: here, 11 and 12 are equivalent for operator<, not for operator<=>.
+TEST(SetTest, SmallSetLookupUsesOperatorLessOfKey) {
+  using T = TensOrderedType;
+  SmallSet<T, 3> s{T{11}};
+  EXPECT_TRUE(s.contains(T{12}));
+  EXPECT_EQ(s.count(T{12}), 1U);
+  EXPECT_FALSE(s.insert(T{12}).second);
+  EXPECT_EQ(s.size(), 1U);
+}
+#endif
 #endif
 
 // If appending elements to the vector of a FlatSet fails, the appended ones are erased: it stays sorted.
@@ -806,6 +916,39 @@ TEST(SetTest, FlatSetInsertAllocationFailureKeepsElements) {
   EXPECT_THROW(CallWithFailingMalloc([&] { s.insert(std::istream_iterator<int>(ss), std::istream_iterator<int>()); }),
                std::bad_alloc);
   EXPECT_EQ(s, SetType({1, 2, 3}));
+}
+
+// If the vector of a FlatSet cannot grow to insert an element, or if the copy of this element fails, the set is
+// unchanged, also when assigning its elements may throw (which makes it empty itself after a failed shift): they are
+// only move constructed in the new storage, which cannot throw.
+TEST(SetTest, FlatSetGrowAllocationFailureKeepsElements) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  using T = ThrowingAssignmentType;  // allocates its value
+  using SetType = FlatSet<T>;
+  const T init[] = {1, 3, 5};
+  const T v(4);
+  const int nbLive = T::NbLive();
+  for (int nbSuccessfulAllocations = 0;; ++nbSuccessfulAllocations) {
+    SetType s(std::begin(init), std::end(init));  // constructed from the range: full vector
+#ifdef AMC_NONSTD_FEATURES
+    ASSERT_EQ(s.size(), s.capacity());
+#endif
+    bool thrown = false;
+    try {
+      CallWithFailingMalloc([&] { s.insert(v); }, nbSuccessfulAllocations);
+    } catch (const std::bad_alloc&) {
+      thrown = true;
+    }
+    if (!thrown) {
+      EXPECT_EQ(s, SetType({1, 3, 4, 5}));
+      break;
+    }
+    EXPECT_EQ(s, SetType(std::begin(init), std::end(init)))
+        << "failure after " << nbSuccessfulAllocations << " allocations";
+  }
+  EXPECT_EQ(T::NbLive(), nbLive);
 }
 
 #ifdef AMC_CXX17
@@ -855,6 +998,62 @@ TEST(SetTest, FlatSetMergeAllocationFailureKeepsSets) {
   ExpectMergeAllocationFailureKeepsSets<FlatSet<T>>();
   // inline vector, which has room for the first new element only: merging elements one by one would move it
   ExpectMergeAllocationFailureKeepsSets<FlatSet<T, std::less<T>, amc::allocator<T>, SmallVector<T, 4>>>();
+}
+
+// If an allocation fails during a merge which does not relocate the elements itself (std::vector, or elements which
+// are not trivially relocatable), and moving them cannot throw, the elements already moved stay in the destination and
+// the other ones in the source: both sets stay valid. The new elements are inserted one by one up to the last element
+// of the destination, then the next ones are appended at once: both steps make its vector grow, whatever the order of
+// the comparator.
+template <class SetType>
+void ExpectMergeAllocationFailureKeepsElements() {
+  using Values = std::vector<uint32_t>;
+  const Values values1{10, 11};
+  Values values2{10};
+  for (uint32_t i = 0; i < 10; ++i) {
+    values2.push_back(i);        // before the elements of 'values1'
+    values2.push_back(20U + i);  // after them
+  }
+  Values allValues(values1);
+  allValues.insert(allValues.end(), values2.begin(), values2.end());
+  std::sort(allValues.begin(), allValues.end());
+  for (int nbSuccessfulAllocations = 0;; ++nbSuccessfulAllocations) {
+    SetType s1(values1.begin(), values1.end());
+    SetType s2(values2.begin(), values2.end());
+    bool thrown = false;
+    try {
+      CallWithFailingMalloc([&] { s1.merge(s2); }, nbSuccessfulAllocations);
+    } catch (const std::bad_alloc&) {
+      thrown = true;
+    }
+    const Values elems1(s1.begin(), s1.end());
+    const Values elems2(s2.begin(), s2.end());
+    EXPECT_EQ(s1, SetType(elems1.begin(), elems1.end()))
+        << "failure after " << nbSuccessfulAllocations << " allocations";
+    EXPECT_EQ(s2, SetType(elems2.begin(), elems2.end()))
+        << "failure after " << nbSuccessfulAllocations << " allocations";
+    Values elems(elems1);
+    elems.insert(elems.end(), elems2.begin(), elems2.end());
+    std::sort(elems.begin(), elems.end());
+    EXPECT_EQ(elems, allValues) << "failure after " << nbSuccessfulAllocations << " allocations";
+    if (!thrown) {
+      EXPECT_EQ(s1, SetType(allValues.begin(), allValues.end()));
+      EXPECT_EQ(elems2, Values{10});
+      break;
+    }
+  }
+}
+
+TEST(SetTest, FlatSetMergeAllocationFailureKeepsElements) {
+  if (!kMallocFailureInjection) {
+    GTEST_SKIP() << "allocation failures cannot be injected in this build (needs glibc, without sanitizers)";
+  }
+  // amc vector of elements which are not trivially relocatable
+  ExpectMergeAllocationFailureKeepsElements<FlatSet<ComplexNonTriviallyRelocatableType>>();
+  // std::vector, reverse order
+  using U = uint32_t;
+  ExpectMergeAllocationFailureKeepsElements<
+      FlatSet<U, std::greater<U>, amc::allocator<U>, std::vector<U, amc::allocator<U>>>>();
 }
 
 // If an assignment of an element throws during the copy or the move assignment of a set, the assigned set is emptied:
@@ -914,6 +1113,166 @@ TEST(SetTest, AssignmentThrowEmptiesSets) {
 #ifdef AMC_SMALLSET
   ExpectAssignmentThrowEmptiesSets<SmallSet<T, 4>>();
   ExpectAssignmentThrowEmptiesSets<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>();
+#endif
+}
+
+// If moving an element throws while a set shifts its elements in a vector (FlatSet, small state of a SmallSet), to
+// insert, erase or merge elements, the set is emptied (both sets for merge): it could otherwise keep moved from
+// elements, unsorted or duplicated. 'operation(s, o)' modifies 's', and may move elements from 'o'.
+template <class SetType, class Operation>
+void ExpectThrowingMoveEmptiesSet(Operation operation, std::initializer_list<int32_t> expectedValues) {
+  using T = ThrowingAssignmentType;
+  const int nbLive = T::NbLive();
+  for (int nbAssignments = 0;; ++nbAssignments) {
+    SetType s{1, 3, 5, 7, 9, 11, 13};
+    s.erase(13);
+    s.erase(11);  // room for two more elements without reallocation, which would move construct them
+    SetType o{2, 3, 4};
+    T::NbAssignmentsBeforeThrow() = nbAssignments;
+    bool thrown = false;
+    try {
+      operation(s, o);
+    } catch (const AssignmentException&) {
+      thrown = true;
+    }
+    T::NbAssignmentsBeforeThrow() = -1;
+    if (!thrown) {
+      EXPECT_EQ(s, SetType(expectedValues.begin(), expectedValues.end()));
+      break;
+    }
+    EXPECT_TRUE(s.empty()) << "assignment " << nbAssignments << " throws";
+    EXPECT_TRUE(o.empty() || o == SetType({2, 3, 4})) << "assignment " << nbAssignments << " throws";
+  }
+  EXPECT_EQ(T::NbLive(), nbLive);
+}
+
+template <class SetType>
+void ExpectThrowingMovesEmptySet() {
+  using T = typename SetType::value_type;
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType&) { s.insert(T(4)); }, {1, 3, 4, 5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType&) { s.emplace(4); }, {1, 3, 4, 5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType&) { s.insert(s.end(), T(4)); }, {1, 3, 4, 5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType&) { s.erase(T(3)); }, {1, 5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType&) { s.erase(s.find(T(3))); }, {1, 5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType&) { s.erase(s.begin(), std::next(s.begin(), 2)); },
+                                        {5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType&) { s.extract(T(3)); }, {1, 5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SetType>([](SetType& s, SetType& o) { s.merge(o); }, {1, 2, 3, 4, 5, 7, 9});
+}
+
+TEST(SetTest, ThrowingMovesEmptySet) {
+  using T = ThrowingAssignmentType;
+  ExpectThrowingMovesEmptySet<FlatSet<T>>();
+  ExpectThrowingMovesEmptySet<FlatSet<T, std::less<T>, amc::allocator<T>, SmallVector<T, 8>>>();
+#ifdef AMC_SMALLSET
+  // small state: only its erasures shift elements
+  using SmallSetType = SmallSet<T, 8>;
+  ExpectThrowingMoveEmptiesSet<SmallSetType>([](SmallSetType& s, SmallSetType&) { s.erase(T(3)); }, {1, 5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SmallSetType>(
+      [](SmallSetType& s, SmallSetType&) { s.erase(s.begin(), std::next(s.begin(), 2)); }, {5, 7, 9});
+  ExpectThrowingMoveEmptiesSet<SmallSetType>([](SmallSetType& s, SmallSetType&) { s.extract(T(3)); }, {1, 5, 7, 9});
+#endif
+}
+
+// If moving an element throws while the vector of a FlatSet grows to insert an element (the amc vectors move the
+// elements to the new storage, even when their move constructor may throw), the set is emptied: it could otherwise
+// keep moved from elements. 'operation(s)' inserts an element in 's'.
+template <class SetType, class Operation>
+void ExpectGrowThrowingMoveEmptiesSet(Operation operation, std::initializer_list<int32_t> expectedValues) {
+  using T = ThrowingMoveType;
+  const T init[] = {1, 3, 5};
+  const int nbLive = T::NbLive();
+  for (int nbMoves = 0;; ++nbMoves) {
+    SetType s(std::begin(init), std::end(init));  // constructed from the range: full vector
+#ifdef AMC_NONSTD_FEATURES
+    ASSERT_EQ(s.size(), s.capacity());
+#endif
+    T::NbMovesBeforeThrow() = nbMoves;
+    bool thrown = false;
+    try {
+      operation(s);
+    } catch (const MoveForbiddenException&) {
+      thrown = true;
+    }
+    T::NbMovesBeforeThrow() = -1;
+    if (!thrown) {
+      EXPECT_EQ(s, SetType(expectedValues.begin(), expectedValues.end()));
+      break;
+    }
+    EXPECT_TRUE(s.empty()) << "move " << nbMoves << " throws";
+  }
+  EXPECT_EQ(T::NbLive(), nbLive);
+}
+
+TEST(SetTest, FlatSetGrowThrowingMoveEmptiesSet) {
+  using T = ThrowingMoveType;
+  using SetType = FlatSet<T>;
+  ExpectGrowThrowingMoveEmptiesSet<SetType>([](SetType& s) { s.insert(T(4)); }, {1, 3, 4, 5});
+  ExpectGrowThrowingMoveEmptiesSet<SetType>([](SetType& s) { s.emplace(0); }, {0, 1, 3, 5});
+  ExpectGrowThrowingMoveEmptiesSet<SetType>([](SetType& s) { s.insert(s.end(), T(6)); }, {1, 3, 5, 6});
+}
+
+// A moved from set is empty, also when its elements are moved one by one to a set with an unequal allocator, which
+// does not propagate.
+template <class SetType>
+void ExpectMovedFromSetIsEmpty() {
+  using Alloc = typename SetType::allocator_type;
+  for (int nbElems : {1, 5}) {  // small and large states of SmallSets
+    SetType s1(Alloc(ArenaAllocator(1)));
+    for (int i = 0; i < nbElems; ++i) {
+      s1.insert(i);
+    }
+    const SetType expected(s1);
+    SetType s2(std::move(s1), Alloc(ArenaAllocator(2)));
+    EXPECT_TRUE(s1.empty());
+    EXPECT_EQ(s2, expected);
+    SetType s3(Alloc(ArenaAllocator(3)));
+    s3 = std::move(s2);
+    EXPECT_TRUE(s2.empty());
+    EXPECT_EQ(s3, expected);
+  }
+}
+
+TEST(SetTest, MovedFromSetWithUnequalAllocatorIsEmpty) {
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  ExpectMovedFromSetIsEmpty<FlatSet<int, std::less<int>, ArenaAllocatorOf<int>>>();
+#ifdef AMC_SMALLSET
+  ExpectMovedFromSetIsEmpty<SmallSet<int, 2, std::less<int>, ArenaAllocatorOf<int>>>();
+  ExpectMovedFromSetIsEmpty<
+      SmallSet<int, 2, std::less<int>, ArenaAllocatorOf<int>, FlatSet<int, std::less<int>, ArenaAllocatorOf<int>>>>();
+#endif
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
+}
+
+// If copying an element throws during the assignment of an initializer list, the set is emptied.
+template <class SetType>
+void ExpectInitializerListAssignmentThrowEmptiesSet() {
+  using T = typename SetType::value_type;
+  TypeStats& stats = TypeStats::_stats;
+  for (int nbCopies = 0;; ++nbCopies) {
+    SetType s{99, 98};
+    stats._nbCopiesBeforeThrow = nbCopies;
+    bool thrown = false;
+    try {
+      s = {T(1), T(2), T(3)};
+    } catch (const CopyException&) {
+      thrown = true;
+    }
+    stats._nbCopiesBeforeThrow = -1;
+    if (!thrown) {
+      EXPECT_EQ(s, SetType({1, 2, 3}));
+      break;
+    }
+    EXPECT_TRUE(s.empty()) << "copy " << nbCopies << " throws";
+  }
+}
+
+TEST(SetTest, InitializerListAssignmentThrowEmptiesSet) {
+  using T = ComplexTriviallyRelocatableType;
+  ExpectInitializerListAssignmentThrowEmptiesSet<FlatSet<T>>();
+#ifdef AMC_SMALLSET
+  ExpectInitializerListAssignmentThrowEmptiesSet<SmallSet<T, 4>>();
+  ExpectInitializerListAssignmentThrowEmptiesSet<SmallSet<T, 2, std::less<T>, amc::allocator<T>, FlatSet<T>>>();
 #endif
 }
 

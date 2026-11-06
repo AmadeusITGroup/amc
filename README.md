@@ -10,7 +10,7 @@
 
 Header-only C++ library of containers with the interface of `std::vector` and `std::set`, used instead of the standard ones in the Amadeus pricing and shopping engines. They are faster in two common cases:
 
-- **Trivially relocatable elements**, which are most types (integers, pointers, `std::unique_ptr`, structures of them...): the containers move them in bulk with `memcpy`, `memmove` or `realloc` when they grow, insert or erase, instead of calling a move constructor and a destructor per element.
+- **Trivially relocatable elements**, which are most types (integers, pointers, structures of them, and the types which [declare it](docs/containers.md#trivially-relocatable-types), such as a structure holding a `std::unique_ptr`): the containers move them in bulk with `memcpy`, `memmove` or `realloc` when they grow, insert or erase, instead of calling a move constructor and a destructor per element.
 - **Small sizes**: up to a compile-time capacity `N`, the elements are stored in the container object itself, without any allocation.
 
 The library needs C++11 (C++17 for `SmallSet`), and is tested up to C++23 with GCC, Clang, MSVC, clang-cl and Apple Clang. From C++20, it is also a [module](#c20-module): `import amc;`.
@@ -86,6 +86,7 @@ The containers have the interface of C++17 `std::vector` and `std::set`, with th
 | Sorted vector        | insertions and erasures are O(n) and invalidate iterators, the elements must be movable                                                                                                                                                                                        | `FlatSet`                                                      |
 | Unsorted small state | iteration in insertion order, no `lower_bound`, `upper_bound` nor `equal_range`, `end()` invalidated by insertions and erasures                                                                                                                                                | `SmallSet`                                                     |
 | Exceptions           | growth moves the elements even if their move constructor may throw (`std::vector` copies them if it can): basic guarantee only. Exceeding `max_size()` throws `std::overflow_error` (`std::out_of_range` by default for `FixedCapacityVector`) instead of `std::length_error`. | vectors                                                        |
+| Inheritance          | deriving from the containers is undefined behavior                                                                                                                                                                                                                                                                                              |
 | Not provided         | `constexpr`, class template argument deduction for the vectors, the packed `vector<bool>`, `std::from_range` constructors, heterogeneous `erase` and `extract` (C++23). Call `erase(c, x)` and `erase_if(c, pred)` unqualified, not `std::erase`.                              | all                                                            |
 
 The [compatibility page](docs/compatibility.md) lists, container by container, what behaves like the standard and every known difference.
