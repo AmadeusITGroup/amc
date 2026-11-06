@@ -56,7 +56,8 @@ The sizes are given for x86-64 with libstdc++.
 Notes:
 
 - The relocation of trivially relocatable types is the point of the library: it is only observable for types which [declare themselves trivially relocatable](containers.md#trivially-relocatable-types), whose move constructors and destructors are then skipped when elements move around. Trivially copyable types behave exactly as with `std::vector`.
-- A `size_type` of `std::size_t` gives the limits of `std::vector`: `amc::vector<T, amc::allocator<T>, std::size_t>`. GCC and Clang warn about narrowed counts with `-Wconversion`, MSVC with `/W4`.
+- A `size_type` of `std::size_t` (`amc::vector<T, amc::allocator<T>, std::size_t>`) removes the limit of the size type: `max_size()` is then the one of the allocator, `SIZE_MAX / sizeof(T)` for `amc::allocator` (`std::vector` also caps it at `PTRDIFF_MAX / sizeof(T)`). GCC and Clang warn about narrowed counts with `-Wconversion`, MSVC with `/W4`.
+- When constructing the new elements of `resize` throws, the vector keeps its elements, but may have grown its capacity and moved its storage (`std::vector` keeps both).
 - `std::allocator<T>` can be passed as allocator, at the cost of the `realloc` growth path.
 
 ## inplace_vector
