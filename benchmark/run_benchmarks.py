@@ -3,16 +3,25 @@ r"""Runs the benchmarks the way docs/benchmarks.md describes them (Method), then
 
   python3 benchmark/run_benchmarks.py
 
-For each compiler (g++ and clang++-23 by default), it
-  1. builds the benchmarks in Release in a temporary directory: vectors_benchmark and sets_benchmark in C++17, and
-     smallsets_benchmark in C++20, from which only the search of a SmallSet compares the looked up key once with each
-     element. The directory is in $XDG_RUNTIME_DIR when set (a RAM disk on Linux desktops, to spare the SSD: a tree is
-     about 30 MB), and removed afterwards;
+It
+  1. builds the benchmarks of every compiler (g++ and clang++-23 by default) before running any, so that a build failure
+     (a compilation error, no network for the download of Google Benchmark...) stops it within minutes, not after the
+     benchmarks of the first compiler. Each compiler builds in Release in a temporary directory: vectors_benchmark and
+     sets_benchmark in C++17, and smallsets_benchmark in C++20, from which only the search of a SmallSet compares the
+     looked up key once with each element. The directory is in $XDG_RUNTIME_DIR when set (a RAM disk on Linux
+     desktops, to spare the SSD: a tree is about 30 MB), and removed once the executables, linked statically, are
+     copied into the outputs directory. Unless it is installed, Google Benchmark is downloaded by the first build tree
+     only, whose sources the next ones reuse;
   2. runs each benchmark in its own process, as the state in which a benchmark leaves the heap changes the times of the
      next ones (by up to 20 %), pinned to a single core with 'taskset', keeping the median of 5 repetitions. By default
      one benchmark runs at a time, on a core picked among the fastest ones of the machine (see --cpu).
 Then 'benchmark/plot_benchmarks.py --import' stores the medians in docs/benchmarks/, draws docs/bench_*.svg and rewrites
 the tables of docs/benchmarks.md.
+
+A run which stops after the builds (Ctrl-C, a failed benchmark or import, a killed process...) keeps its outputs
+directory and prints the command which continues it: --resume DIR only runs the benchmarks missing from DIR, with the
+executables and the options of the stopped run, then imports the results as the stopped run would have. The default
+outputs directory is in $XDG_RUNTIME_DIR though, which a reboot wipes.
 
 The machine should be idle. --jobs N runs N benchmarks at the same time, each on its own core, almost N times faster.
 The cores share the L3 cache and the memory bandwidth though: with 4 jobs on the 4 fastest cores of a Ryzen AI 9 HX PRO
@@ -29,6 +38,8 @@ Only needs the Python standard library, CMake, a C++ compiler and (optionally) N
 """
 
 import argparse
+import glob
+import json
 import os
 import queue
 import re
@@ -39,6 +50,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,11 +58,19 @@ PLOT_SCRIPT = os.path.join(ROOT, "benchmark", "plot_benchmarks.py")
 
 # (C++ standard, benchmarks built in it): the default of the project is C++20
 BUILDS = ((17, ("vectors", "sets")), (20, ("smallsets",)))
+KINDS = tuple(kind for _, kinds in BUILDS for kind in kinds)
+
+# What --resume needs, kept in the outputs directory until the run is finished: the executables of the benchmarks (a
+# directory per compiler tag) and the options of the run. Neither matches the <benchmark>-<compiler tag>-<n>.json
+# outputs that plot_benchmarks.py --import reads.
+BIN_DIR = "bin"
+STATE_FILE = "run.json"
 
 
-def run(cmd, **kwargs):
+def run(cmd):
     print("+ " + shlex.join(cmd), flush=True)
-    subprocess.run(cmd, check=True, **kwargs)
+    if subprocess.run(cmd).returncode != 0:
+        sys.exit(f"failed: {shlex.join(cmd)}")
 
 
 def compiler_tag(cxx):
@@ -143,8 +163,9 @@ def resolve_cores(args):
     return cores
 
 
-def build(cxx, tag, tree, std, kinds):
-    """Configures (or reconfigures with another C++ standard) and builds the benchmarks 'kinds' in 'tree'."""
+def build(cxx, tag, tree, std, kinds, benchmark_src):
+    """Configures (or reconfigures with another C++ standard) and builds the benchmarks 'kinds' in 'tree'. Google
+    Benchmark comes from the sources in 'benchmark_src' when not None, instead of a download (unless installed)."""
     # -Wno-c2y-extensions: Google Benchmark 1.9.4 builds itself with -pedantic-errors and uses __COUNTER__, which
     # Clang 23 rejects
     flags = "-Wno-unknown-warning-option -Wno-c2y-extensions" if tag.startswith("clang") else ""
@@ -152,10 +173,38 @@ def build(cxx, tag, tree, std, kinds):
     configure = ["cmake", "-S", ROOT, "-B", tree, "--log-level=NOTICE", "-DCMAKE_POLICY_DEFAULT_CMP0135=NEW",
                  "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_CXX_COMPILER={cxx}", f"-DCMAKE_CXX_STANDARD={std}",
                  f"-DCMAKE_CXX_FLAGS={flags}", "-DAMC_ENABLE_TESTS=OFF", "-DAMC_ENABLE_BENCHMARKS=ON"]
+    if benchmark_src:
+        configure.append(f"-DFETCHCONTENT_SOURCE_DIR_GOOGLEBENCHMARK={benchmark_src}")
     if shutil.which("ninja"):
         configure += ["-G", "Ninja"]
     run(configure)
     run(["cmake", "--build", tree, "--target"] + [f"{kind}_benchmark" for kind in kinds])
+
+
+def build_all(compilers, out, ram):
+    """Builds the benchmarks of every compiler, each in a temporary tree in 'ram', and copies the executables into
+    <out>/bin/<tag>/. The first tree which downloads Google Benchmark is kept until the end, as the next trees build
+    its sources (passed before their first configure: switching the sources of a configured tree rebuilds them)."""
+    trees = []
+    benchmark_src = None
+    try:
+        for cxx, tag in compilers:
+            tree = tempfile.mkdtemp(prefix=f"amc-bench-{tag}-", dir=ram)
+            trees.append(tree)
+            bin_dir = os.path.join(out, BIN_DIR, tag)
+            os.makedirs(bin_dir, exist_ok=True)
+            for std, kinds in BUILDS:
+                build(cxx, tag, tree, std, kinds, benchmark_src)
+                for kind in kinds:
+                    shutil.copy2(os.path.join(tree, "benchmark", f"{kind}_benchmark"), bin_dir)
+            fetched = os.path.join(tree, "_deps", "googlebenchmark-src")
+            if benchmark_src is None and os.path.isdir(fetched):
+                benchmark_src = fetched
+            else:
+                shutil.rmtree(trees.pop(), ignore_errors=True)
+    finally:
+        for tree in trees:
+            shutil.rmtree(tree, ignore_errors=True)
 
 
 def regex_escape(name):
@@ -163,16 +212,26 @@ def regex_escape(name):
     return re.sub(r"([.^$|()\[\]{}*+?\\])", r"\\\1", name)
 
 
-def run_benchmarks(tree, tag, kinds, args, cores, out):
-    """Runs each benchmark of 'kinds' in its own process, pinned to one of 'cores' (each runs one benchmark at a time),
-    and writes <kind>-<tag>-<n>.json in 'out'."""
+def run_benchmarks(out, tag, args, cores):
+    """Runs each benchmark of the compiler 'tag' in its own process, pinned to one of 'cores' (each runs one benchmark
+    at a time), and writes <kind>-<tag>-<n>.json in 'out'. With --resume, skips the benchmarks whose output exists: an
+    output only gets this name once its benchmark is finished."""
     selection = [f"--benchmark_filter={args.filter}"] if args.filter else []
+    min_time = [f"--benchmark_min_time={args.min_time:g}s"] if args.min_time else []
     tasks = []
-    for kind in kinds:
-        exe = os.path.join(tree, "benchmark", f"{kind}_benchmark")
+    done = 0
+    for kind in KINDS:
+        exe = os.path.join(out, BIN_DIR, tag, f"{kind}_benchmark")
         names = subprocess.run([exe, "--benchmark_list_tests=true"] + selection, capture_output=True, text=True,
                                check=True).stdout.splitlines()
-        tasks += [(kind, exe, i, name, len(names)) for i, name in enumerate(names, 1)]
+        for i, name in enumerate(names, 1):
+            path = os.path.join(out, f"{kind}-{tag}-{i}.json")
+            if args.resume and os.path.exists(path):
+                done += 1
+            else:
+                tasks.append((kind, exe, i, name, len(names), path))
+    if args.resume:
+        print(f"[{tag}] {done} benchmarks already done, {len(tasks)} to run", flush=True)
 
     free_cores = queue.Queue()
     for core in cores:
@@ -180,7 +239,8 @@ def run_benchmarks(tree, tag, kinds, args, cores, out):
     print_lock = threading.Lock()
 
     def run_one(task):
-        kind, exe, i, name, count = task
+        kind, exe, i, name, count, path = task
+        partial = path + ".part"  # an interrupted benchmark leaves no output, --resume runs it again
         core = free_cores.get()
         try:
             with print_lock:
@@ -190,12 +250,13 @@ def run_benchmarks(tree, tag, kinds, args, cores, out):
             result = subprocess.run(pin + [exe, f"--benchmark_filter=^{regex_escape(name)}$",
                                            f"--benchmark_repetitions={args.repetitions}",
                                            "--benchmark_report_aggregates_only=true",
-                                           f"--benchmark_out={os.path.join(out, f'{kind}-{tag}-{i}.json')}",
-                                           "--benchmark_out_format=json"], capture_output=True, text=True)
+                                           f"--benchmark_out={partial}",
+                                           "--benchmark_out_format=json"] + min_time, capture_output=True, text=True)
         finally:
             free_cores.put(core)
         if result.returncode != 0:
             sys.exit(f"{exe} failed with status {result.returncode}:\n{result.stdout}{result.stderr}")
+        os.replace(partial, path)
 
     with ThreadPoolExecutor(max_workers=len(cores)) as pool:
         futures = [pool.submit(run_one, task) for task in tasks]
@@ -206,6 +267,26 @@ def run_benchmarks(tree, tag, kinds, args, cores, out):
             for future in futures:
                 future.cancel()
             raise
+
+
+def save_state(out, args, compilers):
+    """Writes what --resume needs into the outputs directory 'out': the options and the compilers of the run."""
+    options = {name: value for name, value in vars(args).items() if name != "resume"}
+    with open(os.path.join(out, STATE_FILE), "w") as f:
+        json.dump({"options": options, "compilers": compilers}, f, indent=1)
+
+
+def load_state(out, defaults):
+    """The options (with 'resume' set to 'out') and the compilers of the stopped run of the outputs directory 'out'. The
+    options it did not save, added to the script since, have their value of 'defaults'."""
+    try:
+        with open(os.path.join(out, STATE_FILE)) as f:
+            state = json.load(f)
+    except OSError:
+        sys.exit(f"--resume {out}: no stopped run there, there is no {STATE_FILE} (a finished run removes it, a reboot "
+                 "wipes the RAM disk)")
+    options = {**defaults, **state["options"], "resume": out}
+    return argparse.Namespace(**options), [tuple(compiler) for compiler in state["compilers"]]
 
 
 def main():
@@ -221,9 +302,12 @@ def main():
                         "core: faster, but slows down lookups in large sets (default: 1, which the numbers of docs/ "
                         "should come from)")
     parser.add_argument("--repetitions", type=int, default=5, help="repetitions of each benchmark (default: 5)")
+    parser.add_argument("--min-time", type=float, metavar="SECONDS",
+                        help="minimum time of a repetition of the benchmarks without a fixed number of iterations "
+                        "(default: the one of Google Benchmark, 0.5 s). A short one, like 0.01, is for quick checks")
     parser.add_argument("--out", metavar="DIR",
                         help="directory of the Google Benchmark JSON outputs, kept (default: a temporary one, "
-                        "removed after the import)")
+                        "removed after the import). Also holds the executables until the end of the run")
     parser.add_argument("--no-import", action="store_true",
                         help="only run the benchmarks, do not update docs/ (the outputs are kept)")
     parser.add_argument("--filter", metavar="REGEX",
@@ -232,44 +316,79 @@ def main():
     parser.add_argument("--main", metavar="TAG",
                         help="compiler tag of the vector and set charts, as plot_benchmarks.py --main "
                         "(default: gcc13)")
+    parser.add_argument("--resume", metavar="DIR",
+                        help="continue a run which stopped after its builds, from its outputs directory DIR (printed "
+                        "when it stopped): only runs the benchmarks missing from DIR, with the executables and the "
+                        "options of the stopped run (no other option is accepted), then finishes like it would have")
     args = parser.parse_args()
 
-    compilers = [(cxx, compiler_tag(cxx)) for cxx in args.cxx or ["g++", "clang++-23"]]
-    tags = [tag for _, tag in compilers]
-    if len(set(tags)) != len(tags):
-        sys.exit(f"several compilers have the same tag: {', '.join(tags)}")
-    if args.jobs < 1:
-        parser.error("--jobs must be at least 1")
+    if args.resume:
+        others = [f"--{name.replace('_', '-')}" for name, value in vars(args).items()
+                  if name != "resume" and value != parser.get_default(name)]
+        if others:
+            parser.error(f"--resume continues the stopped run with its own options, remove {' '.join(others)}")
+        args, compilers = load_state(args.resume, {name: parser.get_default(name) for name in vars(args)})
+        out = args.resume
+        print(f"resuming the run of {out}", flush=True)
+    else:
+        compilers = [(cxx, compiler_tag(cxx)) for cxx in args.cxx or ["g++", "clang++-23"]]
+        tags = [tag for _, tag in compilers]
+        if len(set(tags)) != len(tags):
+            sys.exit(f"several compilers have the same tag: {', '.join(tags)}")
+        if args.jobs < 1:
+            parser.error("--jobs must be at least 1")
+        if args.repetitions < 1:
+            parser.error("--repetitions must be at least 1")
+        if args.min_time is not None and args.min_time <= 0:
+            parser.error("--min-time must be positive")
+        if args.out and os.path.exists(os.path.join(args.out, STATE_FILE)):
+            sys.exit(f"{args.out} holds a stopped run: continue it with --resume {args.out}, or remove it")
     cores = resolve_cores(args)
     if hasattr(os, "getloadavg") and os.getloadavg()[0] > 2:
         print(f"warning: load average {os.getloadavg()[0]:.1f}, the machine should be idle")
     if len(cores) > 1:
         print(f"warning: {len(cores)} benchmarks at the same time: the times of the lookups in large sets are not "
               "those of a single job, so the results are not imported into docs/")
-
     do_import = not (args.no_import or args.filter or len(cores) > 1)
-    ram = os.environ.get("XDG_RUNTIME_DIR")  # None: the default temporary directory
-    out = args.out or tempfile.mkdtemp(prefix="amc-bench-results-", dir=ram)
-    os.makedirs(out, exist_ok=True)
+
+    if not args.resume:
+        ram = os.environ.get("XDG_RUNTIME_DIR")  # None: the default temporary directory
+        out = args.out or tempfile.mkdtemp(prefix="amc-bench-results-", dir=ram)
+        os.makedirs(out, exist_ok=True)
+        try:
+            build_all(compilers, out, ram)
+        except BaseException:  # nothing to resume: a new run only loses the builds
+            shutil.rmtree(os.path.join(out, BIN_DIR) if args.out else out, ignore_errors=True)
+            raise
+        save_state(out, args, compilers)
+
     start = time.monotonic()
     try:
-        for cxx, tag in compilers:
-            tree = tempfile.mkdtemp(prefix=f"amc-bench-{tag}-", dir=ram)
-            try:
-                for std, kinds in BUILDS:
-                    build(cxx, tag, tree, std, kinds)
-                    run_benchmarks(tree, tag, kinds, args, cores, out)
-            finally:
-                shutil.rmtree(tree, ignore_errors=True)
+        for _, tag in compilers:
+            run_benchmarks(out, tag, args, cores)
         print(f"benchmarks done in {(time.monotonic() - start) / 60:.0f} min", flush=True)
         if do_import:
             run([sys.executable, PLOT_SCRIPT, "--import", out] + (["--main", args.main] if args.main else []))
-        else:
-            print(f"results in {out}, import them with: python3 benchmark/plot_benchmarks.py --import {out}")
-    finally:
-        if do_import and not args.out:
-            shutil.rmtree(out, ignore_errors=True)
+    except BaseException as e:
+        if not isinstance(e, (KeyboardInterrupt, SystemExit)):
+            traceback.print_exc()
+        reason = ("interrupted" if isinstance(e, KeyboardInterrupt) else e.code if isinstance(e, SystemExit)
+                  else "failed")
+        done = len(glob.glob(os.path.join(out, "*-*.json")))
+        sys.exit(f"{reason}\n{done} benchmark outputs are kept in {out}, continue the run with:\n  "
+                 + shlex.join(["python3", sys.argv[0], "--resume", os.path.abspath(out)]))
+
+    # The run is finished, it cannot be resumed anymore
+    shutil.rmtree(os.path.join(out, BIN_DIR), ignore_errors=True)
+    os.remove(os.path.join(out, STATE_FILE))
+    if not do_import:
+        print(f"results in {out}, import them with: python3 benchmark/plot_benchmarks.py --import {out}")
+    elif not args.out:
+        shutil.rmtree(out, ignore_errors=True)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit("interrupted")
