@@ -55,19 +55,19 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="724.0" y="255.0" class="tick" text-anchor="middle">100 ms</text>
 <line x1="258.0" y1="238.0" x2="732.0" y2="238.0" class="axis"/>
 <text x="28.0" y="167.5" class="label" text-anchor="start">Insert 200 random values</text>
-<line x1="396.8" y1="163.0" x2="407.8" y2="163.0" class="link"/>
+<line x1="395.9" y1="163.0" x2="407.8" y2="163.0" class="link"/>
 <circle cx="407.8" cy="163.0" r="5.5" class="ring ref"/>
-<circle cx="396.8" cy="163.0" r="4.5" class="dot amc"/>
-<text x="852" y="167.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.4×</tspan> <tspan class="word">faster</tspan></text>
+<circle cx="395.9" cy="163.0" r="4.5" class="dot amc"/>
+<text x="852" y="167.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.5×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="197.5" class="label" text-anchor="start">Copy, erase all of 1 000</text>
-<line x1="486.7" y1="193.0" x2="507.7" y2="193.0" class="link"/>
-<circle cx="507.7" cy="193.0" r="5.5" class="ring ref"/>
-<circle cx="486.7" cy="193.0" r="4.5" class="dot amc"/>
-<text x="852" y="197.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.9×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="486.5" y1="193.0" x2="508.0" y2="193.0" class="link"/>
+<circle cx="508.0" cy="193.0" r="5.5" class="ring ref"/>
+<circle cx="486.5" cy="193.0" r="4.5" class="dot amc"/>
+<text x="852" y="197.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.0×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="227.5" class="label" text-anchor="start">Lookup in 1 000 000</text>
-<line x1="306.3" y1="223.0" x2="360.0" y2="223.0" class="link"/>
-<circle cx="360.0" cy="223.0" r="5.5" class="ring ref"/>
-<circle cx="306.3" cy="223.0" r="4.5" class="dot amc"/>
+<line x1="306.1" y1="223.0" x2="359.9" y2="223.0" class="link"/>
+<circle cx="359.9" cy="223.0" r="5.5" class="ring ref"/>
+<circle cx="306.1" cy="223.0" r="4.5" class="dot amc"/>
 <text x="852" y="227.5" class="ratio" text-anchor="end"><tspan font-weight="600">5.5×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="300.0" class="panel" text-anchor="start">uint32_t</text>
 <line x1="287.9" y1="312.0" x2="287.9" y2="462.0" class="grid"/>
@@ -86,35 +86,35 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="724.0" y="479.0" class="tick" text-anchor="middle">100 ms</text>
 <line x1="258.0" y1="462.0" x2="732.0" y2="462.0" class="axis"/>
 <text x="28.0" y="331.5" class="label" text-anchor="start">Insert 200 random values</text>
-<line x1="394.2" y1="327.0" x2="399.3" y2="327.0" class="link"/>
-<circle cx="394.2" cy="327.0" r="5.5" class="ring ref"/>
-<circle cx="399.3" cy="327.0" r="5.5" class="ring uno"/>
-<circle cx="396.1" cy="327.0" r="4.5" class="dot amc"/>
+<line x1="394.1" y1="327.0" x2="399.2" y2="327.0" class="link"/>
+<circle cx="394.1" cy="327.0" r="5.5" class="ring ref"/>
+<circle cx="399.2" cy="327.0" r="5.5" class="ring uno"/>
+<circle cx="396.7" cy="327.0" r="4.5" class="dot amc"/>
 <text x="852" y="331.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="361.5" class="label" text-anchor="start">Copy, erase all of 100</text>
-<line x1="367.1" y1="357.0" x2="371.3" y2="357.0" class="link"/>
-<circle cx="371.3" cy="357.0" r="5.5" class="ring ref"/>
-<circle cx="367.1" cy="357.0" r="5.5" class="ring uno"/>
-<circle cx="368.7" cy="357.0" r="4.5" class="dot amc"/>
+<line x1="367.2" y1="357.0" x2="370.5" y2="357.0" class="link"/>
+<circle cx="370.5" cy="357.0" r="5.5" class="ring ref"/>
+<circle cx="367.2" cy="357.0" r="5.5" class="ring uno"/>
+<circle cx="368.6" cy="357.0" r="4.5" class="dot amc"/>
 <text x="852" y="361.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="391.5" class="label" text-anchor="start">Copy, erase all of 1 000</text>
-<line x1="450.9" y1="387.0" x2="461.4" y2="387.0" class="link"/>
-<circle cx="450.9" cy="387.0" r="5.5" class="ring ref"/>
-<circle cx="461.4" cy="387.0" r="5.5" class="ring uno"/>
-<circle cx="457.1" cy="387.0" r="4.5" class="dot amc"/>
-<text x="852" y="391.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">slower</tspan></text>
+<line x1="449.8" y1="387.0" x2="461.7" y2="387.0" class="link"/>
+<circle cx="449.8" cy="387.0" r="5.5" class="ring ref"/>
+<circle cx="461.7" cy="387.0" r="5.5" class="ring uno"/>
+<circle cx="457.0" cy="387.0" r="4.5" class="dot amc"/>
+<text x="852" y="391.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="421.5" class="label" text-anchor="start">Copy, erase all of 10 000</text>
-<line x1="539.2" y1="417.0" x2="571.6" y2="417.0" class="link"/>
-<circle cx="571.6" cy="417.0" r="5.5" class="ring ref"/>
-<circle cx="539.2" cy="417.0" r="5.5" class="ring uno"/>
+<line x1="539.7" y1="417.0" x2="571.2" y2="417.0" class="link"/>
+<circle cx="571.2" cy="417.0" r="5.5" class="ring ref"/>
+<circle cx="539.7" cy="417.0" r="5.5" class="ring uno"/>
 <circle cx="567.7" cy="417.0" r="4.5" class="dot amc"/>
 <text x="852" y="421.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="451.5" class="label" text-anchor="start">Copy, erase all of 100 000</text>
-<line x1="626.7" y1="447.0" x2="710.9" y2="447.0" class="link"/>
-<circle cx="663.2" cy="447.0" r="5.5" class="ring ref"/>
-<circle cx="626.7" cy="447.0" r="5.5" class="ring uno"/>
+<line x1="626.8" y1="447.0" x2="710.9" y2="447.0" class="link"/>
+<circle cx="662.8" cy="447.0" r="5.5" class="ring ref"/>
+<circle cx="626.8" cy="447.0" r="5.5" class="ring uno"/>
 <circle cx="710.9" cy="447.0" r="4.5" class="dot amc"/>
-<text x="852" y="451.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.5×</tspan> <tspan class="word">slower</tspan></text>
+<text x="852" y="451.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.6×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="524.0" class="panel" text-anchor="start">Complex non trivially relocatable type</text>
 <line x1="287.9" y1="536.0" x2="287.9" y2="626.0" class="grid"/>
 <text x="287.9" y="643.0" class="tick" text-anchor="middle">100 ns</text>
@@ -132,18 +132,18 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="724.0" y="643.0" class="tick" text-anchor="middle">100 ms</text>
 <line x1="258.0" y1="626.0" x2="732.0" y2="626.0" class="axis"/>
 <text x="28.0" y="555.5" class="label" text-anchor="start">Insert 200 random values</text>
-<line x1="408.1" y1="551.0" x2="456.1" y2="551.0" class="link"/>
+<line x1="408.1" y1="551.0" x2="453.9" y2="551.0" class="link"/>
 <circle cx="408.1" cy="551.0" r="5.5" class="ring ref"/>
-<circle cx="456.1" cy="551.0" r="4.5" class="dot amc"/>
-<text x="852" y="555.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.6×</tspan> <tspan class="word">slower</tspan></text>
+<circle cx="453.9" cy="551.0" r="4.5" class="dot amc"/>
+<text x="852" y="555.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.3×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="585.5" class="label" text-anchor="start">Copy, erase all of 1 000</text>
-<line x1="508.9" y1="581.0" x2="548.0" y2="581.0" class="link"/>
-<circle cx="508.9" cy="581.0" r="5.5" class="ring ref"/>
-<circle cx="548.0" cy="581.0" r="4.5" class="dot amc"/>
+<line x1="508.7" y1="581.0" x2="547.8" y2="581.0" class="link"/>
+<circle cx="508.7" cy="581.0" r="5.5" class="ring ref"/>
+<circle cx="547.8" cy="581.0" r="4.5" class="dot amc"/>
 <text x="852" y="585.5" class="ratio" text-anchor="end"><tspan font-weight="600">3.5×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="615.5" class="label" text-anchor="start">Lookup in 100 000</text>
-<line x1="285.9" y1="611.0" x2="312.8" y2="611.0" class="link"/>
-<circle cx="312.8" cy="611.0" r="5.5" class="ring ref"/>
-<circle cx="285.9" cy="611.0" r="4.5" class="dot amc"/>
-<text x="852" y="615.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.3×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="286.3" y1="611.0" x2="313.3" y2="611.0" class="link"/>
+<circle cx="313.3" cy="611.0" r="5.5" class="ring ref"/>
+<circle cx="286.3" cy="611.0" r="4.5" class="dot amc"/>
+<text x="852" y="615.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.4×</tspan> <tspan class="word">faster</tspan></text>
 </svg>
