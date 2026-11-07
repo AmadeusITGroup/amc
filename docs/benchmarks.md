@@ -76,25 +76,29 @@ Observations:
 python3 benchmark/run_benchmarks.py
 ```
 
-builds the benchmarks with each compiler, runs them as described in [Method](#method), then redraws the charts (`docs/bench_*.svg`) and rewrites the [tables](#numbers) of this page. It requires Python 3, CMake 3.21 or later, the compilers (`g++` and `clang++-23` by default) and, to pin the benchmarks to a core, `taskset` (Linux). It uses Ninja if installed, and CMake downloads Google Benchmark unless it is installed. Leave the machine idle: about 600 benchmarks run for each compiler, 5 repetitions of each, which takes tens of minutes per compiler.
+builds the benchmarks with each compiler, runs them as described in [Method](#method), then redraws the charts (`docs/bench_*.svg`) and rewrites the [tables](#numbers) of this page. It requires Python 3, CMake 3.21 or later, the compilers (`g++` and `clang++-23` by default) and, to pin the benchmarks to a core, `taskset` (Linux). It uses Ninja if installed, and CMake downloads Google Benchmark at the start unless it is installed. Leave the machine idle: about 600 benchmarks run for each compiler, 5 repetitions of each, which takes tens of minutes per compiler.
 
-Per compiler, it:
+It:
 
-1. builds the benchmarks in Release in a temporary directory, removed afterwards: `vectors_benchmark` and `sets_benchmark` in C++17, then `smallsets_benchmark` in C++20. The directory is in `$XDG_RUNTIME_DIR`, a RAM disk on most Linux desktops, which spares the SSD about 30 MB of throwaway writes per build;
+1. builds the benchmarks of every compiler before running any, so that a compilation error or a download without network stops it within minutes, not after the benchmarks of the first compiler. Each compiler builds in Release in a temporary directory: `vectors_benchmark` and `sets_benchmark` in C++17, then `smallsets_benchmark` in C++20. The directory is in `$XDG_RUNTIME_DIR`, a RAM disk on most Linux desktops, which spares the SSD about 30 MB of throwaway writes per build, and is removed once the executables are copied into the outputs directory. Google Benchmark is downloaded once, by the first build, whose sources the next ones reuse;
 2. runs each benchmark in its own process, pinned to one core, and keeps the JSON output of Google Benchmark. By default, the core is picked among the fastest ones of the machine, from the frequencies and the L3 caches of its CPUs (on a hybrid CPU, the big cores): core 2 on the machine of the stored results.
 
 Then `benchmark/plot_benchmarks.py --import` stores the medians of all the outputs in [docs/benchmarks](benchmarks), one file per benchmark and compiler, and generates the charts and the tables from them.
 
-| Option            | Effect                                                                                                                                       |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--cxx COMPILER`  | Compiler to benchmark, repeatable (default: `g++` and `clang++-23`)                                                                          |
-| `--cpu CPUS`      | `auto` (default) picks one of the fastest cores. A list like `2,3` runs a benchmark on each of these cores at the same time                  |
-| `--jobs N`        | With `--cpu auto`, run `N` benchmarks at the same time, each on its own fast core (default: 1). See [below](#running-benchmarks-in-parallel) |
-| `--repetitions N` | Repetitions of each benchmark, whose median is kept (default: 5)                                                                             |
-| `--out DIR`       | Keep the JSON outputs in `DIR` (default: a temporary directory, removed after the import)                                                    |
-| `--no-import`     | Only run the benchmarks and keep their outputs: import them later with `plot_benchmarks.py --import DIR`                                     |
-| `--filter REGEX`  | Only run the benchmarks matching `REGEX`, for a quick check. Implies `--no-import`                                                           |
-| `--main TAG`      | Compiler of the charts of the vectors and sets (default: `gcc13`)                                                                            |
+A run which stops after the builds (Ctrl-C, a failed benchmark, a killed process...) keeps its outputs and prints the command which continues it, `--resume DIR`: it only runs the benchmarks missing from `DIR`, with the executables and the options of the stopped run, then imports the results. The default outputs directory is in `$XDG_RUNTIME_DIR` though, which a reboot wipes.
+
+| Option               | Effect                                                                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--cxx COMPILER`     | Compiler to benchmark, repeatable (default: `g++` and `clang++-23`)                                                                          |
+| `--cpu CPUS`         | `auto` (default) picks one of the fastest cores. A list like `2,3` runs a benchmark on each of these cores at the same time                  |
+| `--jobs N`           | With `--cpu auto`, run `N` benchmarks at the same time, each on its own fast core (default: 1). See [below](#running-benchmarks-in-parallel) |
+| `--repetitions N`    | Repetitions of each benchmark, whose median is kept (default: 5)                                                                             |
+| `--min-time SECONDS` | Minimum time of a repetition of the benchmarks without a fixed number of iterations (default: 0.5 s). `0.01` for quick checks                |
+| `--out DIR`          | Keep the JSON outputs in `DIR` (default: a temporary directory, removed after the import)                                                    |
+| `--resume DIR`       | Continue the stopped run of the outputs directory `DIR`, with its executables and options (no other option)                                  |
+| `--no-import`        | Only run the benchmarks and keep their outputs: import them later with `plot_benchmarks.py --import DIR`                                     |
+| `--filter REGEX`     | Only run the benchmarks matching `REGEX`, for a quick check. Implies `--no-import`                                                           |
+| `--main TAG`         | Compiler of the charts of the vectors and sets (default: `gcc13`)                                                                            |
 
 To try it in a minute, without touching `docs/`: `python3 benchmark/run_benchmarks.py --cxx g++ --filter '^Growing<' --repetitions 1`.
 

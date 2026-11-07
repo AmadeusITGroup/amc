@@ -190,3 +190,22 @@ jobs:
           path: |
             build/coverage/html
             build/coverage/amc.lcov
+
+  # Sanity check of benchmark/run_benchmarks.py with a single compiler: builds the benchmarks, runs each of them once,
+  # shortly, and imports the results into docs/. The times of a shared runner mean nothing: the job only checks that it
+  # all works, from the builds to the charts and tables
+  ci_benchmark_script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+      - name: run the benchmarks
+        run: python3 benchmark/run_benchmarks.py --cxx g++ --repetitions 1 --min-time 0.01
+      - name: check the import
+        run: |
+          git status --short docs
+          test -n "$(git status --porcelain docs/benchmarks)" || { echo "the import did not update docs/benchmarks"; exit 1; }
