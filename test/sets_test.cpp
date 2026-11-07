@@ -1212,6 +1212,53 @@ TEST(SetTest, FlatSetGrowThrowingMoveEmptiesSet) {
   ExpectGrowThrowingMoveEmptiesSet<SetType>([](SetType& s) { s.insert(s.end(), T(6)); }, {1, 3, 5, 6});
 }
 
+// Inserting an lvalue before some elements of a FlatSet whose vector is full, with elements whose move constructor
+// cannot throw, but whose move assignment may: like std::vector, the vector grows around the new element, by move
+// constructing the others into its new storage. The amc vectors used to grow first, then to shift the next elements
+// with move assignments, which left a moved from element in the set (out of order) when one of them threw.
+// 'operation(s, v)' inserts 'v' (2) in 's' (1, 3, 5, 7): if it throws, the set must be unchanged or empty.
+template <class SetType, class Operation>
+void ExpectFullSetLvalueInsertionKeepsValidSet(Operation operation) {
+  using T = ThrowingAssignmentType;
+  const int nbLive = T::NbLive();
+  {
+    const T init[] = {1, 3, 5, 7};
+    const T v(2);
+    for (int nbAssignments = 0;; ++nbAssignments) {
+      SetType s(std::begin(init), std::end(init));  // constructed from the range: full vector
+#ifdef AMC_NONSTD_FEATURES
+      ASSERT_EQ(s.size(), s.capacity());
+#endif
+      T::NbAssignmentsBeforeThrow() = nbAssignments;
+      bool thrown = false;
+      try {
+        operation(s, v);
+      } catch (const AssignmentException&) {
+        thrown = true;
+      }
+      T::NbAssignmentsBeforeThrow() = -1;
+      if (!thrown) {
+        EXPECT_EQ(s, SetType({1, 2, 3, 5, 7}));
+        break;
+      }
+      EXPECT_TRUE(s.empty() || s == SetType(std::begin(init), std::end(init)))
+          << "assignment " << nbAssignments << " throws";
+    }
+  }
+  EXPECT_EQ(T::NbLive(), nbLive);
+}
+
+TEST(SetTest, FullFlatSetLvalueInsertionKeepsValidSet) {
+  using T = ThrowingAssignmentType;
+  using SetType = FlatSet<T>;
+  ExpectFullSetLvalueInsertionKeepsValidSet<SetType>([](SetType& s, const T& v) { s.insert(v); });
+  ExpectFullSetLvalueInsertionKeepsValidSet<SetType>(
+      [](SetType& s, const T& v) { s.insert(std::next(s.begin()), v); });  // correct hint
+  // a full small SmallVector grows to the heap
+  using SmallVectorSetType = FlatSet<T, std::less<T>, amc::allocator<T>, SmallVector<T, 4>>;
+  ExpectFullSetLvalueInsertionKeepsValidSet<SmallVectorSetType>([](SmallVectorSetType& s, const T& v) { s.insert(v); });
+}
+
 // A moved from set is empty, also when its elements are moved one by one to a set with an unequal allocator, which
 // does not propagate.
 template <class SetType>

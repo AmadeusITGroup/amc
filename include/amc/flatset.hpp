@@ -685,13 +685,16 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// moved from elements: the new element is constructed at the end, or directly in the new storage, around which the
   /// elements are move constructed. Otherwise, an exception (such as an allocation failure) leaves the vector
   /// unchanged.
+  /// A full vector grows with 'emplace', which constructs the new element in the new storage, like 'insert' of
+  /// std::vector: the amc vectors 'insert' an lvalue by growing first, then shifting the next elements with move
+  /// assignments, which may throw.
   template <class V>
   miterator insertIntoVector(const_iterator pos, V&& v, std::true_type) {
     // If the vector grows, whether relocating its elements may throw, otherwise whether they are shifted.
-    const bool mayLeaveMovedFromElements =
-        _sortedVector.size() == _sortedVector.capacity() ? !std::is_nothrow_move_constructible<T>::value : pos != end();
+    const bool full = _sortedVector.size() == _sortedVector.capacity();
+    const bool mayLeaveMovedFromElements = full ? !std::is_nothrow_move_constructible<T>::value : pos != end();
     try {
-      return _sortedVector.insert(pos, std::forward<V>(v));
+      return full ? _sortedVector.emplace(pos, std::forward<V>(v)) : _sortedVector.insert(pos, std::forward<V>(v));
     } catch (...) {
       if (mayLeaveMovedFromElements) {
         _sortedVector.clear();
