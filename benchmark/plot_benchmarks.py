@@ -3,26 +3,18 @@ r"""Draws the benchmark charts of docs/benchmarks.md (docs/bench_*.svg) and the 
 
 Only needs the Python standard library.
 
-1. Build the benchmarks in Release, once per compiler, and run them pinned to a single core (a core of the biggest L3
-   cache on hybrid CPUs). Build smallsets_benchmark in C++20 (-DCMAKE_CXX_STANDARD=20): from C++20 only, the search of
-   a SmallSet compares the looked up key once with each element. Run each benchmark in its own process: the state in
-   which a benchmark leaves the heap changes the times of the next ones (by up to 20 %). Name the JSON outputs
-   <benchmark>-<compiler tag>-<n>.json, for instance:
+  python3 benchmark/run_benchmarks.py
 
-     vectors_benchmark --benchmark_list_tests | while read -r name; do
-       taskset -c 2 vectors_benchmark --benchmark_filter="^$(printf '%s' "$name" | sed 's/[.*+?()|^$\[]/\\&/g')\$" \
-         --benchmark_repetitions=5 --benchmark_report_aggregates_only=true \
-         --benchmark_out=<dir>/vectors-gcc13-$((++n)).json --benchmark_out_format=json
-     done
+builds and runs the benchmarks the way docs/benchmarks.md describes (Method) and then calls this script with --import,
+see the section 'Re-running the benchmarks' of that page.
 
-   and the same for sets_benchmark (sets-gcc13-<n>.json) and smallsets_benchmark (smallsets-gcc13-<n>.json), and for
-   other compilers (vectors-clang23-<n>.json...).
-   The compiler tag 'gcc13' is displayed as 'GCC 13', 'clang23' as 'Clang 23'.
+  python3 benchmark/plot_benchmarks.py --import <dir>
 
-2. python3 benchmark/plot_benchmarks.py --import <dir>
-
-   stores the medians of the results in docs/benchmarks/ (without the host name), draws the charts in docs/ and updates
-   the tables of docs/benchmarks.md. Without --import, it only redraws from docs/benchmarks/.
+imports the Google Benchmark JSON outputs of <dir> run by hand: one benchmark per process (--benchmark_filter), with
+--benchmark_repetitions and --benchmark_report_aggregates_only=true, named <benchmark>-<compiler tag>-<n>.json, such as
+vectors-gcc13-1.json, sets-clang23-12.json or smallsets-gcc13-3.json. The compiler tag 'gcc13' is displayed as 'GCC 13',
+'clang23' as 'Clang 23'. It stores the medians of the results in docs/benchmarks/ (without the host name), draws the
+charts in docs/ and updates the tables of docs/benchmarks.md. Without --import, it only redraws from docs/benchmarks/.
 """
 
 import argparse

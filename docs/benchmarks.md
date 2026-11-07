@@ -7,13 +7,14 @@ How the amc containers compare to the standard ones, as measured by the benchmar
 - [SmallVector](#smallvector)
 - [FlatSet](#flatset)
 - [SmallSet](#smallset)
+- [Re-running the benchmarks](#re-running-the-benchmarks)
 - [Numbers](#numbers)
 
 ## Method
 
 The charts are drawn by [benchmark/plot_benchmarks.py](../benchmark/plot_benchmarks.py) from the results stored in [docs/benchmarks](benchmarks). Each benchmark runs in its own process, pinned to a single core of an idle machine, and the median of 5 repetitions is kept. The standard library is libstdc++ 13. The `SmallSet` benchmarks are built in C++20 (`-DCMAKE_CXX_STANDARD=20`), which its single comparison per element requires (see [SmallSet](#smallset)), and the other ones in C++17 (`-DCMAKE_CXX_STANDARD=17`, as the default is C++20). Beyond the L3 cache, results vary by about 15 % between runs.
 
-The script docstring explains how to run the benchmarks and refresh the charts and the [tables](#numbers) of this page.
+One command re-runs the benchmarks this way and refreshes the charts and the [tables](#numbers) of this page, see [Re-running the benchmarks](#re-running-the-benchmarks).
 
 The "complex" types are 16 byte structures owning a dynamically allocated buffer: copying one allocates, and moving one steals the buffer. The first one is declared trivially relocatable, the second one is not.
 
@@ -69,9 +70,53 @@ Observations:
 
 `SmallSet` with an `amc::FlatSet` is thus the set of choice for sets of integers, enumerations, pointers or small trivially relocatable types which are often built, most of them with at most `N` elements: like for `SmallVector`, choose `N` to cover most of them. For strings, the default `SmallSet` (with a `std::set`) pays off when most sets are small. Keep `std::set` (or `std::unordered_set` when the order of the elements does not matter) for sets of strings which are mostly large, and for other types with costly comparisons.
 
+## Re-running the benchmarks
+
+```bash
+python3 benchmark/run_benchmarks.py
+```
+
+builds the benchmarks with each compiler, runs them as described in [Method](#method), then redraws the charts (`docs/bench_*.svg`) and rewrites the [tables](#numbers) of this page. It requires Python 3, CMake 3.21 or later, the compilers (`g++` and `clang++-23` by default) and, to pin the benchmarks to a core, `taskset` (Linux). It uses Ninja if installed, and CMake downloads Google Benchmark unless it is installed. Leave the machine idle: about 600 benchmarks run for each compiler, 5 repetitions of each, which takes tens of minutes per compiler.
+
+Per compiler, it:
+
+1. builds the benchmarks in Release in a temporary directory, removed afterwards: `vectors_benchmark` and `sets_benchmark` in C++17, then `smallsets_benchmark` in C++20. The directory is in `$XDG_RUNTIME_DIR`, a RAM disk on most Linux desktops, which spares the SSD about 30 MB of throwaway writes per build;
+2. runs each benchmark in its own process, pinned to one core, and keeps the JSON output of Google Benchmark. By default, the core is picked among the fastest ones of the machine, from the frequencies and the L3 caches of its CPUs (on a hybrid CPU, the big cores): core 2 on the machine of the stored results.
+
+Then `benchmark/plot_benchmarks.py --import` stores the medians of all the outputs in [docs/benchmarks](benchmarks), one file per benchmark and compiler, and generates the charts and the tables from them.
+
+| Option            | Effect                                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--cxx COMPILER`  | Compiler to benchmark, repeatable (default: `g++` and `clang++-23`)                                                                          |
+| `--cpu CPUS`      | `auto` (default) picks one of the fastest cores. A list like `2,3` runs a benchmark on each of these cores at the same time                  |
+| `--jobs N`        | With `--cpu auto`, run `N` benchmarks at the same time, each on its own fast core (default: 1). See [below](#running-benchmarks-in-parallel) |
+| `--repetitions N` | Repetitions of each benchmark, whose median is kept (default: 5)                                                                             |
+| `--out DIR`       | Keep the JSON outputs in `DIR` (default: a temporary directory, removed after the import)                                                    |
+| `--no-import`     | Only run the benchmarks and keep their outputs: import them later with `plot_benchmarks.py --import DIR`                                     |
+| `--filter REGEX`  | Only run the benchmarks matching `REGEX`, for a quick check. Implies `--no-import`                                                           |
+| `--main TAG`      | Compiler of the charts of the vectors and sets (default: `gcc13`)                                                                            |
+
+To try it in a minute, without touching `docs/`: `python3 benchmark/run_benchmarks.py --cxx g++ --filter '^Growing<' --repetitions 1`.
+
+Afterwards:
+
+- Check `git diff docs/`: on a desktop, results vary between runs (see [Method](#method)), so rerun the benchmarks whose unchanged series moved.
+- The prose of this page quotes figures of the tables (like "2.2 times faster"): they are not generated, update those which changed.
+- Results are stored by compiler tag, like `gcc13` or `clang23`, taken from the version of the compiler: a new major version adds results next to the old ones. Delete the old `docs/benchmarks/*-gcc13.json` files to replace them, and pass `--main` if the charts should use another compiler.
+- To redraw without running anything (after changing the script, for instance): `python3 benchmark/plot_benchmarks.py`.
+
+### Running benchmarks in parallel
+
+`--jobs 4` runs four benchmarks at once, each pinned to its own fast core (never two threads of a core), and takes about a quarter of the time: 41 s instead of 155 to 159 s for 58 of the benchmarks on the 4 fastest cores of the machine of the stored results. The cores share the L3 cache and the memory bandwidth though, which the benchmarks working on large data feel. In that run (GCC 13, 3 repetitions, 4 jobs against 1, the noise being measured by running the single job twice):
+
+- lookups in sets of up to 10 000 elements and the vector benchmarks did not move beyond the noise (0.4 to 5 % at the median);
+- lookups in sets of 1 million elements and more were 8 % slower at the median (2.8 % of noise) and up to 28 %, and one lookup in a set of 100 000 elements was 2.1 times slower.
+
+This is why `--jobs` (and a list of CPUs) does not import its results into `docs/`: it prints the command to do so. Use it for quick checks and before / after comparisons (with the same number of jobs for both), and a single job for the numbers of this page. Whatever the number of jobs, the machine should be idle: another benchmark running on a core of the same L3 cache disturbs the results too.
+
 ## Numbers
 
-The numbers behind the charts, for both compilers.
+The numbers behind the charts, for both compilers, generated by [benchmark/plot_benchmarks.py](../benchmark/plot_benchmarks.py): do not edit them by hand, [re-run the benchmarks](#re-running-the-benchmarks) instead.
 
 <!-- BEGIN benchmark tables, generated by benchmark/plot_benchmarks.py -->
 
