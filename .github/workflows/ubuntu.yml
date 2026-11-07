@@ -6,6 +6,8 @@ on:
       - main
   pull_request:
 
+# 'ubuntu-latest' moves to a new Ubuntu release one repository at a time: the same commit can run on Ubuntu 26.04 in a
+# fork and on 24.04 upstream. The jobs whose compilers only work on 24.04 ask for it explicitly.
 jobs:
   ci_test_gcc_release:
     runs-on: ubuntu-latest
@@ -31,7 +33,9 @@ jobs:
         run: cd build && ctest -j --output-on-failure
 
   ci_test_gcc_debug:
-    runs-on: ubuntu-latest
+    # On the Ubuntu 26.04 runners, a test executable built by GCC 8 with the address sanitizer now and then never ends:
+    # it prints until ctest runs out of memory, 40 minutes later. Not a matrix key: it would rename the job.
+    runs-on: ${{ matrix.compiler == 'g++-8' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       matrix:
         include:
@@ -53,7 +57,7 @@ jobs:
         run: cd build && ctest -j --output-on-failure
 
   ci_test_clang_release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # apt.llvm.org has no packages of LLVM 17 to 20 for Ubuntu 26.04
     strategy:
       matrix:
         compiler: ["17", "19"]
@@ -72,7 +76,7 @@ jobs:
         run: cd build && ctest -j --output-on-failure
 
   ci_test_clang_debug:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # apt.llvm.org has no packages of LLVM 17 to 20 for Ubuntu 26.04
     strategy:
       matrix:
         compiler: ["20"]
@@ -118,7 +122,7 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest, compiler: clang++-21, llvm: "21", standard: 23, nonstd: "ON" }
-          - { os: ubuntu-latest, compiler: clang++-19, llvm: "19", standard: 20, nonstd: "OFF" }
+          - { os: ubuntu-24.04, compiler: clang++-19, llvm: "19", standard: 20, nonstd: "OFF" }  # no LLVM 19 for Ubuntu 26.04
           - { os: ubuntu-26.04, compiler: g++-15, standard: 23, nonstd: "ON" }  # GCC 15 is not in Ubuntu 24.04
     steps:
       - uses: actions/checkout@v5

@@ -87,8 +87,9 @@ inline T AsValueType(U&& v) {
 /// Warning: no destroy is called for elements which has been moved from.
 /// If a move throws, the element constructed in the uninitialized memory is destroyed.
 /// (not declared noexcept(is_shift_nothrow<T>::value), as GCC warns about the rethrow when it is true)
+/// With GCC, out of line, with the moves inlined into the loop (see AMC_FLATTEN_NOINLINE).
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-inline void shift_right(T* first, SizeType n) {
+AMC_FLATTEN_NOINLINE void shift_right(T* first, SizeType n) {
   T* last = first + n;
   amc::construct_at(last, std::move(*(last - 1)));
   try {
@@ -109,8 +110,9 @@ inline void shift_right(T* first, SizeType n) noexcept {
 /// Requirements: uninitialized memory starting at 'first + n'
 /// Warning: no destroy is called for elements which has been moved from.
 /// If a move throws, the elements constructed in the uninitialized memory are destroyed.
+/// With GCC, out of line, with the moves inlined into the loops (see AMC_FLATTEN_NOINLINE).
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
-void shift_right(T* first, SizeType n, SizeType count) {
+AMC_FLATTEN_NOINLINE void shift_right(T* first, SizeType n, SizeType count) {
   if (count < n) {
     T* last = first + n;
     amc::uninitialized_move_n(last - count, count, last);  // move last 'count' elems to uninitialized storage
