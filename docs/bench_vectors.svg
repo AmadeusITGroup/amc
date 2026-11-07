@@ -51,35 +51,35 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="670.6" y="345.0" class="tick" text-anchor="middle">1 ms</text>
 <line x1="258.0" y1="328.0" x2="732.0" y2="328.0" class="axis"/>
 <text x="28.0" y="167.5" class="label" text-anchor="start">Assign a count or a range</text>
-<line x1="505.3" y1="163.0" x2="505.5" y2="163.0" class="link"/>
-<circle cx="505.5" cy="163.0" r="5.5" class="ring ref"/>
-<circle cx="505.3" cy="163.0" r="4.5" class="dot amc"/>
+<line x1="504.7" y1="163.0" x2="504.8" y2="163.0" class="link"/>
+<circle cx="504.8" cy="163.0" r="5.5" class="ring ref"/>
+<circle cx="504.7" cy="163.0" r="4.5" class="dot amc"/>
 <text x="852" y="167.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
 <text x="28.0" y="197.5" class="label" text-anchor="start">Construct and swap</text>
-<line x1="399.7" y1="193.0" x2="401.2" y2="193.0" class="link"/>
-<circle cx="401.2" cy="193.0" r="5.5" class="ring ref"/>
-<circle cx="399.7" cy="193.0" r="4.5" class="dot amc"/>
-<text x="852" y="197.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<line x1="401.1" y1="193.0" x2="402.8" y2="193.0" class="link"/>
+<circle cx="402.8" cy="193.0" r="5.5" class="ring ref"/>
+<circle cx="401.1" cy="193.0" r="4.5" class="dot amc"/>
+<text x="852" y="197.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="227.5" class="label" text-anchor="start">Insert at end, erase at front</text>
-<line x1="570.4" y1="223.0" x2="578.4" y2="223.0" class="link"/>
-<circle cx="570.4" cy="223.0" r="5.5" class="ring ref"/>
-<circle cx="578.4" cy="223.0" r="4.5" class="dot amc"/>
-<text x="852" y="227.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">slower</tspan></text>
+<line x1="568.0" y1="223.0" x2="573.2" y2="223.0" class="link"/>
+<circle cx="568.0" cy="223.0" r="5.5" class="ring ref"/>
+<circle cx="573.2" cy="223.0" r="4.5" class="dot amc"/>
+<text x="852" y="227.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="257.5" class="label" text-anchor="start">Insert N copies</text>
-<line x1="390.1" y1="253.0" x2="467.1" y2="253.0" class="link"/>
-<circle cx="467.1" cy="253.0" r="5.5" class="ring ref"/>
-<circle cx="390.1" cy="253.0" r="4.5" class="dot amc"/>
-<text x="852" y="257.5" class="ratio" text-anchor="end"><tspan font-weight="600">10×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="387.7" y1="253.0" x2="469.2" y2="253.0" class="link"/>
+<circle cx="469.2" cy="253.0" r="5.5" class="ring ref"/>
+<circle cx="387.7" cy="253.0" r="4.5" class="dot amc"/>
+<text x="852" y="257.5" class="ratio" text-anchor="end"><tspan font-weight="600">12×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="287.5" class="label" text-anchor="start">Insert a range of pointers</text>
-<line x1="530.4" y1="283.0" x2="542.1" y2="283.0" class="link"/>
-<circle cx="542.1" cy="283.0" r="5.5" class="ring ref"/>
-<circle cx="530.4" cy="283.0" r="4.5" class="dot amc"/>
+<line x1="528.2" y1="283.0" x2="538.5" y2="283.0" class="link"/>
+<circle cx="538.5" cy="283.0" r="5.5" class="ring ref"/>
+<circle cx="528.2" cy="283.0" r="4.5" class="dot amc"/>
 <text x="852" y="287.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.4×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="317.5" class="label" text-anchor="start">Insert a std::set range</text>
-<line x1="540.1" y1="313.0" x2="552.0" y2="313.0" class="link"/>
-<circle cx="552.0" cy="313.0" r="5.5" class="ring ref"/>
-<circle cx="540.1" cy="313.0" r="4.5" class="dot amc"/>
-<text x="852" y="317.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.4×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="540.0" y1="313.0" x2="553.0" y2="313.0" class="link"/>
+<circle cx="553.0" cy="313.0" r="5.5" class="ring ref"/>
+<circle cx="540.0" cy="313.0" r="4.5" class="dot amc"/>
+<text x="852" y="317.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.5×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="390.0" class="panel" text-anchor="start">uint32_t</text>
 <line x1="289.0" y1="402.0" x2="289.0" y2="612.0" class="grid"/>
 <text x="289.0" y="629.0" class="tick" text-anchor="middle">10 ns</text>
@@ -95,40 +95,40 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="670.6" y="629.0" class="tick" text-anchor="middle">1 ms</text>
 <line x1="258.0" y1="612.0" x2="732.0" y2="612.0" class="axis"/>
 <text x="28.0" y="421.5" class="label" text-anchor="start">Assign a count or a range</text>
-<line x1="295.6" y1="417.0" x2="300.1" y2="417.0" class="link"/>
-<circle cx="295.6" cy="417.0" r="5.5" class="ring ref"/>
-<circle cx="300.1" cy="417.0" r="4.5" class="dot amc"/>
-<text x="852" y="421.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">slower</tspan></text>
+<line x1="295.9" y1="417.0" x2="300.7" y2="417.0" class="link"/>
+<circle cx="295.9" cy="417.0" r="5.5" class="ring ref"/>
+<circle cx="300.7" cy="417.0" r="4.5" class="dot amc"/>
+<text x="852" y="421.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="451.5" class="label" text-anchor="start">Construct and swap</text>
-<line x1="286.3" y1="447.0" x2="288.9" y2="447.0" class="link"/>
-<circle cx="288.9" cy="447.0" r="5.5" class="ring ref"/>
-<circle cx="286.3" cy="447.0" r="4.5" class="dot amc"/>
+<line x1="285.0" y1="447.0" x2="287.8" y2="447.0" class="link"/>
+<circle cx="287.8" cy="447.0" r="5.5" class="ring ref"/>
+<circle cx="285.0" cy="447.0" r="4.5" class="dot amc"/>
 <text x="852" y="451.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="481.5" class="label" text-anchor="start">Insert at end, erase at front</text>
-<line x1="390.0" y1="477.0" x2="391.6" y2="477.0" class="link"/>
-<circle cx="391.6" cy="477.0" r="5.5" class="ring ref"/>
-<circle cx="390.0" cy="477.0" r="4.5" class="dot amc"/>
+<line x1="389.8" y1="477.0" x2="391.7" y2="477.0" class="link"/>
+<circle cx="391.7" cy="477.0" r="5.5" class="ring ref"/>
+<circle cx="389.8" cy="477.0" r="4.5" class="dot amc"/>
 <text x="852" y="481.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="511.5" class="label" text-anchor="start">Insert N copies</text>
-<line x1="323.0" y1="507.0" x2="325.8" y2="507.0" class="link"/>
-<circle cx="323.0" cy="507.0" r="5.5" class="ring ref"/>
-<circle cx="325.8" cy="507.0" r="4.5" class="dot amc"/>
+<line x1="322.7" y1="507.0" x2="325.3" y2="507.0" class="link"/>
+<circle cx="322.7" cy="507.0" r="5.5" class="ring ref"/>
+<circle cx="325.3" cy="507.0" r="4.5" class="dot amc"/>
 <text x="852" y="511.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="541.5" class="label" text-anchor="start">Insert a range of pointers</text>
-<line x1="358.2" y1="537.0" x2="361.1" y2="537.0" class="link"/>
-<circle cx="361.1" cy="537.0" r="5.5" class="ring ref"/>
-<circle cx="358.2" cy="537.0" r="4.5" class="dot amc"/>
-<text x="852" y="541.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="358.3" y1="537.0" x2="365.8" y2="537.0" class="link"/>
+<circle cx="365.8" cy="537.0" r="5.5" class="ring ref"/>
+<circle cx="358.3" cy="537.0" r="4.5" class="dot amc"/>
+<text x="852" y="541.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="571.5" class="label" text-anchor="start">Insert a std::set range</text>
-<line x1="490.2" y1="567.0" x2="490.7" y2="567.0" class="link"/>
-<circle cx="490.2" cy="567.0" r="5.5" class="ring ref"/>
-<circle cx="490.7" cy="567.0" r="4.5" class="dot amc"/>
-<text x="852" y="571.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
+<line x1="489.5" y1="567.0" x2="491.2" y2="567.0" class="link"/>
+<circle cx="491.2" cy="567.0" r="5.5" class="ring ref"/>
+<circle cx="489.5" cy="567.0" r="4.5" class="dot amc"/>
+<text x="852" y="571.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="601.5" class="label" text-anchor="start">Grow to 1M by emplace_back</text>
-<line x1="672.5" y1="597.0" x2="699.0" y2="597.0" class="link"/>
-<circle cx="699.0" cy="597.0" r="5.5" class="ring ref"/>
-<circle cx="672.5" cy="597.0" r="4.5" class="dot amc"/>
-<text x="852" y="601.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.2×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="672.2" y1="597.0" x2="696.8" y2="597.0" class="link"/>
+<circle cx="696.8" cy="597.0" r="5.5" class="ring ref"/>
+<circle cx="672.2" cy="597.0" r="4.5" class="dot amc"/>
+<text x="852" y="601.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="674.0" class="panel" text-anchor="start">Complex non trivially relocatable type</text>
 <line x1="289.0" y1="686.0" x2="289.0" y2="866.0" class="grid"/>
 <text x="289.0" y="883.0" class="tick" text-anchor="middle">10 ns</text>
@@ -144,33 +144,33 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="670.6" y="883.0" class="tick" text-anchor="middle">1 ms</text>
 <line x1="258.0" y1="866.0" x2="732.0" y2="866.0" class="axis"/>
 <text x="28.0" y="705.5" class="label" text-anchor="start">Assign a count or a range</text>
-<line x1="505.0" y1="701.0" x2="505.5" y2="701.0" class="link"/>
-<circle cx="505.0" cy="701.0" r="5.5" class="ring ref"/>
-<circle cx="505.5" cy="701.0" r="4.5" class="dot amc"/>
+<line x1="504.7" y1="701.0" x2="505.2" y2="701.0" class="link"/>
+<circle cx="505.2" cy="701.0" r="5.5" class="ring ref"/>
+<circle cx="504.7" cy="701.0" r="4.5" class="dot amc"/>
 <text x="852" y="705.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
 <text x="28.0" y="735.5" class="label" text-anchor="start">Construct and swap</text>
-<line x1="399.3" y1="731.0" x2="400.1" y2="731.0" class="link"/>
-<circle cx="400.1" cy="731.0" r="5.5" class="ring ref"/>
-<circle cx="399.3" cy="731.0" r="4.5" class="dot amc"/>
+<line x1="400.6" y1="731.0" x2="401.7" y2="731.0" class="link"/>
+<circle cx="400.6" cy="731.0" r="5.5" class="ring ref"/>
+<circle cx="401.7" cy="731.0" r="4.5" class="dot amc"/>
 <text x="852" y="735.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
 <text x="28.0" y="765.5" class="label" text-anchor="start">Insert at end, erase at front</text>
-<line x1="571.6" y1="761.0" x2="579.4" y2="761.0" class="link"/>
-<circle cx="571.6" cy="761.0" r="5.5" class="ring ref"/>
-<circle cx="579.4" cy="761.0" r="4.5" class="dot amc"/>
-<text x="852" y="765.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">slower</tspan></text>
+<line x1="569.0" y1="761.0" x2="575.3" y2="761.0" class="link"/>
+<circle cx="569.0" cy="761.0" r="5.5" class="ring ref"/>
+<circle cx="575.3" cy="761.0" r="4.5" class="dot amc"/>
+<text x="852" y="765.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.2×</tspan> <tspan class="word">slower</tspan></text>
 <text x="28.0" y="795.5" class="label" text-anchor="start">Insert N copies</text>
-<line x1="467.3" y1="791.0" x2="470.0" y2="791.0" class="link"/>
-<circle cx="470.0" cy="791.0" r="5.5" class="ring ref"/>
-<circle cx="467.3" cy="791.0" r="4.5" class="dot amc"/>
+<line x1="465.7" y1="791.0" x2="468.9" y2="791.0" class="link"/>
+<circle cx="468.9" cy="791.0" r="5.5" class="ring ref"/>
+<circle cx="465.7" cy="791.0" r="4.5" class="dot amc"/>
 <text x="852" y="795.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="825.5" class="label" text-anchor="start">Insert a range of pointers</text>
-<line x1="538.8" y1="821.0" x2="541.2" y2="821.0" class="link"/>
-<circle cx="541.2" cy="821.0" r="5.5" class="ring ref"/>
-<circle cx="538.8" cy="821.0" r="4.5" class="dot amc"/>
-<text x="852" y="825.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="537.5" y1="821.0" x2="538.7" y2="821.0" class="link"/>
+<circle cx="538.7" cy="821.0" r="5.5" class="ring ref"/>
+<circle cx="537.5" cy="821.0" r="4.5" class="dot amc"/>
+<text x="852" y="825.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
 <text x="28.0" y="855.5" class="label" text-anchor="start">Insert a std::set range</text>
-<line x1="549.2" y1="851.0" x2="552.7" y2="851.0" class="link"/>
-<circle cx="552.7" cy="851.0" r="5.5" class="ring ref"/>
-<circle cx="549.2" cy="851.0" r="4.5" class="dot amc"/>
+<line x1="547.9" y1="851.0" x2="552.3" y2="851.0" class="link"/>
+<circle cx="552.3" cy="851.0" r="5.5" class="ring ref"/>
+<circle cx="547.9" cy="851.0" r="4.5" class="dot amc"/>
 <text x="852" y="855.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 </svg>
