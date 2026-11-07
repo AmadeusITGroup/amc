@@ -53,6 +53,18 @@
 #define AMC_PREFETCH(addr) static_cast<void>(addr)
 #endif
 
+// With GCC, compiles a function out of line, with all the calls of its body inlined into it, for the loops which move
+// elements one by one (types which are not trivially relocatable). Inlined into its callers, such a loop depends on how
+// big they are: GCC (13 and 15 at least) then inlines the move assignment of the elements (like the one of std::string)
+// into some of them only, and the loop is up to 2.4 times slower in the other ones. Out of line, its code is also
+// shared by all the vectors of a same element type. The other compilers keep an inline function: Clang inlines the
+// moves into the loop anyway, and out of line, the call makes the insertion into small vectors up to 10 % slower.
+#ifdef AMC_GCC
+#define AMC_FLATTEN_NOINLINE __attribute__((noinline, flatten))
+#else
+#define AMC_FLATTEN_NOINLINE inline
+#endif
+
 #if defined(_MSC_VER)
 
 #define AMC_CXX14 1
