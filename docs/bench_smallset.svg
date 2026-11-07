@@ -57,61 +57,61 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="724.0" y="433.0" class="tick" text-anchor="middle">10 µs</text>
 <line x1="258.0" y1="416.0" x2="732.0" y2="416.0" class="axis"/>
 <text x="28.0" y="225.5" class="label" text-anchor="start">All large</text>
-<line x1="514.3" y1="221.0" x2="625.0" y2="221.0" class="link"/>
-<circle cx="625.0" cy="221.0" r="5.5" class="ring ref"/>
-<circle cx="561.2" cy="221.0" r="5.5" class="ring uno"/>
-<circle cx="514.3" cy="221.0" r="4.5" class="dot amc"/>
-<polygon points="619.2,214.5 625.7,221.0 619.2,227.5 612.7,221.0" class="diamond small"/>
+<line x1="514.2" y1="221.0" x2="624.6" y2="221.0" class="link"/>
+<circle cx="624.6" cy="221.0" r="5.5" class="ring ref"/>
+<circle cx="561.9" cy="221.0" r="5.5" class="ring uno"/>
+<circle cx="514.2" cy="221.0" r="4.5" class="dot amc"/>
+<polygon points="618.6,214.5 625.1,221.0 618.6,227.5 612.1,221.0" class="diamond small"/>
 <polygon points="517.0,214.5 523.5,221.0 517.0,227.5 510.5,221.0" class="diamond smallflat"/>
 <text x="852" y="225.5" class="ratio" text-anchor="end"><tspan font-weight="600">3.5×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="255.5" class="label" text-anchor="start">50 % small</text>
-<line x1="463.8" y1="251.0" x2="578.6" y2="251.0" class="link"/>
-<circle cx="578.6" cy="251.0" r="5.5" class="ring ref"/>
-<circle cx="516.7" cy="251.0" r="5.5" class="ring uno"/>
-<circle cx="469.0" cy="251.0" r="4.5" class="dot amc"/>
-<polygon points="561.0,244.5 567.5,251.0 561.0,257.5 554.5,251.0" class="diamond small"/>
-<polygon points="463.8,244.5 470.3,251.0 463.8,257.5 457.3,251.0" class="diamond smallflat"/>
+<line x1="464.3" y1="251.0" x2="579.3" y2="251.0" class="link"/>
+<circle cx="579.3" cy="251.0" r="5.5" class="ring ref"/>
+<circle cx="516.8" cy="251.0" r="5.5" class="ring uno"/>
+<circle cx="469.4" cy="251.0" r="4.5" class="dot amc"/>
+<polygon points="560.7,244.5 567.2,251.0 560.7,257.5 554.2,251.0" class="diamond small"/>
+<polygon points="464.3,244.5 470.8,251.0 464.3,257.5 457.8,251.0" class="diamond smallflat"/>
 <text x="852" y="255.5" class="ratio" text-anchor="end"><tspan font-weight="600">3.8×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="285.5" class="label" text-anchor="start">80 % small</text>
-<line x1="399.5" y1="281.0" x2="527.1" y2="281.0" class="link"/>
-<circle cx="527.1" cy="281.0" r="5.5" class="ring ref"/>
-<circle cx="471.5" cy="281.0" r="5.5" class="ring uno"/>
-<circle cx="423.4" cy="281.0" r="4.5" class="dot amc"/>
-<polygon points="486.4,274.5 492.9,281.0 486.4,287.5 479.9,281.0" class="diamond small"/>
-<polygon points="399.5,274.5 406.0,281.0 399.5,287.5 393.0,281.0" class="diamond smallflat"/>
-<text x="852" y="285.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.4×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="398.0" y1="281.0" x2="528.2" y2="281.0" class="link"/>
+<circle cx="528.2" cy="281.0" r="5.5" class="ring ref"/>
+<circle cx="471.4" cy="281.0" r="5.5" class="ring uno"/>
+<circle cx="424.5" cy="281.0" r="4.5" class="dot amc"/>
+<polygon points="486.3,274.5 492.8,281.0 486.3,287.5 479.8,281.0" class="diamond small"/>
+<polygon points="398.0,274.5 404.5,281.0 398.0,287.5 391.5,281.0" class="diamond smallflat"/>
+<text x="852" y="285.5" class="ratio" text-anchor="end"><tspan font-weight="600">4.5×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="315.5" class="label" text-anchor="start">90 % small</text>
-<line x1="358.7" y1="311.0" x2="500.1" y2="311.0" class="link"/>
+<line x1="356.8" y1="311.0" x2="500.1" y2="311.0" class="link"/>
 <circle cx="500.1" cy="311.0" r="5.5" class="ring ref"/>
-<circle cx="448.6" cy="311.0" r="5.5" class="ring uno"/>
-<circle cx="400.2" cy="311.0" r="4.5" class="dot amc"/>
-<polygon points="433.8,304.5 440.3,311.0 433.8,317.5 427.3,311.0" class="diamond small"/>
-<polygon points="358.7,304.5 365.2,311.0 358.7,317.5 352.2,311.0" class="diamond smallflat"/>
-<text x="852" y="315.5" class="ratio" text-anchor="end"><tspan font-weight="600">5.1×</tspan> <tspan class="word">faster</tspan></text>
+<circle cx="448.1" cy="311.0" r="5.5" class="ring uno"/>
+<circle cx="400.4" cy="311.0" r="4.5" class="dot amc"/>
+<polygon points="433.7,304.5 440.2,311.0 433.7,317.5 427.2,311.0" class="diamond small"/>
+<polygon points="356.8,304.5 363.3,311.0 356.8,317.5 350.3,311.0" class="diamond smallflat"/>
+<text x="852" y="315.5" class="ratio" text-anchor="end"><tspan font-weight="600">5.2×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="345.5" class="label" text-anchor="start">95 % small</text>
-<line x1="326.2" y1="341.0" x2="481.7" y2="341.0" class="link"/>
-<circle cx="481.7" cy="341.0" r="5.5" class="ring ref"/>
-<circle cx="433.1" cy="341.0" r="5.5" class="ring uno"/>
-<circle cx="386.2" cy="341.0" r="4.5" class="dot amc"/>
-<polygon points="386.4,334.5 392.9,341.0 386.4,347.5 379.9,341.0" class="diamond small"/>
-<polygon points="326.2,334.5 332.7,341.0 326.2,347.5 319.7,341.0" class="diamond smallflat"/>
+<line x1="326.7" y1="341.0" x2="482.3" y2="341.0" class="link"/>
+<circle cx="482.3" cy="341.0" r="5.5" class="ring ref"/>
+<circle cx="433.5" cy="341.0" r="5.5" class="ring uno"/>
+<circle cx="386.1" cy="341.0" r="4.5" class="dot amc"/>
+<polygon points="386.1,334.5 392.6,341.0 386.1,347.5 379.6,341.0" class="diamond small"/>
+<polygon points="326.7,334.5 333.2,341.0 326.7,347.5 320.2,341.0" class="diamond smallflat"/>
 <text x="852" y="345.5" class="ratio" text-anchor="end"><tspan font-weight="600">6.0×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="375.5" class="label" text-anchor="start">99 % small</text>
-<line x1="289.7" y1="371.0" x2="461.3" y2="371.0" class="link"/>
-<circle cx="461.3" cy="371.0" r="5.5" class="ring ref"/>
+<line x1="288.3" y1="371.0" x2="462.3" y2="371.0" class="link"/>
+<circle cx="462.3" cy="371.0" r="5.5" class="ring ref"/>
 <circle cx="419.4" cy="371.0" r="5.5" class="ring uno"/>
-<circle cx="372.9" cy="371.0" r="4.5" class="dot amc"/>
-<polygon points="310.2,364.5 316.7,371.0 310.2,377.5 303.7,371.0" class="diamond small"/>
-<polygon points="289.7,364.5 296.2,371.0 289.7,377.5 283.2,371.0" class="diamond smallflat"/>
-<text x="852" y="375.5" class="ratio" text-anchor="end"><tspan font-weight="600">7.3×</tspan> <tspan class="word">faster</tspan></text>
+<circle cx="372.6" cy="371.0" r="4.5" class="dot amc"/>
+<polygon points="309.7,364.5 316.2,371.0 309.7,377.5 303.2,371.0" class="diamond small"/>
+<polygon points="288.3,364.5 294.8,371.0 288.3,377.5 281.8,371.0" class="diamond smallflat"/>
+<text x="852" y="375.5" class="ratio" text-anchor="end"><tspan font-weight="600">7.5×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="405.5" class="label" text-anchor="start">All small</text>
-<line x1="270.7" y1="401.0" x2="457.3" y2="401.0" class="link"/>
-<circle cx="457.3" cy="401.0" r="5.5" class="ring ref"/>
-<circle cx="415.4" cy="401.0" r="5.5" class="ring uno"/>
-<circle cx="367.7" cy="401.0" r="4.5" class="dot amc"/>
-<polygon points="270.7,394.5 277.2,401.0 270.7,407.5 264.2,401.0" class="diamond small"/>
-<polygon points="277.7,394.5 284.2,401.0 277.7,407.5 271.2,401.0" class="diamond smallflat"/>
-<text x="852" y="405.5" class="ratio" text-anchor="end"><tspan font-weight="600">8.0×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="268.6" y1="401.0" x2="456.5" y2="401.0" class="link"/>
+<circle cx="456.5" cy="401.0" r="5.5" class="ring ref"/>
+<circle cx="415.8" cy="401.0" r="5.5" class="ring uno"/>
+<circle cx="369.1" cy="401.0" r="4.5" class="dot amc"/>
+<polygon points="268.6,394.5 275.1,401.0 268.6,407.5 262.1,401.0" class="diamond small"/>
+<polygon points="275.3,394.5 281.8,401.0 275.3,407.5 268.8,401.0" class="diamond smallflat"/>
+<text x="852" y="405.5" class="ratio" text-anchor="end"><tspan font-weight="600">8.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="478.0" class="panel" text-anchor="start">std::string of 12 characters</text>
 <line x1="325.9" y1="490.0" x2="325.9" y2="700.0" class="grid"/>
 <text x="325.9" y="717.0" class="tick" text-anchor="middle">100 ns</text>
@@ -121,59 +121,59 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="724.0" y="717.0" class="tick" text-anchor="middle">10 µs</text>
 <line x1="258.0" y1="700.0" x2="732.0" y2="700.0" class="axis"/>
 <text x="28.0" y="509.5" class="label" text-anchor="start">All large</text>
-<line x1="601.5" y1="505.0" x2="678.0" y2="505.0" class="link"/>
-<circle cx="675.5" cy="505.0" r="5.5" class="ring ref"/>
-<circle cx="601.5" cy="505.0" r="5.5" class="ring uno"/>
-<circle cx="676.2" cy="505.0" r="4.5" class="dot amc"/>
-<polygon points="673.1,498.5 679.6,505.0 673.1,511.5 666.6,505.0" class="diamond small"/>
-<polygon points="678.0,498.5 684.5,505.0 678.0,511.5 671.5,505.0" class="diamond smallflat"/>
+<line x1="601.8" y1="505.0" x2="677.1" y2="505.0" class="link"/>
+<circle cx="673.2" cy="505.0" r="5.5" class="ring ref"/>
+<circle cx="601.8" cy="505.0" r="5.5" class="ring uno"/>
+<circle cx="665.6" cy="505.0" r="4.5" class="dot amc"/>
+<polygon points="677.1,498.5 683.6,505.0 677.1,511.5 670.6,505.0" class="diamond small"/>
+<polygon points="670.6,498.5 677.1,505.0 670.6,511.5 664.1,505.0" class="diamond smallflat"/>
 <text x="852" y="509.5" class="ratio" text-anchor="end"><tspan class="word">same</tspan></text>
 <text x="28.0" y="539.5" class="label" text-anchor="start">50 % small</text>
-<line x1="558.4" y1="535.0" x2="628.2" y2="535.0" class="link"/>
-<circle cx="628.2" cy="535.0" r="5.5" class="ring ref"/>
-<circle cx="558.4" cy="535.0" r="5.5" class="ring uno"/>
-<circle cx="626.7" cy="535.0" r="4.5" class="dot amc"/>
-<polygon points="618.8,528.5 625.3,535.0 618.8,541.5 612.3,535.0" class="diamond small"/>
-<polygon points="623.3,528.5 629.8,535.0 623.3,541.5 616.8,535.0" class="diamond smallflat"/>
+<line x1="558.7" y1="535.0" x2="626.4" y2="535.0" class="link"/>
+<circle cx="626.4" cy="535.0" r="5.5" class="ring ref"/>
+<circle cx="558.7" cy="535.0" r="5.5" class="ring uno"/>
+<circle cx="618.0" cy="535.0" r="4.5" class="dot amc"/>
+<polygon points="620.6,528.5 627.1,535.0 620.6,541.5 614.1,535.0" class="diamond small"/>
+<polygon points="616.3,528.5 622.8,535.0 616.3,541.5 609.8,535.0" class="diamond smallflat"/>
 <text x="852" y="539.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.1×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="569.5" class="label" text-anchor="start">80 % small</text>
-<line x1="514.1" y1="565.0" x2="577.6" y2="565.0" class="link"/>
-<circle cx="577.6" cy="565.0" r="5.5" class="ring ref"/>
-<circle cx="514.1" cy="565.0" r="5.5" class="ring uno"/>
-<circle cx="573.5" cy="565.0" r="4.5" class="dot amc"/>
-<polygon points="552.8,558.5 559.3,565.0 552.8,571.5 546.3,565.0" class="diamond small"/>
-<polygon points="557.0,558.5 563.5,565.0 557.0,571.5 550.5,565.0" class="diamond smallflat"/>
+<line x1="514.4" y1="565.0" x2="575.8" y2="565.0" class="link"/>
+<circle cx="575.8" cy="565.0" r="5.5" class="ring ref"/>
+<circle cx="514.4" cy="565.0" r="5.5" class="ring uno"/>
+<circle cx="566.1" cy="565.0" r="4.5" class="dot amc"/>
+<polygon points="553.5,558.5 560.0,565.0 553.5,571.5 547.0,565.0" class="diamond small"/>
+<polygon points="551.1,558.5 557.6,565.0 551.1,571.5 544.6,565.0" class="diamond smallflat"/>
 <text x="852" y="569.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.3×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="599.5" class="label" text-anchor="start">90 % small</text>
-<line x1="492.9" y1="595.0" x2="549.3" y2="595.0" class="link"/>
-<circle cx="549.3" cy="595.0" r="5.5" class="ring ref"/>
-<circle cx="492.9" cy="595.0" r="5.5" class="ring uno"/>
-<circle cx="542.9" cy="595.0" r="4.5" class="dot amc"/>
-<polygon points="510.1,588.5 516.6,595.0 510.1,601.5 503.6,595.0" class="diamond small"/>
-<polygon points="514.3,588.5 520.8,595.0 514.3,601.5 507.8,595.0" class="diamond smallflat"/>
-<text x="852" y="599.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.5×</tspan> <tspan class="word">faster</tspan></text>
+<line x1="492.8" y1="595.0" x2="548.1" y2="595.0" class="link"/>
+<circle cx="548.1" cy="595.0" r="5.5" class="ring ref"/>
+<circle cx="492.8" cy="595.0" r="5.5" class="ring uno"/>
+<circle cx="536.8" cy="595.0" r="4.5" class="dot amc"/>
+<polygon points="510.8,588.5 517.3,595.0 510.8,601.5 504.3,595.0" class="diamond small"/>
+<polygon points="509.3,588.5 515.8,595.0 509.3,601.5 502.8,595.0" class="diamond smallflat"/>
+<text x="852" y="599.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.6×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="629.5" class="label" text-anchor="start">95 % small</text>
-<line x1="479.3" y1="625.0" x2="530.3" y2="625.0" class="link"/>
-<circle cx="530.3" cy="625.0" r="5.5" class="ring ref"/>
-<circle cx="479.4" cy="625.0" r="5.5" class="ring uno"/>
-<circle cx="521.6" cy="625.0" r="4.5" class="dot amc"/>
-<polygon points="479.3,618.5 485.8,625.0 479.3,631.5 472.8,625.0" class="diamond small"/>
-<polygon points="481.3,618.5 487.8,625.0 481.3,631.5 474.8,625.0" class="diamond smallflat"/>
+<line x1="477.5" y1="625.0" x2="529.0" y2="625.0" class="link"/>
+<circle cx="529.0" cy="625.0" r="5.5" class="ring ref"/>
+<circle cx="480.7" cy="625.0" r="5.5" class="ring uno"/>
+<circle cx="516.7" cy="625.0" r="4.5" class="dot amc"/>
+<polygon points="478.6,618.5 485.1,625.0 478.6,631.5 472.1,625.0" class="diamond small"/>
+<polygon points="477.5,618.5 484.0,625.0 477.5,631.5 471.0,625.0" class="diamond smallflat"/>
 <text x="852" y="629.5" class="ratio" text-anchor="end"><tspan font-weight="600">1.8×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="659.5" class="label" text-anchor="start">99 % small</text>
-<line x1="439.2" y1="655.0" x2="510.0" y2="655.0" class="link"/>
-<circle cx="510.0" cy="655.0" r="5.5" class="ring ref"/>
-<circle cx="466.2" cy="655.0" r="5.5" class="ring uno"/>
-<circle cx="498.9" cy="655.0" r="4.5" class="dot amc"/>
-<polygon points="439.2,648.5 445.7,655.0 439.2,661.5 432.7,655.0" class="diamond small"/>
-<polygon points="441.0,648.5 447.5,655.0 441.0,661.5 434.5,655.0" class="diamond smallflat"/>
+<line x1="439.2" y1="655.0" x2="508.9" y2="655.0" class="link"/>
+<circle cx="508.9" cy="655.0" r="5.5" class="ring ref"/>
+<circle cx="466.3" cy="655.0" r="5.5" class="ring uno"/>
+<circle cx="495.1" cy="655.0" r="4.5" class="dot amc"/>
+<polygon points="440.5,648.5 447.0,655.0 440.5,661.5 434.0,655.0" class="diamond small"/>
+<polygon points="439.2,648.5 445.7,655.0 439.2,661.5 432.7,655.0" class="diamond smallflat"/>
 <text x="852" y="659.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.2×</tspan> <tspan class="word">faster</tspan></text>
 <text x="28.0" y="689.5" class="label" text-anchor="start">All small</text>
-<line x1="425.1" y1="685.0" x2="503.6" y2="685.0" class="link"/>
-<circle cx="503.6" cy="685.0" r="5.5" class="ring ref"/>
-<circle cx="463.3" cy="685.0" r="5.5" class="ring uno"/>
-<circle cx="492.2" cy="685.0" r="4.5" class="dot amc"/>
+<line x1="425.1" y1="685.0" x2="501.6" y2="685.0" class="link"/>
+<circle cx="501.6" cy="685.0" r="5.5" class="ring ref"/>
+<circle cx="463.8" cy="685.0" r="5.5" class="ring uno"/>
+<circle cx="487.9" cy="685.0" r="4.5" class="dot amc"/>
 <polygon points="425.1,678.5 431.6,685.0 425.1,691.5 418.6,685.0" class="diamond small"/>
-<polygon points="426.7,678.5 433.2,685.0 426.7,691.5 420.2,685.0" class="diamond smallflat"/>
+<polygon points="425.5,678.5 432.0,685.0 425.5,691.5 419.0,685.0" class="diamond smallflat"/>
 <text x="852" y="689.5" class="ratio" text-anchor="end"><tspan font-weight="600">2.4×</tspan> <tspan class="word">faster</tspan></text>
 </svg>
