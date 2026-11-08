@@ -155,6 +155,13 @@ if (NOT MSVC)
   target_compile_options(cxx11_test PRIVATE -Werror=return-type -Werror=sizeof-pointer-div)
 endif()
 
+# The headers compiled after the macros of the Windows headers. Without GoogleTest, so that only amc sees them.
+add_unit_test(
+  windows_macros_test
+  windows_macros_test.cpp
+  NO_GTEST
+)
+
 if (AMC_ENABLE_COVERAGE)
   # 'coverage' target: run all the tests from scratch, then report the coverage of the headers of include/ only.
   # Outputs in AMC_COVERAGE_DIR: html/index.html, amc.lcov (for Codecov) and report.txt (summary per file).

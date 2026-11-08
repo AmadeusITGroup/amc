@@ -519,14 +519,14 @@ class SmallSet {
       mergeSet(o._set);
       return;
     }
-    bool small = isSmall();
+    bool smallState = isSmall();
     for (auto oit = o._vec.begin(); oit != o._vec.end();) {
       FindFunctor<T> fFunc(key_comp(), *oit);
-      if (small) {
+      if (smallState) {
         if (std::none_of(_vec.begin(), _vec.end(), fFunc)) {
           if (isSmallContFull()) {
             growAndInsert(std::move(*oit));
-            small = false;
+            smallState = false;
           } else {
             _vec.push_back(std::move(*oit));
           }

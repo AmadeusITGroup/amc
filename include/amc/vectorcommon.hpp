@@ -1000,10 +1000,10 @@ class SmallVectorBase : private Alloc {
     // which cannot be forwarded from the two 32 bits stores of the previous call in a loop (2 to 3 times slower).
     const SizeType capa = _capa;
     const SizeType size = _size;
-    const bool small = capa < size;
-    T* endIt = small ? _storage.ptr() + capa : _storage.dyn() + size;
+    const bool smallState = capa < size;
+    T* endIt = smallState ? _storage.ptr() + capa : _storage.dyn() + size;
     amc::construct_at(endIt, std::forward<Args>(args)...);
-    if (small) {
+    if (smallState) {
       _capa = static_cast<SizeType>(capa + 1);
     } else {
       _size = static_cast<SizeType>(size + 1);

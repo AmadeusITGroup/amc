@@ -3,7 +3,7 @@
 cmake_minimum_required (VERSION 3.21)
 
 project(amc
-  VERSION 2.8.0
+  VERSION 2.8.1
   DESCRIPTION "Header base library of C++ containers"
   LANGUAGES CXX
 )
