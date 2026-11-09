@@ -303,7 +303,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// of the previous and new elements.
   FlatSet& operator=(FlatSet&& o) noexcept(IsNothrowMoveAssignable::value) {
     if (this != &o) {
-      moveAssign(o, IsNothrowMoveAssignable());
+      moveAssign(std::move(o), IsNothrowMoveAssignable());
     }
     return *this;
   }
@@ -618,13 +618,13 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
 
   using miterator = typename VecType::iterator;  // Custom non const iterator to allow modification of content
 
-  void moveAssign(FlatSet& o, std::true_type) noexcept {
+  void moveAssign(FlatSet&& o, std::true_type) noexcept {
     compRef() = std::move(o.compRef());
     _sortedVector = std::move(o._sortedVector);
     o._sortedVector.clear();  // the elements are moved one by one between unequal allocators: 'o' would keep them
   }
 
-  void moveAssign(FlatSet& o, std::false_type) {
+  void moveAssign(FlatSet&& o, std::false_type) {
     try {
       compRef() = std::move(o.compRef());
       _sortedVector = std::move(o._sortedVector);

@@ -1046,42 +1046,42 @@ void CheckSwap2DifferentSizeTypes() {
   std::vector<int> values(10);
   std::iota(values.begin(), values.end(), 0);
   {
-    // capacity of 'large' does not fit in the size type of 'small'
-    SmallSizeTypeVec small;
-    LargeSizeTypeVec large(values.begin(), values.end());
-    large.reserve(1000);
-    small.swap2(large);
-    EXPECT_EQ(small, SmallSizeTypeVec(values.begin(), values.end()));
-    EXPECT_TRUE(large.empty());
-    EXPECT_EQ(large.capacity(), 1000U);
-    large.swap2(small);
-    EXPECT_EQ(large, LargeSizeTypeVec(values.begin(), values.end()));
-    EXPECT_TRUE(small.empty());
+    // capacity of 'largeSizeVec' does not fit in the size type of 'smallSizeVec'
+    SmallSizeTypeVec smallSizeVec;
+    LargeSizeTypeVec largeSizeVec(values.begin(), values.end());
+    largeSizeVec.reserve(1000);
+    smallSizeVec.swap2(largeSizeVec);
+    EXPECT_EQ(smallSizeVec, SmallSizeTypeVec(values.begin(), values.end()));
+    EXPECT_TRUE(largeSizeVec.empty());
+    EXPECT_EQ(largeSizeVec.capacity(), 1000U);
+    largeSizeVec.swap2(smallSizeVec);
+    EXPECT_EQ(largeSizeVec, LargeSizeTypeVec(values.begin(), values.end()));
+    EXPECT_TRUE(smallSizeVec.empty());
   }
   {
-    // size of 'large' does not fit in the size type of 'small': vectors should not be modified
-    SmallSizeTypeVec small(values.begin(), values.end());
-    LargeSizeTypeVec large(300, 42);
-    EXPECT_THROW(small.swap2(large), std::overflow_error);
-    EXPECT_THROW(large.swap2(small), std::overflow_error);
-    EXPECT_EQ(small, SmallSizeTypeVec(values.begin(), values.end()));
-    EXPECT_EQ(large, LargeSizeTypeVec(300, 42));
+    // size of 'largeSizeVec' does not fit in the size type of 'smallSizeVec': vectors should not be modified
+    SmallSizeTypeVec smallSizeVec(values.begin(), values.end());
+    LargeSizeTypeVec largeSizeVec(300, 42);
+    EXPECT_THROW(smallSizeVec.swap2(largeSizeVec), std::overflow_error);
+    EXPECT_THROW(largeSizeVec.swap2(smallSizeVec), std::overflow_error);
+    EXPECT_EQ(smallSizeVec, SmallSizeTypeVec(values.begin(), values.end()));
+    EXPECT_EQ(largeSizeVec, LargeSizeTypeVec(300, 42));
   }
   {
     // capacities fit in the size type of each other: dynamic storages are exchanged
-    SmallSizeTypeVec small(values.begin(), values.end());
-    small.reserve(100);
-    LargeSizeTypeVec large(5, 42);
-    large.reserve(50);
-    const int* smallData = small.data();
-    const int* largeData = large.data();
-    small.swap2(large);
-    EXPECT_EQ(small.data(), largeData);
-    EXPECT_EQ(large.data(), smallData);
-    EXPECT_EQ(small, SmallSizeTypeVec(5, 42));
-    EXPECT_EQ(large, LargeSizeTypeVec(values.begin(), values.end()));
-    EXPECT_EQ(small.capacity(), 50U);
-    EXPECT_EQ(large.capacity(), 100U);
+    SmallSizeTypeVec smallSizeVec(values.begin(), values.end());
+    smallSizeVec.reserve(100);
+    LargeSizeTypeVec largeSizeVec(5, 42);
+    largeSizeVec.reserve(50);
+    const int* smallData = smallSizeVec.data();
+    const int* largeData = largeSizeVec.data();
+    smallSizeVec.swap2(largeSizeVec);
+    EXPECT_EQ(smallSizeVec.data(), largeData);
+    EXPECT_EQ(largeSizeVec.data(), smallData);
+    EXPECT_EQ(smallSizeVec, SmallSizeTypeVec(5, 42));
+    EXPECT_EQ(largeSizeVec, LargeSizeTypeVec(values.begin(), values.end()));
+    EXPECT_EQ(smallSizeVec.capacity(), 50U);
+    EXPECT_EQ(largeSizeVec.capacity(), 100U);
   }
 }
 
@@ -2014,12 +2014,12 @@ TEST(VectorTest, ThrowingMoveDoesNotLeak) {
     EXPECT_EQ(v, SV({1, 2}));
     EXPECT_EQ(v.capacity(), 4U);
 
-    SV small{Type(7)};
+    SV smallVec{Type(7)};
     nbMovesBeforeThrow = 0;
-    EXPECT_THROW(v.swap(small), MoveForbiddenException);  // relocation of 'small' to the inline storage of 'v'
+    EXPECT_THROW(v.swap(smallVec), MoveForbiddenException);  // relocation of 'smallVec' to the inline storage of 'v'
     nbMovesBeforeThrow = -1;
     EXPECT_EQ(v, SV({1, 2}));
-    EXPECT_EQ(small, SV{Type(7)});
+    EXPECT_EQ(smallVec, SV{Type(7)});
   }
   {
     // reallocation by the allocator itself, of elements which are not trivially relocatable
@@ -2537,6 +2537,15 @@ void CheckStatefulAllocator() {
       copyAssigned = v;
       EXPECT_EQ(copyAssigned, v);
       EXPECT_EQ(copyAssigned.get_allocator(), kPropagate ? alloc1 : alloc2);
+
+      VectorType copyAssignedEqualAlloc(lhsValues->begin(), lhsValues->end(), alloc1);
+      const int* lhsData = copyAssignedEqualAlloc.data();
+      copyAssignedEqualAlloc = v;  // equal allocators: memory is kept if it is large enough
+      EXPECT_EQ(copyAssignedEqualAlloc, v);
+      EXPECT_EQ(copyAssignedEqualAlloc.get_allocator(), alloc1);
+      if (values->size() <= lhsValues->size()) {
+        EXPECT_EQ(copyAssignedEqualAlloc.data(), lhsData);
+      }
 
       VectorType moveAssigned(lhsValues->begin(), lhsValues->end(), alloc2);
       VectorType rhs(v);
@@ -3077,6 +3086,161 @@ TYPED_TEST(VectorIncompleteTypeTest, RecursiveType) {
   stolen.pop_back();
   stolen.clear();
   EXPECT_TRUE(stolen.empty());
+}
+
+// Collapsing a tree by moving the children of a node into its parent: the elements replaced by the assignment own the
+// vector which is moved from. libstdc++ supports it, as its std::vector destroys the old elements last.
+TYPED_TEST(VectorIncompleteTypeTest, MoveAssignFromVectorOwnedByElement) {
+  using Node = TypeParam;
+
+  // the source is owned by the first element, the first one to be destroyed, or by the last one
+  const Node source(2, {Node(3, {Node(4)}), Node(5)});
+  for (uint32_t pos : {0U, 2U}) {
+    Node root(1, {Node(6), Node(7), Node(8)});
+    root.children[pos] = source;
+    const Node* data = root.children[pos].children.data();
+    root.children = std::move(root.children[pos].children);
+    EXPECT_EQ(root, Node(1, {Node(3, {Node(4)}), Node(5)}));
+    EXPECT_EQ(root.children.data(), data);  // constant time: the storage is stolen
+  }
+
+  // by a deeper descendant, whose ancestors are destroyed as well
+  Node deep(1, {Node(2, {Node(3, {Node(4), Node(5)})}), Node(6)});
+  deep.children = std::move(deep.children[0].children[0].children);
+  EXPECT_EQ(deep, Node(1, {Node(4), Node(5)}));
+
+  // an empty source has no storage to steal, but needs to be read as well
+  Node emptySource(1, {Node(2), Node(3)});
+  emptySource.children = std::move(emptySource.children[0].children);
+  EXPECT_EQ(emptySource, Node(1));
+
+  // the implicit move assignment of the node ends up in the same assignment of its children
+  Node wholeNode(1, {Node(2, {Node(3), Node(4)}), Node(5)});
+  wholeNode = std::move(wholeNode.children[0]);
+  EXPECT_EQ(wholeNode, Node(2, {Node(3), Node(4)}));
+}
+
+/// Node of a tree owning its children through pointers, as a node cannot hold a SmallVector of nodes: the inline
+/// storage needs complete elements. 'TriviallyRelocatable' tells whether the pointers declare themselves trivially
+/// relocatable, 'Alloc' is the allocator of the children.
+template <bool TriviallyRelocatable, template <class> class Alloc = allocator>
+struct PointerTreeNode {
+  struct Child : std::unique_ptr<PointerTreeNode> {
+    using trivially_relocatable = std::integral_constant<bool, TriviallyRelocatable>;
+
+    explicit Child(uint32_t v) : std::unique_ptr<PointerTreeNode>(new PointerTreeNode(v)) {}
+  };
+  using Children = SmallVector<Child, 2, Alloc<Child>>;
+
+  static constexpr bool kTriviallyRelocatable = TriviallyRelocatable;
+
+  explicit PointerTreeNode(uint32_t v = 0) : value(v) {}
+
+  uint32_t value;
+  Children children;
+};
+
+template <typename T>
+class SmallVectorPointerTreeTest : public ::testing::Test {};
+
+using PointerTreeTypes = ::testing::Types<PointerTreeNode<false>, PointerTreeNode<true>>;
+TYPED_TEST_SUITE(SmallVectorPointerTreeTest, PointerTreeTypes, );
+
+// Same as MoveAssignFromVectorOwnedByElement, for a SmallVector taking the dynamic storage of the vector it is moved
+// from, the replaced elements being stored inline or not.
+TYPED_TEST(SmallVectorPointerTreeTest, MoveAssignFromDynamicVectorOwnedByElement) {
+  using Node = TypeParam;
+
+  const uint32_t kNbSourceChildren = 3;  // more than the inline capacity: stored in a dynamic storage
+  for (uint32_t nbChildren : {1U, 2U, 3U, 6U}) {
+    for (uint32_t pos : {0U, nbChildren - 1U}) {
+      Node root;
+      for (uint32_t child = 0; child < nbChildren; ++child) {
+        root.children.emplace_back(child);
+      }
+      auto& source = root.children[pos]->children;
+      for (uint32_t child = 0; child < kNbSourceChildren; ++child) {
+        source.emplace_back(100U + child);
+      }
+      const auto* data = source.data();
+
+      root.children = std::move(source);
+
+      EXPECT_EQ(root.children.data(), data);  // constant time: the storage is stolen
+      ASSERT_EQ(root.children.size(), kNbSourceChildren);
+      for (uint32_t child = 0; child < kNbSourceChildren; ++child) {
+        EXPECT_EQ(root.children[child]->value, 100U + child);
+      }
+    }
+  }
+}
+
+// Same as MoveAssignFromDynamicVectorOwnedByElement, with unequal allocators which propagate: our storage is released
+// with our previous allocator before the source is stolen, the source being moved to a temporary first. The source may
+// then be stored inline as well.
+TYPED_TEST(SmallVectorPointerTreeTest, MoveAssignFromVectorOwnedByElementPropagatingAllocator) {
+  using Node = PointerTreeNode<TypeParam::kTriviallyRelocatable, PropagatingArenaAllocator>;
+  using Children = typename Node::Children;
+  using Alloc = typename Children::allocator_type;
+
+  const Alloc alloc1{ArenaAllocator(1)};
+  const Alloc alloc2{ArenaAllocator(2)};
+  const int64_t nbLiveAllocations = ArenaAllocator::NbLiveAllocations();
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  // the vector assigned to and its source are small (up to 2 elements) or large
+  for (uint32_t nbChildren : {1U, 3U}) {
+    for (uint32_t nbSourceChildren : {1U, 3U}) {
+      Children children(alloc1);
+      for (uint32_t child = 0; child < nbChildren; ++child) {
+        children.emplace_back(child);
+      }
+      Children& source = children[0]->children;
+      source = Children(alloc2);
+      for (uint32_t child = 0; child < nbSourceChildren; ++child) {
+        source.emplace_back(100U + child);
+      }
+      const auto* data = source.data();
+
+      children = std::move(source);
+
+      ASSERT_EQ(children.size(), nbSourceChildren);
+      for (uint32_t child = 0; child < nbSourceChildren; ++child) {
+        EXPECT_EQ(children[child]->value, 100U + child);
+      }
+      EXPECT_EQ(children.get_allocator(), alloc2);
+      if (nbSourceChildren > 2U) {
+        EXPECT_EQ(children.data(), data);  // constant time: the storage is stolen
+      }
+    }
+  }
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
+  EXPECT_EQ(ArenaAllocator::NbLiveAllocations(), nbLiveAllocations);
+}
+
+// Same as MoveAssignFromVectorOwnedByElement, with unequal allocators which propagate: our storage has to be released
+// with our previous allocator, and the source is still needed to get its allocator and its storage.
+TEST(VectorTest, MoveAssignFromVectorOwnedByElementPropagatingAllocator) {
+  using Node = TreeNode<PropagatingArenaAllocator, false, true>;
+  using Children = Node::Children;
+  using Alloc = Children::allocator_type;
+
+  const Alloc alloc1{ArenaAllocator(1)};
+  const Alloc alloc2{ArenaAllocator(2)};
+  const int64_t nbLiveAllocations = ArenaAllocator::NbLiveAllocations();
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  {
+    Children children({Node(1), Node(2)}, alloc1);
+    children[0].children = Children({Node(3), Node(4)}, alloc2);
+    const Node* data = children[0].children.data();
+
+    children = std::move(children[0].children);
+
+    EXPECT_EQ(children, Children({Node(3), Node(4)}));
+    EXPECT_EQ(children.data(), data);  // constant time: the storage is stolen
+    EXPECT_EQ(children.get_allocator(), alloc2);
+  }
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
+  EXPECT_EQ(ArenaAllocator::NbLiveAllocations(), nbLiveAllocations);
 }
 
 TEST(VectorTest, IncompleteType) {

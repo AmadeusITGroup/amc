@@ -288,7 +288,7 @@ class SmallSet {
   /// of the previous and new elements.
   SmallSet& operator=(SmallSet&& o) noexcept(IsNothrowMoveAssignable::value) {
     if (this != &o) {
-      moveAssign(o, IsNothrowMoveAssignable());
+      moveAssign(std::move(o), IsNothrowMoveAssignable());
     }
     return *this;
   }
@@ -832,13 +832,13 @@ class SmallSet {
     _set.clear();
   }
 
-  void moveAssign(SmallSet& o, std::true_type) noexcept {
+  void moveAssign(SmallSet&& o, std::true_type) noexcept {
     _vec = std::move(o._vec);
     _set = std::move(o._set);
     o._set.clear();  // the elements are moved one by one between unequal allocators: 'o' could keep them
   }
 
-  void moveAssign(SmallSet& o, std::false_type) {
+  void moveAssign(SmallSet&& o, std::false_type) {
     try {
       _vec = std::move(o._vec);
       _set = std::move(o._set);
