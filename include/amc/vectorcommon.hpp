@@ -639,12 +639,12 @@ class StaticVectorBase {
     std::swap(_size, o._size);
   }
 
-  void move_construct(StaticVectorBase& o, SizeType) noexcept(is_move_construct_nothrow<T>::value) {
+  void move_construct(StaticVectorBase&& o, SizeType) noexcept(is_move_construct_nothrow<T>::value) {
     amc::uninitialized_relocate_n(o.begin(), o._size, begin());
     _size = amc::exchange(o._size, SizeType{0});
   }
 
-  void move_assign(StaticVectorBase& o, SizeType) noexcept(is_shift_nothrow<T>::value) {
+  void move_assign(StaticVectorBase&& o, SizeType) noexcept(is_shift_nothrow<T>::value) {
     move_n(o.begin(), o._size, begin(), _size);
     _size = amc::exchange(o._size, SizeType{0});
   }
@@ -718,18 +718,25 @@ class StdVectorBase : private Alloc {
     std::swap(_size, o._size);
   }
 
-  void move_construct(StdVectorBase& o, SizeType) noexcept {
+  void move_construct(StdVectorBase&& o, SizeType) noexcept {
     _storage = amc::exchange(o._storage, nullptr);
     _capa = amc::exchange(o._capa, SizeType{0});
     _size = amc::exchange(o._size, SizeType{0});
   }
 
-  void move_assign(StdVectorBase& o, SizeType inplaceCapa) noexcept {
-    if (_storage) {
-      amc::destroy_n(_storage, _size);
-      freeStorage();  // Compared to swap, we can free memory directly for move assignment
+  /// 'o' is emptied before our previous elements are destroyed, as it may be owned by one of them (like in
+  /// 'node.children = std::move(node.children[0].children)', which std::vector supports in libstdc++).
+  void move_assign(StdVectorBase&& o, SizeType inplaceCapa) noexcept {
+    T* oldStorage = _storage;
+    const SizeType oldSize = _size;
+    const SizeType oldCapa = _capa;
+
+    move_construct(std::move(o), inplaceCapa);  // steals the storage of 'o' and leaves it empty
+
+    if (oldStorage != nullptr) {
+      amc::destroy_n(oldStorage, oldSize);
+      this->deallocate(oldStorage, static_cast<std::size_t>(oldCapa));
     }
-    move_construct(o, inplaceCapa);
   }
 
   void grow(std::uintmax_t minSize, bool exact = false);
@@ -882,7 +889,7 @@ class SmallVectorBase : private Alloc {
     std::swap(_size, o._size);
   }
 
-  void move_construct(SmallVectorBase& o, SizeType inplaceCapa) noexcept(is_move_construct_nothrow<T>::value) {
+  void move_construct(SmallVectorBase&& o, SizeType inplaceCapa) noexcept(is_move_construct_nothrow<T>::value) {
     if (o.isSmall()) {
       amc::uninitialized_relocate_n(o._storage.ptr(), o._capa, _storage.ptr());
     } else {
@@ -892,7 +899,7 @@ class SmallVectorBase : private Alloc {
     _size = amc::exchange(o._size, SmallSizeMember(inplaceCapa));
   }
 
-  void move_construct(StdVectorBase<T, Alloc, SizeType>& o,
+  void move_construct(StdVectorBase<T, Alloc, SizeType>&& o,
                       SizeType inplaceCapa) noexcept(is_move_construct_nothrow<T>::value) {
     if (inplaceCapa < o._capa) {
       // Steal the dynamic buffer, larger than the inline storage, to make move construct faster
@@ -912,9 +919,11 @@ class SmallVectorBase : private Alloc {
     }
   }
 
-  void move_assign(SmallVectorBase& o, SizeType inplaceCapa) noexcept(is_shift_nothrow<T>::value) {
+  /// When 'o' is large, it is emptied before our previous elements are destroyed, as it may be owned by one of them
+  /// (see StdVectorBase::move_assign). When it is small, its elements are moved one by one into ours: it must not be.
+  void move_assign(SmallVectorBase&& o, SizeType inplaceCapa) noexcept(is_shift_nothrow<T>::value) {
     if (o.isSmall()) {
-      // No need to check 'this' capacity. If 'this' is small, then 'this' capacity is same as 'o'.
+      // No need to check 'this' capacity. If 'this' is small, then 'this' capacity is larger than or equal to 'o's.
       // If 'this' is large, then 'this' capacity is larger by design.
       // Indeed, capacity cannot shrink, except for shrink_to_fit which resets to small state if possible.
       // Besides, if 'this' is large, let's not shrink to small size and keep our dynamic memory for now.
@@ -925,11 +934,14 @@ class SmallVectorBase : private Alloc {
       setSize(o._capa);
       o.setSize(0);
     } else {
-      // Clear our stuff before stealing o's guts
+      T* dynStorage = o._storage.dyn();
+      const SizeType capa = amc::exchange(o._capa, SizeType{0});
+      const SizeType size = amc::exchange(o._size, SmallSizeMember(inplaceCapa));
       destroyFreeStorage();
-      _storage.setDyn(o._storage.dyn());
-      _capa = amc::exchange(o._capa, SizeType{0});
-      _size = amc::exchange(o._size, SmallSizeMember(inplaceCapa));
+      // set last: our inline elements share their first bytes with the pointer to the dynamic storage
+      _storage.setDyn(dynStorage);
+      _capa = capa;
+      _size = size;
     }
   }
 
@@ -1989,7 +2001,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   Vector(Vector&& o) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value)
       : Base(N, o.get_allocator()) {
-    this->move_construct(o, N);
+    this->move_construct(std::move(o), N);
   }
 
   /// Build a SmallVector from a vector, stealing its dynamic storage if its capacity is larger than N. Otherwise, its
@@ -1998,14 +2010,14 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   Vector(Vector<T, Alloc, SizeType, OGrowingPolicy, 0>&& o,
          typename std::enable_if<std::is_same<OGrowingPolicy, vec::DynamicGrowingPolicy>::value && (ON > 0)>::type* = 0)
       : Base(N, o.get_allocator()) {
-    this->move_construct(o, N);
+    this->move_construct(std::move(o), N);
   }
 
   /// If 'alloc' is not equal to the allocator of 'o', its elements are moved one by one.
   Vector(Vector&& o, const Alloc& alloc) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value &&
                                                   IsAlwaysEqual::value)
       : Base(N, alloc) {
-    moveConstruct(o, IsAlwaysEqual());
+    moveConstruct(std::move(o), IsAlwaysEqual());
   }
 
   Vector(std::initializer_list<T> init, const Alloc& alloc = Alloc()) : Base(N, alloc) {
@@ -2024,7 +2036,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   Vector& operator=(Vector&& o) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value &&
                                          CanStealOnMoveAssign::value) {
     if (AMC_LIKELY(this != &o)) {
-      moveAssign(o, CanStealOnMoveAssign());
+      moveAssign(std::move(o), CanStealOnMoveAssign());
     }
     return *this;
   }
@@ -2079,14 +2091,14 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   template <class, class, class, class>
   friend class FlatSet;
 
-  void moveConstruct(Vector& o,
+  void moveConstruct(Vector&& o,
                      std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value) {
-    this->move_construct(o, N);
+    this->move_construct(std::move(o), N);
   }
 
-  void moveConstruct(Vector& o, std::false_type) {
+  void moveConstruct(Vector&& o, std::false_type) {
     if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
-      this->move_construct(o, N);
+      this->move_construct(std::move(o), N);
     } else {
       this->append(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
     }
@@ -2116,15 +2128,33 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   }
 
   /// Our allocator is equal to the one of 'o', or it propagates: we can steal the memory of 'o'.
-  void moveAssign(Vector& o, std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value) {
-    propagateAllocator(o, PropagateOnMove());
-    this->move_assign(o, N);
+  void moveAssign(Vector&& o, std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value) {
+    moveAssignPropagating(std::move(o), PropagateOnMove());
+  }
+
+  void moveAssignPropagating(Vector&& o,
+                             std::false_type) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value) {
+    this->move_assign(std::move(o), N);
+  }
+
+  /// If our allocators are unequal, our memory has to be freed by ours before it is replaced by the one of 'o'. 'o' is
+  /// then moved to a temporary first, as it may be owned by one of the elements destroyed meanwhile (see move_assign).
+  void moveAssignPropagating(Vector&& o,
+                             std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value) {
+    if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
+      this->setAllocator(o.get_allocator());
+      this->move_assign(std::move(o), N);
+    } else {
+      Vector source(std::move(o));
+      propagateAllocator(source, std::true_type());
+      this->move_assign(std::move(source), N);
+    }
   }
 
   /// Our allocator does not propagate: we can steal the memory of 'o' only if our allocators are equal.
-  void moveAssign(Vector& o, std::false_type) {
+  void moveAssign(Vector&& o, std::false_type) {
     if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
-      this->move_assign(o, N);
+      this->move_assign(std::move(o), N);
     } else {
       this->assign(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
     }

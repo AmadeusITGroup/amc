@@ -237,9 +237,9 @@ TEST(ModuleVector, MoveOnlyElements) {
   EXPECT_EQ(v.front().value(), -1);
   EXPECT_EQ(v.back().value(), 9);
 
-  amc::SmallVector<Message, 4> small(std::move(v));  // takes the storage of the amc::vector
-  EXPECT_EQ(small.size(), 9U);
-  EXPECT_EQ(small[1].value(), 2);
+  amc::SmallVector<Message, 4> smallVec(std::move(v));  // takes the storage of the amc::vector
+  EXPECT_EQ(smallVec.size(), 9U);
+  EXPECT_EQ(smallVec[1].value(), 2);
 }
 
 TEST(ModuleVector, VectorClassTemplate) {
@@ -385,9 +385,9 @@ TEST(ModuleAllocator, Allocators) {
 
   using SingletonAllocator =
       amc::BasicAllocatorWrapper<int, amc::BasicSingletonAllocatorAdaptor<SingletonBasicAllocator>>;
-  amc::SmallVector<int, 2, SingletonAllocator> small{1, 2, 3};
+  amc::SmallVector<int, 2, SingletonAllocator> smallVec{1, 2, 3};
   EXPECT_EQ(CountingBasicAllocator::nbAllocations, 2);
-  EXPECT_EQ(small.back(), 3);
+  EXPECT_EQ(smallVec.back(), 3);
 }
 
 TEST(ModuleHeaders, SameEntitiesAsTheHeaders) {

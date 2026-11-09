@@ -1442,15 +1442,15 @@ TEST(SetTest, SwapComparatorsWithTheirSwap) {
   // the comparator of a SmallSet is the one of its set, swapped by the swap of the sets, in both states
   using SmallSetType = SmallSet<int32_t, 2, Compare, amc::allocator<int32_t>, Set>;
   static_assert(amc::is_nothrow_swappable<SmallSetType>::value, "");
-  SmallSetType small({1}, Compare(10));
-  SmallSetType large({3, 105, 7}, Compare(100));
-  swap(small, large);
+  SmallSetType smallSet({1}, Compare(10));
+  SmallSetType largeSet({3, 105, 7}, Compare(100));
+  swap(smallSet, largeSet);
   EXPECT_EQ(Compare::NbSwaps(), nbSwaps + 3);
-  EXPECT_EQ(small.key_comp()._modulo, 100);
-  EXPECT_EQ(large.key_comp()._modulo, 10);
-  EXPECT_EQ(small.size(), 3U);
-  EXPECT_EQ(large.size(), 1U);
-  EXPECT_FALSE(large.insert(11).second);  // equivalent to 1 with a modulo of 10
+  EXPECT_EQ(smallSet.key_comp()._modulo, 100);
+  EXPECT_EQ(largeSet.key_comp()._modulo, 10);
+  EXPECT_EQ(smallSet.size(), 3U);
+  EXPECT_EQ(largeSet.size(), 1U);
+  EXPECT_FALSE(largeSet.insert(11).second);  // equivalent to 1 with a modulo of 10
 #endif
 }
 
