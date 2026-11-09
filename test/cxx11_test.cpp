@@ -9,11 +9,14 @@
 #include <amc/fixedcapacityvector.hpp>
 #include <amc/flatset.hpp>
 #include <amc/memory.hpp>
+#include <amc/numeric.hpp>
 #include <amc/smallvector.hpp>
 #include <amc/type_traits.hpp>
 #include <amc/vector.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -121,7 +124,51 @@ struct FinalLess final {
   bool operator()(int lhs, int rhs) const { return lhs < rhs; }
 };
 
+/// Compares saturating_add to the clamped sum computed in a wider type, for all the pairs of values of a 8 bits type
+template <class T>
+void CheckSaturatingAdd(const char* description) {
+  const int minValue = std::numeric_limits<T>::min();
+  const int maxValue = std::numeric_limits<T>::max();
+  bool ok = true;
+  for (int x = minValue; x <= maxValue; ++x) {
+    for (int y = minValue; y <= maxValue; ++y) {
+      const int expected = (std::min)((std::max)(x + y, minValue), maxValue);
+      ok = ok && static_cast<int>(amc::saturating_add(static_cast<T>(x), static_cast<T>(y))) == expected;
+    }
+  }
+  Check(ok, description);
+}
+
+template <class T, class = void>
+struct HasSaturatingAdd : std::false_type {};
+
+template <class T>
+struct HasSaturatingAdd<T, decltype(void(amc::saturating_add(T{}, T{})))> : std::true_type {};
+
+constexpr std::uintmax_t kUintMax = std::numeric_limits<std::uintmax_t>::max();
+constexpr std::intmax_t kIntMax = std::numeric_limits<std::intmax_t>::max();
+constexpr std::intmax_t kIntMin = std::numeric_limits<std::intmax_t>::min();
+
 }  // namespace
+
+// saturating_add is a noexcept constant expression returning a T, even for the types promoted to int by the addition
+static_assert(noexcept(amc::saturating_add(1, 2)), "");
+static_assert(std::is_same<decltype(amc::saturating_add(std::int8_t{1}, std::int8_t{2})), std::int8_t>::value, "");
+static_assert(amc::saturating_add(std::uintmax_t{1}, std::uintmax_t{2}) == 3U, "");
+static_assert(amc::saturating_add(kUintMax - 2U, std::uintmax_t{2}) == kUintMax, "");
+static_assert(amc::saturating_add(kUintMax, std::uintmax_t{1}) == kUintMax, "");
+static_assert(amc::saturating_add(kUintMax, kUintMax) == kUintMax, "");
+static_assert(amc::saturating_add(kIntMax, std::intmax_t{1}) == kIntMax, "");
+static_assert(amc::saturating_add(kIntMin, std::intmax_t{-1}) == kIntMin, "");
+static_assert(amc::saturating_add(kIntMin, kIntMin) == kIntMin, "");
+static_assert(amc::saturating_add(kIntMin, kIntMax) == -1, "");
+
+// like the standard function, saturating_add only takes the signed and unsigned integer types
+static_assert(HasSaturatingAdd<signed char>::value && HasSaturatingAdd<unsigned char>::value, "");
+static_assert(!HasSaturatingAdd<bool>::value && !HasSaturatingAdd<char>::value && !HasSaturatingAdd<wchar_t>::value,
+              "");
+static_assert(!HasSaturatingAdd<char16_t>::value && !HasSaturatingAdd<char32_t>::value, "");
+static_assert(!HasSaturatingAdd<double>::value, "");
 
 static_assert(amc::is_nothrow_swappable<int>::value, "");
 static_assert(!amc::is_nothrow_swappable<ThrowingMove>::value, "");
@@ -210,6 +257,8 @@ int main() {
     Check(*greater.begin() == 3 && *less.begin() == 1, "FlatSet of a function pointer or a final comparator");
   }
   static_assert(std::is_trivially_destructible<amc::FixedCapacityVector<int, 0>>::value, "");
+  CheckSaturatingAdd<std::uint8_t>("saturating_add of all the uint8_t");
+  CheckSaturatingAdd<std::int8_t>("saturating_add of all the int8_t");
 
   if (gNbFailures != 0) {
     std::fprintf(stderr, "%d failure(s)\n", gNbFailures);

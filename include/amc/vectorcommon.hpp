@@ -17,6 +17,7 @@
 #include "hasreallocate.hpp"
 #include "isdetected.hpp"
 #include "memory.hpp"
+#include "numeric.hpp"
 #include "type_traits.hpp"
 #include "utility.hpp"
 
@@ -66,6 +67,13 @@ inline bool IsInRange(const T* p, const T* first, SizeType n) noexcept {
 template <class SizeType>
 inline std::uintmax_t ToUnsignedCount(SizeType n) noexcept {
   return static_cast<std::uintmax_t>(static_cast<typename std::make_unsigned<SizeType>::type>(n));
+}
+
+/// Number of elements after adding 'count' ones to 'size', to check against the capacities. The sum saturates: with a
+/// 64 bits 'SizeType', a huge count must not wrap around to a small value which would pass the check.
+template <class SizeType>
+inline std::uintmax_t NeededCapacity(SizeType size, SizeType count) noexcept {
+  return amc::saturating_add(static_cast<std::uintmax_t>(size), ToUnsignedCount(count));
 }
 
 /// Returns 'v' as is if it is a T, otherwise explicitly converted to a T: elements of a range of another type are
@@ -1588,8 +1596,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     assert(position >= this->cbegin() && position <= cend());
     iterator pos;
     if (count != 0) {
-      const_reference newV =
-          this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(count), v, &position);
+      const_reference newV = this->adjustCapacity(NeededCapacity(this->size(), count), v, &position);
       pos = const_cast<iterator>(position);
       SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
       if (nElemsToShift == 0) {
@@ -1709,13 +1716,13 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   void append(size_type count) {
-    this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(count));
+    this->adjustCapacity(NeededCapacity(this->size(), count));
     amc::uninitialized_value_construct_n(end(), count);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
 
   void append(size_type count, const_reference v) {
-    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(count), v);
+    const_reference newV = this->adjustCapacity(NeededCapacity(this->size(), count), v);
     std::uninitialized_fill_n(end(), count, newV);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
