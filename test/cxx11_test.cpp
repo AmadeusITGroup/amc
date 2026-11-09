@@ -16,9 +16,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace {
 
@@ -49,37 +51,40 @@ struct DefaultConstructible {
 
 static_assert(!std::is_trivially_default_constructible<DefaultConstructible>::value, "");
 
-/// Default constructor throwing once 'sNbConstructionsBeforeThrow' objects have been constructed, counting live objects
-struct ThrowingDefaultConstructor {
+/// Constructors (default, and from an int) throwing once 'sNbConstructionsBeforeThrow' objects have been constructed,
+/// counting live objects
+struct ThrowingConstructor {
   static int sNbConstructionsBeforeThrow;
   static int sNbLive;
 
-  ThrowingDefaultConstructor() {
+  ThrowingConstructor() {
     if (sNbConstructionsBeforeThrow-- == 0) {
       throw 42;
     }
     ++sNbLive;
   }
 
-  ~ThrowingDefaultConstructor() { --sNbLive; }
+  explicit ThrowingConstructor(int) : ThrowingConstructor() {}
+
+  ~ThrowingConstructor() { --sNbLive; }
 };
 
-int ThrowingDefaultConstructor::sNbConstructionsBeforeThrow = 0;
-int ThrowingDefaultConstructor::sNbLive = 0;
+int ThrowingConstructor::sNbConstructionsBeforeThrow = 0;
+int ThrowingConstructor::sNbLive = 0;
 
 /// Checks that when the construction of an element throws, 'constructN' destroys the already constructed ones before
 /// propagating the exception
 template <class ConstructN>
 void CheckConstructionThrows(ConstructN constructN, const char* description) {
-  alignas(ThrowingDefaultConstructor) unsigned char storage[4 * sizeof(ThrowingDefaultConstructor)];
-  ThrowingDefaultConstructor::sNbConstructionsBeforeThrow = 2;
+  alignas(ThrowingConstructor) unsigned char storage[4 * sizeof(ThrowingConstructor)];
+  ThrowingConstructor::sNbConstructionsBeforeThrow = 2;
   bool thrown = false;
   try {
-    constructN(reinterpret_cast<ThrowingDefaultConstructor*>(storage), 4);
+    constructN(reinterpret_cast<ThrowingConstructor*>(storage), 4);
   } catch (int) {
     thrown = true;
   }
-  Check(thrown && ThrowingDefaultConstructor::sNbLive == 0, description);
+  Check(thrown && ThrowingConstructor::sNbLive == 0, description);
 }
 
 /// Unscoped enumeration: its values convert implicitly to the size types and to the element types.
@@ -115,6 +120,62 @@ void CheckEmplaceRvalueWithMoreArguments(const char* description) {
   v.emplace(v.begin(), std::string("world"), std::string::size_type{2});
   v.emplace(v.begin() + 1, std::string("amc"), std::string::size_type{1}, std::string::size_type{1});
   Check(v.size() == 3U && v[0] == "rld" && v[1] == "m" && v[2] == "ello", description);
+}
+
+/// Forward iterator generating consecutive integers: its operator* returns a prvalue, like the const_iterator of
+/// std::vector<bool> (whose iterator returns a proxy)
+struct CountingIterator {
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = int;
+  using difference_type = std::ptrdiff_t;
+  using pointer = const int*;
+  using reference = int;
+
+  int operator*() const { return _value; }
+
+  CountingIterator& operator++() {
+    ++_value;
+    return *this;
+  }
+  CountingIterator operator++(int) {
+    CountingIterator ret = *this;
+    ++_value;
+    return ret;
+  }
+
+  bool operator==(CountingIterator other) const { return _value == other._value; }
+  bool operator!=(CountingIterator other) const { return _value != other._value; }
+
+  int _value;
+};
+
+/// Before C++17, the copies of a range of trivially copyable elements must not take the address of the elements when
+/// the iterators return them by value or by proxy: all the operations taking a range compile and copy the values.
+template <class VectorType>
+void CheckRangeOfValues(const char* description) {
+  // more elements than the inline capacities, to reach the heap
+  VectorType v(CountingIterator{0}, CountingIterator{6});
+  v.insert(v.begin() + 1, CountingIterator{10}, CountingIterator{12});
+  v.insert(v.end(), CountingIterator{20}, CountingIterator{21});
+  Check(v == VectorType{0, 10, 11, 1, 2, 3, 4, 5, 20}, description);
+#ifdef AMC_NONSTD_FEATURES
+  v.append(CountingIterator{30}, CountingIterator{32});
+  Check(v.size() == 11U && v[9] == 30 && v[10] == 31, description);
+#endif
+  v.assign(CountingIterator{3}, CountingIterator{5});
+  Check(v == VectorType{3, 4}, description);
+  v.assign(CountingIterator{1}, CountingIterator{4});  // more elements than the vector, fewer than its capacity
+  Check(v == VectorType{1, 2, 3}, description);
+  v.shrink_to_fit();
+  v.assign(CountingIterator{0}, CountingIterator{7});  // more elements than its capacity
+  Check(v.size() == 7U && v.front() == 0 && v.back() == 6, description);
+
+  const std::vector<bool> bits{true, false, true};
+  amc::vector<bool> fromProxies(bits.begin(), bits.end());
+  amc::SmallVector<bool, 2> fromValues(bits.cbegin(), bits.cend());
+  fromValues.insert(fromValues.begin(), bits.cbegin(), bits.cend());
+  Check(fromProxies.size() == 3U && std::equal(bits.begin(), bits.end(), fromProxies.begin()), description);
+  Check(fromValues.size() == 6U && std::equal(bits.begin(), bits.end(), fromValues.begin() + 3), description);
 }
 
 bool GreaterInt(int lhs, int rhs) { return lhs > rhs; }
@@ -218,12 +279,14 @@ int main() {
     Check(first[1]._i == 42, "uninitialized_value_construct_n non trivial values");
     amc::destroy(first, last);
   }
+  CheckConstructionThrows([](ThrowingConstructor* first, int n) { amc::uninitialized_default_construct_n(first, n); },
+                          "uninitialized_default_construct_n throwing construction");
+  CheckConstructionThrows([](ThrowingConstructor* first, int n) { amc::uninitialized_value_construct_n(first, n); },
+                          "uninitialized_value_construct_n throwing construction");
+  // from the values of another type: each element is constructed, the already constructed ones destroyed on a throw
   CheckConstructionThrows(
-      [](ThrowingDefaultConstructor* first, int n) { amc::uninitialized_default_construct_n(first, n); },
-      "uninitialized_default_construct_n throwing construction");
-  CheckConstructionThrows(
-      [](ThrowingDefaultConstructor* first, int n) { amc::uninitialized_value_construct_n(first, n); },
-      "uninitialized_value_construct_n throwing construction");
+      [](ThrowingConstructor* first, int n) { amc::uninitialized_copy_n(CountingIterator{0}, n, first); },
+      "uninitialized_copy_n throwing construction");
 
   // inline elements smaller than a pointer share its storage
   CheckVector<amc::SmallVector<char, 8>>("SmallVector<char, 8>");
@@ -250,6 +313,14 @@ int main() {
     Check(*inlineCapacity == 4U && *maxCopiedSize == 1024U, "odr-used static constexpr data members");
     const SmallVectorType::size_type count = 10;
     Check(std::min(count, SmallVectorType::kInlineCapacity) == 4U, "kInlineCapacity bound to a reference");
+  }
+  CheckRangeOfValues<amc::vector<int>>("vector<int> from iterators returning values");
+  CheckRangeOfValues<amc::SmallVector<int, 4>>("SmallVector<int, 4> from iterators returning values");
+  CheckRangeOfValues<amc::FixedCapacityVector<int, 16>>("FixedCapacityVector<int, 16> from iterators returning values");
+  {
+    amc::FlatSet<int> s(CountingIterator{2}, CountingIterator{5});
+    s.insert(CountingIterator{0}, CountingIterator{4});
+    Check(s == amc::FlatSet<int>{0, 1, 2, 3, 4}, "FlatSet<int> from iterators returning values");
   }
   {
     amc::FlatSet<int, bool (*)(int, int)> greater({1, 3, 2}, &GreaterInt);
