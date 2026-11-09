@@ -261,6 +261,8 @@ struct MemMoveInALoop {};
 struct MemMove {};
 
 // Type factory deducing the optimization mode from the 3 defined above.
+// The memory modes copy the bytes of the objects that the iterators designate: they require lvalue references, an
+// iterator returning its elements by value, by proxy or as rvalues (std::move_iterator) uses the 'Default' mode.
 template <class InputIt, class OutputIt, bool IsMemMovePossible>
 struct ImplModeFactory {
   using InputType = typename std::iterator_traits<InputIt>::value_type;
@@ -269,7 +271,7 @@ struct ImplModeFactory {
                                     MemMoveInALoop>::type MemMoveType;
   typedef
       typename std::conditional<IsMemMovePossible && std::is_same<InputType, OutputType>::value &&
-                                    !std::is_rvalue_reference<typename std::iterator_traits<InputIt>::reference>::value,
+                                    std::is_lvalue_reference<typename std::iterator_traits<InputIt>::reference>::value,
                                 MemMoveType, Default>::type type;
 };
 }  // namespace memory_details
