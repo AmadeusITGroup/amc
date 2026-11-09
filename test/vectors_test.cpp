@@ -2231,6 +2231,31 @@ TEST(VectorTest, GrowBeyondMaxSizeThrows) {
   CheckGrowBeyondMaxSizeThrows<inplace_vector<int, 10>, std::bad_alloc>();
 }
 
+// A count which makes the new size wrap around in the widest integer type is not taken for a small one: it exceeds the
+// capacity and throws, without modifying the vector.
+template <class IntVector, class ExceptionType>
+void CheckHugeCountThrows() {
+  using SizeType = typename IntVector::size_type;
+  const SizeType maxCount = std::numeric_limits<SizeType>::max();
+  const IntVector expected{1, 2};
+  for (SizeType count : {maxCount, static_cast<SizeType>(maxCount - 1U)}) {  // with 64 bits, the sum wraps to 1, then 0
+    IntVector v(expected);
+    EXPECT_THROW(v.insert(v.begin(), count, 7), ExceptionType);
+#ifdef AMC_NONSTD_FEATURES
+    EXPECT_THROW(v.append(count), ExceptionType);
+    EXPECT_THROW(v.append(count, 7), ExceptionType);
+#endif
+    EXPECT_EQ(v, expected);
+  }
+}
+
+TEST(VectorTest, HugeCountThrows) {
+  CheckHugeCountThrows<inplace_vector<int, 4>, std::bad_alloc>();
+  CheckHugeCountThrows<FixedCapacityVector<int, 4, vec::ExceptionGrowingPolicy, uint64_t>, std::out_of_range>();
+  CheckHugeCountThrows<vector<int, std::allocator<int>, uint64_t>, std::overflow_error>();
+  CheckHugeCountThrows<SmallVector<int, 4, amc::allocator<int>, uint64_t>, std::overflow_error>();
+}
+
 // The default size type of a FixedCapacityVector is the smallest one holding its capacity
 static_assert(std::is_same<vec::SmallestSizeType<0>::type, uint8_t>::value, "");
 static_assert(std::is_same<vec::SmallestSizeType<255>::type, uint8_t>::value, "");
