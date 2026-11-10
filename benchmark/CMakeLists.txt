@@ -28,7 +28,7 @@ function(add_bench name)
 
   target_include_directories(${name} PRIVATE ../include)
   target_include_directories(${name} PRIVATE ../test)
-  target_link_libraries(${name} PRIVATE benchmark::benchmark)
+  target_link_libraries(${name} PRIVATE amc::amc benchmark::benchmark)
   AmcSetProjectProperties(${name})
 endfunction()
 

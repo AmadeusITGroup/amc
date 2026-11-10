@@ -10,13 +10,17 @@ jobs:
   xcode:
     name: Build on MacOS
     runs-on: macos-latest
+    strategy:
+      matrix:
+        # libc++: std::string is trivially relocatable when declared so
+        std_string: ["OFF", "ON"]
     steps:
       - uses: actions/checkout@v5
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
       - name: cmake
-        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=Release -DAMC_STD_STRING_TRIVIALLY_RELOCATABLE=${{ matrix.std_string }}
       - name: build
         run: cmake --build build --parallel
       - name: test

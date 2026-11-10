@@ -147,12 +147,13 @@ jobs:
       - name: test
         run: cd build && ctest -j --output-on-failure
 
+  # Pedantic (no non-standard extensions), and the standard library types not declared trivially relocatable
   ci_nonstandard_features:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - name: cmake
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DAMC_PEDANTIC=ON -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DAMC_PEDANTIC=ON -DAMC_STD_TRIVIALLY_RELOCATABLE=OFF -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
         run: cmake --build build --parallel
       - name: test
