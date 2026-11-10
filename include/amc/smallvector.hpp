@@ -274,10 +274,12 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
 }  // namespace vec
 
 /**
- * Vector optimized for *trivially relocatable types* and in 'Small' state (when its capacity is <= N).
+ * Vector optimized for *trivially relocatable types* and in 'Small' state (when its capacity is its inline capacity).
  *
  * In 'Small' state, container does not allocate memory and store elements inline. When it is possible,
  * dynamic pointer and inline storage are shared to optimize SmallVector's size.
+ * The inline capacity, kInlineCapacity, is at least N: all the elements fitting in the inline storage, which may have
+ * room for more than N of them (in the bytes of the pointer, or in the padding after the last element).
  *
  * API is compliant to C++17 std::vector, with the following extra methods:
  *  - append: shortcut for myVec.insert(myVec.end(), ..., ...)
@@ -288,7 +290,8 @@ void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
  *           Note that implementation is not noexcept, adjust capacity needs to be called for both operands.
  *
  * A SmallVector can be built from a rvalue amc::vector: it steals its dynamic storage if its capacity is larger than
- * N, otherwise it relocates its elements inline. Indeed, a 'Large' SmallVector always has a capacity larger than N.
+ * its inline capacity, otherwise it relocates its elements inline. Indeed, a 'Large' SmallVector always has a capacity
+ * larger than its inline capacity.
  *
  * In addition, size_type can be configured and is uint32_t by default. Like with std::vector, the counts taken by the
  * methods (constructors, assign, insert, resize, reserve...) are of type size_type: a larger count is converted to it

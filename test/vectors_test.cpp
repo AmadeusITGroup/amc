@@ -2662,6 +2662,69 @@ TEST(VectorTest, SmallVectorSizeOptimization) {
       "SmallVector size should be optimized");
 }
 
+/// Tells whether SmallVector<T, N> has the largest inline capacity of a SmallVector of its size, and at least N: it is
+/// as large as a SmallVector of its inline capacity, and one more inline element would make it larger.
+template <class T, std::uintmax_t N>
+constexpr bool HasLargestInlineCapacity() {
+  constexpr std::uintmax_t kInlineCapacity = SmallVector<T, N>::kInlineCapacity;
+  return N <= kInlineCapacity && sizeof(SmallVector<T, kInlineCapacity>) == sizeof(SmallVector<T, N>) &&
+         sizeof(SmallVector<T, N>) < sizeof(SmallVector<T, kInlineCapacity + 1U>);
+}
+
+// A SmallVector stores elements in all the bytes that its inline storage takes anyway: in the pointer to its dynamic
+// storage after the first elements, and in the padding after its last inline elements, up to the alignment of this
+// pointer. Its inline capacity is at least N, without making it larger. The capacity of a FixedCapacityVector stays N.
+TEST(VectorTest, SmallVectorInlineCapacityUsesFreeBytes) {
+  // whatever the sizes and alignments of the platform
+  static_assert(HasLargestInlineCapacity<char, 1>(), "");
+  static_assert(HasLargestInlineCapacity<char, 3>(), "");
+  static_assert(HasLargestInlineCapacity<char, 9>(), "");
+  static_assert(HasLargestInlineCapacity<uint16_t, 5>(), "");
+  static_assert(HasLargestInlineCapacity<int32_t, 1>(), "");
+  static_assert(HasLargestInlineCapacity<int32_t, 3>(), "");
+  static_assert(HasLargestInlineCapacity<UnalignedToPtr<3>, 4>(), "");
+  static_assert(HasLargestInlineCapacity<ComplexTriviallyRelocatableType, 1>(), "");
+
+  constexpr auto kPtrNbBytes = sizeof(char*);
+  // in the bytes of the pointer
+  static_assert(SmallVector<char, 1>::kInlineCapacity == kPtrNbBytes, "");
+  static_assert(SmallVector<char, 3>::kInlineCapacity == kPtrNbBytes, "");
+  static_assert(SmallVector<int32_t, 1>::kInlineCapacity == kPtrNbBytes / sizeof(int32_t), "");
+  static_assert(SmallVector<ComplexTriviallyRelocatableType, 1>::kInlineCapacity == 1U, "no free byte");
+  // in the padding up to the alignment of the pointer, of 8 bytes on 64-bit platforms, 4 on 32-bit ones
+  static_assert(kPtrNbBytes != 8 || SmallVector<int32_t, 3>::kInlineCapacity == 4U, "");
+  static_assert(kPtrNbBytes != 8 || SmallVector<char, 9>::kInlineCapacity == 16U, "");
+  static_assert(kPtrNbBytes != 4 || SmallVector<int32_t, 3>::kInlineCapacity == 3U, "no padding");
+  static_assert(kPtrNbBytes != 4 || SmallVector<char, 9>::kInlineCapacity == 12U, "");
+  // Bounded by the maximum of the size type minus one (a SmallVector of the maximum could not grow)
+  static_assert(kPtrNbBytes != 8 || SmallVector<char, 123, allocator<char>, int8_t>::kInlineCapacity == 126, "");
+  static_assert(FixedCapacityVector<char, 3>::kInlineCapacity == 3U, "");
+  EXPECT_EQ((FixedCapacityVector<char, 3>().capacity()), 3U);
+
+  // All the inline capacity is used before allocating, and shrink_to_fit comes back to it
+  SmallVector<char, 3> chars;
+  EXPECT_EQ(chars.capacity(), kPtrNbBytes);
+  const char* inlineData = chars.data();
+  const char* object = reinterpret_cast<const char*>(&chars);
+  EXPECT_TRUE(object <= inlineData && inlineData + kPtrNbBytes <= object + sizeof(chars));
+  std::string expected;
+  for (char c = 'a'; chars.size() < chars.capacity(); ++c) {
+    chars.push_back(c);
+    expected.push_back(c);
+  }
+  EXPECT_EQ(chars.data(), inlineData);
+  chars.push_back('z');
+  expected.push_back('z');
+  EXPECT_NE(chars.data(), inlineData);
+  EXPECT_EQ(std::string(chars.begin(), chars.end()), expected);
+  chars.pop_back();
+  expected.pop_back();
+  chars.shrink_to_fit();
+  EXPECT_EQ(chars.data(), inlineData);
+  EXPECT_EQ(chars.capacity(), kPtrNbBytes);
+  EXPECT_EQ(std::string(chars.begin(), chars.end()), expected);
+}
+
 TEST(VectorTest, SmallVectorOptimizedSizeBool) {
   using SmallBoolSmallVector = SmallVector<bool, 8>;
   SmallBoolSmallVector bools(5, false);

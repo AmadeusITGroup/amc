@@ -76,9 +76,9 @@ Allocators:
 
 ## SmallVector
 
-`amc::SmallVector<T, N, Alloc = amc::allocator<T>, SizeType = std::uint32_t>` (`<amc/smallvector.hpp>`) stores up to `N` elements in the object itself, without allocating memory. Beyond `N`, it moves them to the heap and behaves like an `amc::vector`. Once on the heap, it stays there with its capacity, even when its size goes back under `N`, until `shrink_to_fit` is called.
+`amc::SmallVector<T, N, Alloc = amc::allocator<T>, SizeType = std::uint32_t>` (`<amc/smallvector.hpp>`) stores at least `N` elements in the object itself, without allocating memory: its inline capacity `kInlineCapacity`, the capacity of an empty `SmallVector`. Beyond it, it moves them to the heap and behaves like an `amc::vector`. Once on the heap, it stays there with its capacity, even when its size goes back under the inline capacity, until `shrink_to_fit` is called.
 
-Choose `N` so that most of the vectors (90 % of them, for instance) never exceed it. The pointer to the heap storage shares its bytes with the first inline elements: a `SmallVector<char, 8>` takes 16 bytes, like an `amc::vector`.
+Choose `N` so that most of the vectors (90 % of them, for instance) never exceed it. The pointer to the heap storage shares its bytes with the first inline elements: a `SmallVector<char, 8>` takes 16 bytes, like an `amc::vector`. The inline capacity is larger than `N` when the inline storage has room for more elements anyway, without making the vector larger: in the bytes of this pointer (`SmallVector<char, 3>` and `SmallVector<int, 1>` store 8 chars and 2 ints on a 64-bit platform), and in the padding after the last inline elements, up to the alignment of this pointer (`SmallVector<int, 3>` stores 4 ints on a 64-bit platform, 3 on a 32-bit one).
 
 ```cpp
 #include <amc/smallvector.hpp>
@@ -86,7 +86,7 @@ Choose `N` so that most of the vectors (90 % of them, for instance) never exceed
 using Path = amc::SmallVector<int, 8>;  // no allocation up to 8 elements
 ```
 
-A `SmallVector` can be constructed from an rvalue `amc::vector` of the same allocator and size type: it takes its storage if its capacity is larger than `N`, otherwise it moves its elements inline.
+A `SmallVector` can be constructed from an rvalue `amc::vector` of the same allocator and size type: it takes its storage if its capacity is larger than the inline capacity, otherwise it moves its elements inline.
 
 Unlike for `std::vector`, moving or swapping a `SmallVector` in its small state moves its elements, so iterators do not follow them (see [compatibility.md](compatibility.md#differences-with-stdvector)).
 
@@ -194,4 +194,4 @@ All vectors:
 | `data()`, `operator[](i)`, `at(i)`                                     | `const` access by position (`at` throws `std::out_of_range`)                         |
 | `capacity()`, `reserve(n)`, `shrink_to_fit()`                          | the ones of the vector                                                               |
 
-Always available, as they do not conflict with the standard interface: the construction of a `SmallVector` from an `amc::vector` (see [SmallVector](#smallvector)), `front()` and `back()` of `FlatSet`, the `std::inplace_vector` members of `FixedCapacityVector`, and the `trivially_relocatable` member type of all containers.
+Always available, as they do not conflict with the standard interface: the construction of a `SmallVector` from an `amc::vector` (see [SmallVector](#smallvector)), `front()` and `back()` of `FlatSet`, the `std::inplace_vector` members of `FixedCapacityVector`, the `kInlineCapacity` constant of the vectors (see [SmallVector](#smallvector)), and the `trivially_relocatable` member type of all containers.

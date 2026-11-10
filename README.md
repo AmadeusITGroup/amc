@@ -20,7 +20,7 @@ The library needs C++11 (C++17 for `SmallSet`), and is tested up to C++23 with G
 | Container                        | Header                        | Instead of                  | Storage                                                                           |
 | -------------------------------- | ----------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
 | `amc::vector<T>`                 | `amc/vector.hpp`              | `std::vector`               | heap, grown with `realloc` for trivially relocatable types                        |
-| `amc::SmallVector<T, N>`         | `amc/smallvector.hpp`         | `std::vector`               | inline up to `N` elements, then heap                                              |
+| `amc::SmallVector<T, N>`         | `amc/smallvector.hpp`         | `std::vector`               | inline up to at least `N` elements (all that fit in its size), then heap          |
 | `amc::FixedCapacityVector<T, N>` | `amc/fixedcapacityvector.hpp` | `std::vector`               | inline, at most `N` elements: never allocates                                     |
 | `amc::inplace_vector<T, N>`      | `amc/fixedcapacityvector.hpp` | C++26 `std::inplace_vector` | a `FixedCapacityVector` with the interface of `std::inplace_vector`               |
 | `amc::FlatSet<T>`                | `amc/flatset.hpp`             | `std::set`                  | sorted vector                                                                     |

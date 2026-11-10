@@ -1948,6 +1948,45 @@ struct SanitizeInlineSize : std::integral_constant<SizeType, static_cast<SizeTyp
   static_assert(N <= static_cast<std::uintmax_t>(std::numeric_limits<SizeType>::max()),
                 "Inline storage too large for SizeType");
 };
+
+template <class T, class Alloc, class SizeType, std::uintmax_t M>
+using SmallVectorStorage = VectorWithInplaceStorage<T, Alloc, SizeType, DynamicGrowingPolicy, static_cast<SizeType>(M)>;
+
+/// Largest inline capacity from 'M' of a SmallVector of the size of the one of 'N' inline elements, while it is below
+/// the maximum of SizeType (see the static_assert of Vector). The SmallVectorStorage of the next capacity is only
+/// instantiated below this maximum, as it could otherwise be too large for the compiler.
+template <class T, class Alloc, class SizeType, std::uintmax_t N, std::uintmax_t M,
+          bool BelowMax = (M + 1U < static_cast<std::uintmax_t>(std::numeric_limits<SizeType>::max()))>
+struct LargestInlineCapacity : std::integral_constant<std::uintmax_t, M> {};
+
+template <class T, class Alloc, class SizeType, std::uintmax_t N, std::uintmax_t M>
+struct LargestInlineCapacity<T, Alloc, SizeType, N, M, true>
+    : std::conditional<
+          sizeof(SmallVectorStorage<T, Alloc, SizeType, M + 1U>) == sizeof(SmallVectorStorage<T, Alloc, SizeType, N>),
+          LargestInlineCapacity<T, Alloc, SizeType, N, M + 1U>, std::integral_constant<std::uintmax_t, M> >::type {};
+
+/// Inline capacity of a vector of 'N' requested inline elements.
+/// A SmallVector stores elements in all the bytes that its inline storage takes anyway, so that it is never smaller:
+/// the bytes of the pointer to its dynamic storage after the first elements (a SmallVector<char, 3> stores 8 chars on a
+/// 64-bit platform), and the padding at the end of the inline elements, up to the alignment of this pointer (a
+/// SmallVector<int, 3> stores 4 ints on a 64-bit platform). Only the bytes of its data members are used, not its tail
+/// padding, in which a compiler may place other objects.
+/// The capacity of a FixedCapacityVector is its documented bound N, and a vector has no inline elements (its element
+/// type may be incomplete).
+template <class T, class Alloc, class SizeType, class GrowingPolicy, std::uintmax_t N>
+struct InlineCapacity : std::integral_constant<std::uintmax_t, N> {};
+
+template <class T, class Alloc, class SizeType, std::uintmax_t N>
+struct InlineCapacity<T, Alloc, SizeType, DynamicGrowingPolicy, N> : LargestInlineCapacity<T, Alloc, SizeType, N, N> {};
+
+template <class T, class Alloc, class SizeType>
+struct InlineCapacity<T, Alloc, SizeType, DynamicGrowingPolicy, 0> : std::integral_constant<std::uintmax_t, 0> {};
+
+/// Base class of Vector, with the inline storage of its inline capacity.
+template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N>
+using VectorBase = VectorWithInplaceStorage<
+    T, Alloc, SizeType, GrowingPolicy,
+    static_cast<SizeType>(InlineCapacity<T, Alloc, SizeType, GrowingPolicy, static_cast<std::uintmax_t>(N)>::value)>;
 }  // namespace vec
 
 template <class T, class Compare, class Alloc, class VecType>
@@ -1958,9 +1997,9 @@ class FlatSet;
 /// it according to the 'propagate_on_container_*' traits. Memory is only exchanged between containers of equal
 /// allocators, otherwise elements are moved one by one.
 template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N>
-class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingPolicy, N> {
+class Vector : public vec::VectorBase<T, Alloc, SizeType, GrowingPolicy, N> {
  private:
-  using Base = vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingPolicy, N>;
+  using Base = vec::VectorBase<T, Alloc, SizeType, GrowingPolicy, N>;
   using AllocTraits = vec::AllocTraits<Alloc>;
   using IsAlwaysEqual = typename AllocTraits::is_always_equal;
   using PropagateOnMove = typename AllocTraits::propagate_on_move_assignment;
@@ -1981,47 +2020,55 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   using const_reference = typename Base::const_reference;
   using size_type = SizeType;
 
-  static constexpr SizeType kInlineCapacity = N;
+  /// Number of elements stored without allocating memory: N, or more for a SmallVector whose inline storage has room
+  /// for them anyway (see vec::InlineCapacity). It is the capacity of an empty vector.
+  static constexpr SizeType kInlineCapacity = static_cast<SizeType>(
+      vec::InlineCapacity<T, Alloc, SizeType, GrowingPolicy, static_cast<std::uintmax_t>(N)>::value);
 
-  Vector() noexcept : Base(N) {}
+  Vector() noexcept : Base(kInlineCapacity) {}
 
-  explicit Vector(const Alloc& alloc) noexcept : Base(N, alloc) {}
+  explicit Vector(const Alloc& alloc) noexcept : Base(kInlineCapacity, alloc) {}
 
   template <class InputIt, typename std::enable_if<vec::IsInputIterator<InputIt>::value, bool>::type = true>
-  Vector(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : Base(N, alloc) {
+  Vector(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) {
     this->append(first, last);
   }
 
-  explicit Vector(size_type count, const Alloc& alloc = Alloc()) : Base(N, alloc) { this->append(count); }
+  explicit Vector(size_type count, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) { this->append(count); }
 
-  Vector(size_type count, const_reference v, const Alloc& alloc = Alloc()) : Base(N, alloc) { this->append(count, v); }
-
-  Vector(const Vector& o) : Base(N, AllocTraits::SelectOnCopy(o.get_allocator())) { this->append(o.begin(), o.end()); }
-
-  Vector(const Vector& o, const Alloc& alloc) : Base(N, alloc) { this->append(o.begin(), o.end()); }
-
-  Vector(Vector&& o) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value)
-      : Base(N, o.get_allocator()) {
-    this->move_construct(std::move(o), N);
+  Vector(size_type count, const_reference v, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) {
+    this->append(count, v);
   }
 
-  /// Build a SmallVector from a vector, stealing its dynamic storage if its capacity is larger than N. Otherwise, its
-  /// elements are relocated inline (a large SmallVector always has a capacity larger than N), and its storage is freed.
+  Vector(const Vector& o) : Base(kInlineCapacity, AllocTraits::SelectOnCopy(o.get_allocator())) {
+    this->append(o.begin(), o.end());
+  }
+
+  Vector(const Vector& o, const Alloc& alloc) : Base(kInlineCapacity, alloc) { this->append(o.begin(), o.end()); }
+
+  Vector(Vector&& o) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value)
+      : Base(kInlineCapacity, o.get_allocator()) {
+    this->move_construct(std::move(o), kInlineCapacity);
+  }
+
+  /// Build a SmallVector from a vector, stealing its dynamic storage if its capacity is larger than its inline
+  /// capacity. Otherwise, its elements are relocated inline (a large SmallVector always has a capacity larger than its
+  /// inline capacity), and its storage is freed.
   template <SizeType ON = N, class OGrowingPolicy = GrowingPolicy>
   Vector(Vector<T, Alloc, SizeType, OGrowingPolicy, 0>&& o,
          typename std::enable_if<std::is_same<OGrowingPolicy, vec::DynamicGrowingPolicy>::value && (ON > 0)>::type* = 0)
-      : Base(N, o.get_allocator()) {
-    this->move_construct(std::move(o), N);
+      : Base(kInlineCapacity, o.get_allocator()) {
+    this->move_construct(std::move(o), kInlineCapacity);
   }
 
   /// If 'alloc' is not equal to the allocator of 'o', its elements are moved one by one.
   Vector(Vector&& o, const Alloc& alloc) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value &&
                                                   IsAlwaysEqual::value)
-      : Base(N, alloc) {
+      : Base(kInlineCapacity, alloc) {
     moveConstruct(std::move(o), IsAlwaysEqual());
   }
 
-  Vector(std::initializer_list<T> init, const Alloc& alloc = Alloc()) : Base(N, alloc) {
+  Vector(std::initializer_list<T> init, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) {
     this->append(init.begin(), init.end());
   }
 
@@ -2062,11 +2109,12 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
   /// dynamic storage larger than its inline capacity.
   template <class OAlloc, class OSizeType, class OGrowingPolicy, OSizeType ON>
   void swap2(Vector<T, OAlloc, OSizeType, OGrowingPolicy, ON>& o) {
-    this->swap2_impl(o, static_cast<std::uintmax_t>(N), static_cast<std::uintmax_t>(ON));
+    this->swap2_impl(o, static_cast<std::uintmax_t>(kInlineCapacity),
+                     static_cast<std::uintmax_t>(Vector<T, OAlloc, OSizeType, OGrowingPolicy, ON>::kInlineCapacity));
   }
 #endif
 
-  void shrink_to_fit() { this->shrink_impl(N); }
+  void shrink_to_fit() { this->shrink_impl(kInlineCapacity); }
 
 #ifdef AMC_CXX20
   template <class V>
@@ -2094,12 +2142,12 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   void moveConstruct(Vector&& o,
                      std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value) {
-    this->move_construct(std::move(o), N);
+    this->move_construct(std::move(o), kInlineCapacity);
   }
 
   void moveConstruct(Vector&& o, std::false_type) {
     if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
-      this->move_construct(std::move(o), N);
+      this->move_construct(std::move(o), kInlineCapacity);
     } else {
       this->append(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
     }
@@ -2135,7 +2183,7 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
 
   void moveAssignPropagating(Vector&& o,
                              std::false_type) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value) {
-    this->move_assign(std::move(o), N);
+    this->move_assign(std::move(o), kInlineCapacity);
   }
 
   /// If our allocators are unequal, our memory has to be freed by ours before it is replaced by the one of 'o'. 'o' is
@@ -2144,18 +2192,18 @@ class Vector : public vec::VectorWithInplaceStorage<T, Alloc, SizeType, GrowingP
                              std::true_type) noexcept(vec::LazyOr<N == 0, vec::is_shift_nothrow<T> >::value) {
     if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
       this->setAllocator(o.get_allocator());
-      this->move_assign(std::move(o), N);
+      this->move_assign(std::move(o), kInlineCapacity);
     } else {
       Vector source(std::move(o));
       propagateAllocator(source, std::true_type());
-      this->move_assign(std::move(source), N);
+      this->move_assign(std::move(source), kInlineCapacity);
     }
   }
 
   /// Our allocator does not propagate: we can steal the memory of 'o' only if our allocators are equal.
   void moveAssign(Vector&& o, std::false_type) {
     if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
-      this->move_assign(std::move(o), N);
+      this->move_assign(std::move(o), kInlineCapacity);
     } else {
       this->assign(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
     }
