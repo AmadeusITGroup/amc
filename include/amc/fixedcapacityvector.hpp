@@ -35,7 +35,7 @@ struct SmallestSizeType {
 struct ExceptionGrowingPolicy {
   static inline void Check(std::uintmax_t capacity, std::uintmax_t maxCapacity) {
     if (AMC_UNLIKELY(maxCapacity < capacity)) {
-      throw std::out_of_range("Growing is not possible");
+      AMC_THROW(std::out_of_range("Growing is not possible"));
     }
   }
 };
@@ -44,7 +44,7 @@ struct ExceptionGrowingPolicy {
 struct BadAllocGrowingPolicy {
   static inline void Check(std::uintmax_t capacity, std::uintmax_t maxCapacity) {
     if (AMC_UNLIKELY(maxCapacity < capacity)) {
-      throw std::bad_alloc();
+      AMC_THROW(std::bad_alloc());
     }
   }
 };

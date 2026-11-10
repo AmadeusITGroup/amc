@@ -32,8 +32,8 @@ template <class SizeType>
 inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::uintmax_t maxCapa,
                                  std::uintmax_t maxDoublingCapa, bool exact) {
   if (AMC_UNLIKELY(maxCapa < newSize)) {
-    throw std::overflow_error(
-        "Attempt to use more elements than max_size(). Use a larger size_type if it is the limit");
+    AMC_THROW(
+        std::overflow_error("Attempt to use more elements than max_size(). Use a larger size_type if it is the limit"));
   }
   if (exact) {
     return static_cast<SizeType>(newSize);
@@ -58,11 +58,11 @@ template <class Alloc, class T, class SizeType,
           typename std::enable_if<!CanReallocate<Alloc>::value, bool>::type = true>
 inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, SizeType size) {
   T* newPtr = alloc.allocate(static_cast<std::size_t>(newCapa));
-  try {
+  AMC_TRY {
     (void)amc::uninitialized_relocate_n(p, size, newPtr);
-  } catch (...) {
+  } AMC_CATCH_ALL {
     alloc.deallocate(newPtr, static_cast<std::size_t>(newCapa));
-    throw;
+    AMC_RETHROW;
   }
   alloc.deallocate(p, static_cast<std::size_t>(oldCapa));
   return newPtr;
@@ -81,11 +81,11 @@ inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, T*
 template <class T, class SizeType, typename std::enable_if<!is_move_construct_nothrow<T>::value, bool>::type = true>
 inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, T* dest) {
   (void)amc::uninitialized_move_n(first, pos, dest);
-  try {
+  AMC_TRY {
     (void)amc::uninitialized_move_n(first + pos, n - pos, dest + pos + 1);
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy_n(dest, pos);
-    throw;
+    AMC_RETHROW;
   }
   amc::destroy_n(first, n);
 }
@@ -97,17 +97,17 @@ inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, T*
 template <class Alloc, class T, class SizeType, class... Args>
 inline T* AllocateEmplace(Alloc& alloc, T* p, SizeType size, SizeType newCapa, SizeType pos, Args&&... args) {
   T* newPtr = alloc.allocate(static_cast<std::size_t>(newCapa));
-  try {
+  AMC_TRY {
     amc::construct_at(newPtr + pos, std::forward<Args>(args)...);
-    try {
+    AMC_TRY {
       uninitialized_relocate_around(p, size, pos, newPtr);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       amc::destroy_at(newPtr + pos);
-      throw;
+      AMC_RETHROW;
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     alloc.deallocate(newPtr, static_cast<std::size_t>(newCapa));
-    throw;
+    AMC_RETHROW;
   }
   return newPtr;
 }
@@ -122,11 +122,11 @@ inline void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bo
     SizeType oldCapa = capacity();
     newCapa = SafeNextCapacity(oldCapa, minSize, maxCapa, MaxDoublingCapacity<T>(), exact);
     T* dynStorage = this->allocate(static_cast<std::size_t>(newCapa));
-    try {
+    AMC_TRY {
       (void)amc::uninitialized_relocate_n(_storage.ptr(), _capa, dynStorage);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       this->deallocate(dynStorage, static_cast<std::size_t>(newCapa));
-      throw;
+      AMC_RETHROW;
     }
     _storage.setDyn(dynStorage);
     _size = _capa;
@@ -162,11 +162,11 @@ void SmallVectorBase<T, Alloc, SizeType>::assignInNewStorage(std::uintmax_t n, C
   const SizeType capa = SafeNextCapacity(capacity(), n, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)),
                                          MaxDoublingCapacity<T>(), true);
   T* dynStorage = this->allocate(static_cast<std::size_t>(capa));
-  try {
+  AMC_TRY {
     construct(dynStorage);
-  } catch (...) {
+  } AMC_CATCH_ALL {
     this->deallocate(dynStorage, static_cast<std::size_t>(capa));
-    throw;
+    AMC_RETHROW;
   }
   destroyFreeStorage();
   _storage.setDyn(dynStorage);
@@ -181,11 +181,11 @@ void StdVectorBase<T, Alloc, SizeType>::assignInNewStorage(std::uintmax_t n, Con
   const SizeType capa = SafeNextCapacity(_capa, n, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)),
                                          MaxDoublingCapacity<T>(), true);
   T* storage = this->allocate(static_cast<std::size_t>(capa));
-  try {
+  AMC_TRY {
     construct(storage);
-  } catch (...) {
+  } AMC_CATCH_ALL {
     this->deallocate(storage, static_cast<std::size_t>(capa));
-    throw;
+    AMC_RETHROW;
   }
   if (_capa != 0U) {
     amc::destroy_n(_storage, _size);
@@ -255,12 +255,12 @@ void StdVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::resetToSmall(SizeType inplaceCapa) {
   T* dynStorage = _storage.dyn();
-  try {
+  AMC_TRY {
     (void)amc::uninitialized_relocate_n(dynStorage, _size, _storage.ptr());
-  } catch (...) {
+  } AMC_CATCH_ALL {
     // the inline storage shares its first bytes with the pointer to the dynamic storage
     _storage.setDyn(dynStorage);
-    throw;
+    AMC_RETHROW;
   }
   this->deallocate(dynStorage, static_cast<std::size_t>(_capa));
   _capa = _size;

@@ -288,12 +288,12 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// the previous and new elements, unsorted or with duplicates.
   FlatSet& operator=(const FlatSet& o) {
     if (this != &o) {
-      try {
+      AMC_TRY {
         compRef() = o.compRef();
         _sortedVector = o._sortedVector;
-      } catch (...) {
+      } AMC_CATCH_ALL {
         _sortedVector.clear();
-        throw;
+        AMC_RETHROW;
       }
     }
     return *this;
@@ -321,12 +321,12 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// Linear time if 'v' is already sorted: it is not sorted again.
   /// If the comparator or a move of an element throws, the set is emptied.
   FlatSet& operator=(vector_type&& v) {
-    try {
+    AMC_TRY {
       _sortedVector = std::move(v);
       eraseDuplicates(sortIfUnsorted(mbegin()));
-    } catch (...) {
+    } AMC_CATCH_ALL {
       _sortedVector.clear();
-      throw;
+      AMC_RETHROW;
     }
     return *this;
   }
@@ -625,13 +625,13 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   }
 
   void moveAssign(FlatSet&& o, std::false_type) {
-    try {
+    AMC_TRY {
       compRef() = std::move(o.compRef());
       _sortedVector = std::move(o._sortedVector);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       _sortedVector.clear();
       o._sortedVector.clear();
-      throw;
+      AMC_RETHROW;
     }
     o._sortedVector.clear();  // the elements are moved one by one between unequal allocators: 'o' would keep them
   }
@@ -661,11 +661,11 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
 
   template <class... Last>
   static miterator EraseFromVectorImpl(std::true_type, VecType& vec, const_iterator pos, Last... last) {
-    try {
+    AMC_TRY {
       return vec.erase(pos, last...);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       vec.clear();
-      throw;
+      AMC_RETHROW;
     }
   }
 
@@ -693,13 +693,13 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     // If the vector grows, whether relocating its elements may throw, otherwise whether they are shifted.
     const bool full = _sortedVector.size() == _sortedVector.capacity();
     const bool mayLeaveMovedFromElements = full ? !std::is_nothrow_move_constructible<T>::value : pos != end();
-    try {
+    AMC_TRY {
       return full ? _sortedVector.emplace(pos, std::forward<V>(v)) : _sortedVector.insert(pos, std::forward<V>(v));
-    } catch (...) {
+    } AMC_CATCH_ALL {
       if (mayLeaveMovedFromElements) {
         _sortedVector.clear();
       }
-      throw;
+      AMC_RETHROW;
     }
   }
 
@@ -827,7 +827,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     miterator first{};
     miterator middle{};
     miterator firstDuplicateCandidate{};
-    try {
+    AMC_TRY {
       append();
       middle = mbegin() + oldSize;
       if (middle == mend()) {
@@ -839,18 +839,18 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
       // is equivalent to its successor. The merge being stable, a previous element equivalent to an appended one stays
       // before it, and is the one kept by the erasure of duplicates.
       first = mbegin() + (lowerBound(begin(), middle, *middle) - begin());
-    } catch (...) {
+    } AMC_CATCH_ALL {
       eraseAppended(oldSize, ElementMovesMayThrow());
-      throw;
+      AMC_RETHROW;
     }
-    try {
+    AMC_TRY {
       std::inplace_merge(first, middle, mend(), compRef());
       // If the appended elements are all greater than the previous ones, the merge leaves them in place: only those
       // from 'firstDuplicateCandidate' may be equivalent to their successor.
       eraseDuplicates(first == middle ? firstDuplicateCandidate : first);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       _sortedVector.clear();
-      throw;
+      AMC_RETHROW;
     }
   }
 
@@ -876,12 +876,12 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
   /// afterFailedMerge. The comparisons are made outside: if one throws, both sets stay valid.
   template <class O>
   typename O::miterator moveFrom(O& o, typename O::miterator oit, const_iterator pos) {
-    try {
+    AMC_TRY {
       _sortedVector.insert(pos, std::move(*oit));
       return o._sortedVector.erase(oit);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       afterFailedMerge(o, ElementMovesMayThrow());
-      throw;
+      AMC_RETHROW;
     }
   }
 
@@ -897,12 +897,12 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     miterator first2 = o.mbegin(), last2 = o.mend();
     while (first2 != last2) {
       if (first1 == last1) {
-        try {
+        AMC_TRY {
           _sortedVector.insert(last1, std::make_move_iterator(first2), std::make_move_iterator(last2));
           o._sortedVector.erase(first2, last2);
-        } catch (...) {
+        } AMC_CATCH_ALL {
           afterFailedMerge(o, ElementMovesMayThrow());
-          throw;
+          AMC_RETHROW;
         }
         break;
       }
@@ -957,7 +957,7 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
       o._sortedVector.setSize(static_cast<size_type>((last2 - first2) + (end2 - kept)));
     };
     const Compare& comp = compRef();
-    try {
+    AMC_TRY {
       while (last1 != first1 && last2 != first2) {
         if (comp(last1[-1], last2[-1])) {
           amc::relocate_at(--last2, --merged);
@@ -968,9 +968,9 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
           amc::relocate_at(--last1, --merged);
         }
       }
-    } catch (...) {
+    } AMC_CATCH_ALL {
       commit();
-      throw;
+      AMC_RETHROW;
     }
     // the remaining elements of 'o' are less than all the merged ones
     merged -= last2 - first2;

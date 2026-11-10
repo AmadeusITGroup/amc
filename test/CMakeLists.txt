@@ -162,6 +162,19 @@ add_unit_test(
   NO_GTEST
 )
 
+# The headers compiled with exceptions disabled (GoogleTest requires them). Not with MSVC, whose standard library needs
+# _HAS_EXCEPTIONS=0 too. Not for code coverage: this test ends with an abort, which skips writing its profile, and
+# llvm-cov would keep its records of the header functions (compiled without exceptions, they do not match the records
+# of the other tests) instead of the ones of the other tests.
+if (NOT MSVC AND NOT AMC_ENABLE_COVERAGE)
+  add_unit_test(
+    no_exceptions_test
+    no_exceptions_test.cpp
+    NO_GTEST
+  )
+  target_compile_options(no_exceptions_test PRIVATE -fno-exceptions)
+endif()
+
 if (AMC_ENABLE_COVERAGE)
   # 'coverage' target: run all the tests from scratch, then report the coverage of the headers of include/ only.
   # Outputs in AMC_COVERAGE_DIR: html/index.html, amc.lcov (for Codecov) and report.txt (summary per file).

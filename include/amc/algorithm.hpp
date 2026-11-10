@@ -102,20 +102,20 @@ auto EraseIfFromSetVector(Vec& v, Pred& pred) {
     return typename Vec::size_type{0};
   }
   auto it = std::next(dest);
-  try {
+  AMC_TRY {
     for (; it != last; ++it) {
       if (!pred(std::as_const(*it))) {
         *dest = std::move(*it);
         ++dest;
       }
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     if constexpr (std::is_nothrow_move_assignable_v<T>) {
       v.erase(dest, it);
     } else {
       v.clear();
     }
-    throw;
+    AMC_RETHROW;
   }
   const auto nbErased = static_cast<typename Vec::size_type>(last - dest);
   v.erase(dest, last);

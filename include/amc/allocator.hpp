@@ -157,7 +157,7 @@ class BasicAllocatorWrapper : private BasicAllocator {
 
   void CheckSize(size_type n) const {
     if (AMC_UNLIKELY(max_size() < n)) {
-      throw std::bad_array_new_length();
+      AMC_THROW(std::bad_array_new_length());
     }
   }
 
@@ -191,11 +191,11 @@ class BasicAllocatorWrapper : private BasicAllocator {
   pointer Reallocate(pointer p, size_type oldCapacity, size_type newCapacity, size_type nConstructedElems,
                      std::false_type) {
     pointer newPtr = allocate(newCapacity);
-    try {
+    AMC_TRY {
       amc::uninitialized_relocate_n(p, nConstructedElems, newPtr);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       deallocate(newPtr, newCapacity);
-      throw;
+      AMC_RETHROW;
     }
     deallocate(p, oldCapacity);
     return newPtr;
@@ -253,7 +253,7 @@ struct SimpleAllocator : alloc_details::SimpleAllocatorConstants<> {
   void* allocate(std::size_t n) {
     void* ptr = std::malloc(n);
     if (AMC_UNLIKELY(!ptr)) {
-      throw std::bad_alloc();
+      AMC_THROW(std::bad_alloc());
     }
     return ptr;
   }
@@ -277,7 +277,7 @@ struct SimpleAllocator : alloc_details::SimpleAllocatorConstants<> {
   static void* Realloc(void* p, std::size_t newSz) {
     p = std::realloc(p, newSz);
     if (AMC_UNLIKELY(!p)) {
-      throw std::bad_alloc();
+      AMC_THROW(std::bad_alloc());
     }
     return p;
   }

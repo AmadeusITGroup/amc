@@ -22,6 +22,7 @@ The sizes are given for x86-64 with libstdc++.
 - Single pass input iterators are read once.
 - `vector(n)` and `resize(n)` value-initialize the new elements (`int` elements are zeroed).
 - `at` throws `std::out_of_range`.
+- With exceptions disabled (`-fno-exceptions`), the errors which would throw abort the program, like with libstdc++ and libc++.
 - Allocators: `propagate_on_container_copy_assignment`, `_move_assignment` and `_swap`, `select_on_container_copy_construction` and `is_always_equal` are honored, stateful allocators work, and memory is only exchanged between equal allocators.
 - Moved-from vectors are empty (if their allocators are equal or propagate).
 - Iterator invalidation of `amc::vector` follows the rules of `std::vector`.

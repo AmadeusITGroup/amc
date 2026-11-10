@@ -100,11 +100,11 @@ template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_re
 AMC_FLATTEN_NOINLINE void shift_right(T* first, SizeType n) {
   T* last = first + n;
   amc::construct_at(last, std::move(*(last - 1)));
-  try {
+  AMC_TRY {
     std::move_backward(first, last - 1, last);
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy_at(last);
-    throw;
+    AMC_RETHROW;
   }
 }
 
@@ -124,11 +124,11 @@ AMC_FLATTEN_NOINLINE void shift_right(T* first, SizeType n, SizeType count) {
   if (count < n) {
     T* last = first + n;
     amc::uninitialized_move_n(last - count, count, last);  // move last 'count' elems to uninitialized storage
-    try {
+    AMC_TRY {
       std::move_backward(first, last - count, last);  // move remaining 'n - count' elems to initialized storage
-    } catch (...) {
+    } AMC_CATCH_ALL {
       amc::destroy_n(last, count);
-      throw;
+      AMC_RETHROW;
     }
   } else {
     // no overlap, we shift all elements to uninitialized memory
@@ -237,11 +237,11 @@ inline void copy_after_shift(ForwardIt first, SizeType, SizeType count, T* pos) 
 template <class T, class SizeType, typename std::enable_if<!amc::is_trivially_relocatable<T>::value, bool>::type = true>
 void shift_left(T* first, SizeType n) {
   T* last = first + n - 1;
-  try {
+  AMC_TRY {
     std::move(first, last + 1, first - 1);
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy_at(last);
-    throw;
+    AMC_RETHROW;
   }
   amc::destroy_at(last);
 }
@@ -348,11 +348,11 @@ inline void assign_after_shift(T* pos, V&& v) {
 template <class T, class SizeType, class Place>
 inline void shift_right_and_place(T* pos, SizeType n, Place place) {
   shift_right(pos, n);
-  try {
+  AMC_TRY {
     place(pos);
-  } catch (...) {
+  } AMC_CATCH_ALL {
     shift_left(pos + 1, n);
-    throw;
+    AMC_RETHROW;
   }
 }
 
@@ -1048,11 +1048,11 @@ class SmallVectorBase : private Alloc {
   /// (not declared noexcept(is_swap_noexcept<T>::value), as GCC warns about the rethrow when it is true)
   static void SwapDynamicBuffer(SmallVectorBase& vDynBuf, SmallVectorBase& vSmall) {
     T* oDynStorage = vDynBuf._storage.dyn();
-    try {
+    AMC_TRY {
       (void)amc::uninitialized_relocate_n(vSmall._storage.ptr(), vSmall._capa, vDynBuf._storage.ptr());
-    } catch (...) {
+    } AMC_CATCH_ALL {
       vDynBuf._storage.setDyn(oDynStorage);
-      throw;
+      AMC_RETHROW;
     }
     vSmall._storage.setDyn(oDynStorage);
   }
@@ -1476,11 +1476,11 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 
   reference at(size_type idx) {
-    if (!isValidIndex(idx)) throw std::out_of_range("Out of Range access");
+    if (!isValidIndex(idx)) AMC_THROW(std::out_of_range("Out of Range access"));
     return this->begin()[idx];
   }
   const_reference at(size_type idx) const {
-    if (!isValidIndex(idx)) throw std::out_of_range("Out of Range access");
+    if (!isValidIndex(idx)) AMC_THROW(std::out_of_range("Out of Range access"));
     return this->begin()[idx];
   }
 
@@ -1621,11 +1621,11 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
         const T* pv = std::addressof(newV);
         const_reference src = IsInRange(pv, pos, nElemsToShift) ? *(pv + count) : newV;
         shift_right(pos, nElemsToShift, count);
-        try {
+        AMC_TRY {
           fill_after_shift(pos, nElemsToShift, count, src);
-        } catch (...) {
+        } AMC_CATCH_ALL {
           undo_shift_right(pos, nElemsToShift, count);
-          throw;
+          AMC_RETHROW;
         }
       }
       this->setSize(this->size() + count);
@@ -1865,11 +1865,11 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
         amc::uninitialized_copy_n(first, n, pos);
       } else {
         shift_right(pos, nElemsToShift, n);
-        try {
+        AMC_TRY {
           copy_after_shift(first, nElemsToShift, n, pos);
-        } catch (...) {
+        } AMC_CATCH_ALL {
           undo_shift_right(pos, nElemsToShift, n);
-          throw;
+          AMC_RETHROW;
         }
       }
       this->setSize(static_cast<SizeType>(this->size() + count));
