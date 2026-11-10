@@ -72,6 +72,7 @@ struct UncheckedGrowingPolicy {
  * If new element is about to be inserted in a full Vector, behavior can be controlled thanks to provided
  * 'GrowingPolicy':
  *  - ExceptionGrowingPolicy: throw 'std::out_of_range' exception (default)
+ *  - BadAllocGrowingPolicy: throw 'std::bad_alloc' exception (like std::inplace_vector)
  *  - UncheckedGrowingPolicy: assert check (nothing is done in Release, invoking undefined behavior, abort will be
  *                            called in Debug).
  *
