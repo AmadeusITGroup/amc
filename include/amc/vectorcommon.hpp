@@ -1157,6 +1157,10 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
     swap2_deep(*this, o);
   }
 
+  /// Counterpart of DynamicVector's 'reserveExactly' for the constructors, which are its only callers here: nothing to
+  /// allocate, and they check the capacity when they append the elements.
+  void reserveExactly(std::uintmax_t) const noexcept {}
+
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
   void adjustCapacity(std::uintmax_t neededCapacity) const { GrowingPolicy::Check(neededCapacity, this->capacity()); }
 
@@ -1207,12 +1211,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
 
   size_type max_size() const noexcept { return static_cast<size_type>(MaxCapacity<SizeType>(this->get_allocator())); }
 
-  void reserve(size_type capacity) {
-    const std::uintmax_t newCapa = ToUnsignedCount(capacity);
-    if (static_cast<std::uintmax_t>(this->capacity()) < newCapa) {
-      this->grow(newCapa, true);  // Reserve with exact capacity
-    }
-  }
+  void reserve(size_type capacity) { reserveExactly(ToUnsignedCount(capacity)); }
 
   template <class... Args>
   iterator emplace(const_iterator position, Args&&... args) {
@@ -1278,6 +1277,15 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
 
   template <class V1, class V2>
   friend void swap2_deep(V1& lhs, V2& rhs);
+
+  /// Allocates exactly 'newCapa' elements if the capacity is smaller, for 'reserve' and the constructors, which
+  /// allocate exactly the capacity of their elements like the ones of std::vector: appending them to a SmallVector
+  /// would apply the growth factor to its inline capacity.
+  void reserveExactly(std::uintmax_t newCapa) {
+    if (static_cast<std::uintmax_t>(this->capacity()) < newCapa) {
+      this->grow(newCapa, true);
+    }
+  }
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
   void adjustCapacity(std::uintmax_t neededCapacity) {
@@ -1902,11 +1910,30 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     }
   }
 
+  template <class ForwardIt>
+  void constructFromImpl(ForwardIt first, ForwardIt last, std::forward_iterator_tag) {
+    const std::uintmax_t count = static_cast<std::uintmax_t>(std::distance(first, last));
+    this->reserveExactly(count);
+    appendN(first, count);
+  }
+
+  template <class InputIt>
+  void constructFromImpl(InputIt first, InputIt last, std::input_iterator_tag) {
+    appendInput(first, last);
+  }
+
  protected:
   template <class... Args>
   explicit VectorImpl(Args&&... args) noexcept
       : VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy,
                     DefineDestructor<T, WithInlineElements, GrowingPolicy>::value>(std::forward<Args&&>(args)...) {}
+
+  /// Appends the elements of [first, last) to a vector being constructed, allocating exactly their number for a
+  /// forward range (see 'reserveExactly').
+  template <class InputIt>
+  void constructFrom(InputIt first, InputIt last) {
+    constructFromImpl(first, last, typename std::iterator_traits<InputIt>::iterator_category());
+  }
 };
 
 /// Add inplace storage when needed
@@ -2029,22 +2056,30 @@ class Vector : public vec::VectorBase<T, Alloc, SizeType, GrowingPolicy, N> {
 
   explicit Vector(const Alloc& alloc) noexcept : Base(kInlineCapacity, alloc) {}
 
+  // Like std::vector, the constructors allocate exactly the capacity for their elements (see 'reserveExactly')
+
   template <class InputIt, typename std::enable_if<vec::IsInputIterator<InputIt>::value, bool>::type = true>
   Vector(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) {
-    this->append(first, last);
+    this->constructFrom(first, last);
   }
 
-  explicit Vector(size_type count, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) { this->append(count); }
+  explicit Vector(size_type count, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) {
+    this->reserveExactly(vec::ToUnsignedCount(count));
+    this->append(count);
+  }
 
   Vector(size_type count, const_reference v, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) {
+    this->reserveExactly(vec::ToUnsignedCount(count));
     this->append(count, v);
   }
 
   Vector(const Vector& o) : Base(kInlineCapacity, AllocTraits::SelectOnCopy(o.get_allocator())) {
-    this->append(o.begin(), o.end());
+    this->constructFrom(o.begin(), o.end());
   }
 
-  Vector(const Vector& o, const Alloc& alloc) : Base(kInlineCapacity, alloc) { this->append(o.begin(), o.end()); }
+  Vector(const Vector& o, const Alloc& alloc) : Base(kInlineCapacity, alloc) {
+    this->constructFrom(o.begin(), o.end());
+  }
 
   Vector(Vector&& o) noexcept(vec::LazyOr<N == 0, vec::is_move_construct_nothrow<T> >::value)
       : Base(kInlineCapacity, o.get_allocator()) {
@@ -2069,7 +2104,7 @@ class Vector : public vec::VectorBase<T, Alloc, SizeType, GrowingPolicy, N> {
   }
 
   Vector(std::initializer_list<T> init, const Alloc& alloc = Alloc()) : Base(kInlineCapacity, alloc) {
-    this->append(init.begin(), init.end());
+    this->constructFrom(init.begin(), init.end());
   }
 
   Vector& operator=(const Vector& o) {
@@ -2149,7 +2184,7 @@ class Vector : public vec::VectorBase<T, Alloc, SizeType, GrowingPolicy, N> {
     if (AllocTraits::Equal(this->get_allocator(), o.get_allocator())) {
       this->move_construct(std::move(o), kInlineCapacity);
     } else {
-      this->append(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
+      this->constructFrom(std::make_move_iterator(o.begin()), std::make_move_iterator(o.end()));
     }
   }
 

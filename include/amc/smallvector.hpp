@@ -27,7 +27,7 @@ constexpr std::uintmax_t MaxDoublingCapacity() {
 
 // New capacity for at least 'newSize' elements, not exceeding 'maxCapa' (see MaxCapacity).
 // Capacities below 'maxDoublingCapa' double, larger ones grow by a factor of 1.5.
-// 'exact' is only set by 'reserve' and the assignments, which allocate exactly the requested capacity.
+// 'exact' is only set by 'reserve', the constructors and the assignments, which allocate the exact capacity.
 template <class SizeType>
 inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::uintmax_t maxCapa,
                                  std::uintmax_t maxDoublingCapa, bool exact) {
