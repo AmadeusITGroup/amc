@@ -409,6 +409,7 @@ template <class T>
 class ElemStorage {
  public:
   T* ptr() noexcept { return reinterpret_cast<T*>(this); }
+
   const T* ptr() const noexcept { return reinterpret_cast<const T*>(this); }
 
  private:

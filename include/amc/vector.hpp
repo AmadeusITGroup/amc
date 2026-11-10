@@ -34,7 +34,9 @@ namespace amc {
  *     - assign
  *     - insert from InputIt
  *     - insert from count elements
- *   If Object movement can throw, only 'push_back' and 'emplace_back' modifiers provide strong exception warranty
+ *   If Object movement can throw (and T is not trivially relocatable), growth moves the elements to the new storage
+ *   instead of copying them like std::vector: 'push_back' and 'emplace_back' then provide strong exception safety only
+ *   when the vector is not full, and basic exception safety when it grows.
  */
 template <class T, class Alloc = amc::allocator<T>, class SizeType = std::uint32_t>
 using vector = SmallVector<T, 0U, Alloc, SizeType>;
