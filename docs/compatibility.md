@@ -79,6 +79,7 @@ Notes:
 | `constexpr`                                                                          | yes                                                                        | no                           |
 | Trivially copyable if `T` is                                                         | yes                                                                        | no                           |
 | `inplace_vector<T, 0>`                                                               | empty                                                                      | stores its capacity and size |
+| `sizeof(inplace_vector<int, 4>)`                                                     | implementation defined                                                     | 20 (size stored in 2 bytes)  |
 | `std::from_range` constructor                                                        | yes                                                                        | no                           |
 | `allocator_type`, `get_allocator()`                                                  | no                                                                         | yes, an empty tag            |
 

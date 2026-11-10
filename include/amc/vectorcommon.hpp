@@ -611,7 +611,9 @@ inline std::uintmax_t MaxCapacity(const Alloc& alloc) noexcept {
                   static_cast<std::uintmax_t>(std::allocator_traits<Alloc>::max_size(alloc)));
 }
 
-template <class T, class SizeType>
+/// The size and capacity of a FixedCapacityVector are stored as 'StoredSizeType', which may be smaller than its public
+/// 'SizeType' (see StaticGrowingPolicy): they never exceed its capacity.
+template <class T, class SizeType, class StoredSizeType>
 class StaticVectorBase {
  public:
   using iterator = T*;
@@ -627,13 +629,15 @@ class StaticVectorBase {
   const_iterator begin() const noexcept { return _firstEl.ptr(); }
   const_iterator cbegin() const noexcept { return begin(); }
 
-  SizeType size() const noexcept { return _size; }
-  SizeType capacity() const noexcept { return _capa; }
+  SizeType size() const noexcept { return static_cast<SizeType>(_size); }
+  SizeType capacity() const noexcept { return static_cast<SizeType>(_capa); }
 
  protected:
-  explicit StaticVectorBase(SizeType inplaceCapa) noexcept : _capa(inplaceCapa), _size(0) {}
+  explicit StaticVectorBase(SizeType inplaceCapa) noexcept
+      : _capa(static_cast<StoredSizeType>(inplaceCapa)), _size(0) {}
 
-  StaticVectorBase(SizeType inplaceCapa, const EmptyAlloc&) noexcept : _capa(inplaceCapa), _size(0) {}
+  StaticVectorBase(SizeType inplaceCapa, const EmptyAlloc&) noexcept
+      : _capa(static_cast<StoredSizeType>(inplaceCapa)), _size(0) {}
 
   void swap_impl(StaticVectorBase& o) noexcept(is_swap_noexcept<T>::value) {
     swap_deep(begin(), _size, o.begin(), o._size);
@@ -642,12 +646,12 @@ class StaticVectorBase {
 
   void move_construct(StaticVectorBase&& o, SizeType) noexcept(is_move_construct_nothrow<T>::value) {
     amc::uninitialized_relocate_n(o.begin(), o._size, begin());
-    _size = amc::exchange(o._size, SizeType{0});
+    _size = amc::exchange(o._size, StoredSizeType{0});
   }
 
   void move_assign(StaticVectorBase&& o, SizeType) noexcept(is_shift_nothrow<T>::value) {
     move_n(o.begin(), o._size, begin(), _size);
-    _size = amc::exchange(o._size, SizeType{0});
+    _size = amc::exchange(o._size, StoredSizeType{0});
   }
 
   void shrink_impl(SizeType) noexcept {}
@@ -656,26 +660,26 @@ class StaticVectorBase {
 
   void incrSize() noexcept { ++_size; }
   void decrSize() noexcept { --_size; }
-  void setSize(SizeType s) noexcept { _size = s; }
+  void setSize(SizeType s) noexcept { _size = static_cast<StoredSizeType>(s); }
 
   /// Constructs a new element at the end from 'args' and increments the size, the vector not being full.
   /// The size is read before the construction and written after it: the compiler would otherwise reload it after the
   /// construction, as the new element may alias it (an element type of chars, or of integers of the type of SizeType).
   template <class... Args>
   T* constructBack(Args&&... args) {
-    const SizeType size = _size;
+    const StoredSizeType size = _size;
     T* endIt = begin() + size;
     amc::construct_at(endIt, std::forward<Args>(args)...);
-    _size = static_cast<SizeType>(size + 1);
+    _size = static_cast<StoredSizeType>(size + 1);
     return endIt;
   }
 
  private:
   // Capacity is added as member of the object to decrease code generation.
-  // It's usually not a concern as SizeType is mostly small for FixedCapacityVector (upper bound is known at compile
+  // It's usually not a concern as StoredSizeType is small for FixedCapacityVector (upper bound is known at compile
   // time).
-  const SizeType _capa;
-  SizeType _size;
+  const StoredSizeType _capa;
+  StoredSizeType _size;
   ElemStorage<T> _firstEl;  // Inplace elements will be appended to this first one, do not add fields in between
 };
 
@@ -1085,8 +1089,11 @@ void swap2_deep(V1& lhs, V2& rhs) {
   rhs.setSize(static_cast<SizeType2>(size1));
 }
 
-template <class T, class SizeType, class GrowingPolicy>
-class StaticVector : public StaticVectorBase<T, SizeType> {
+/// 'StaticPolicy' is a StaticGrowingPolicy: the growing policy of the FixedCapacityVector, and its stored size type.
+/// No member is named after the growing policy: MSVC (without /permissive-) looks up the names of the derived classes
+/// in their dependent bases, where it would hide their 'GrowingPolicy' template parameter.
+template <class T, class SizeType, class StaticPolicy>
+class StaticVector : public StaticVectorBase<T, SizeType, typename StaticPolicy::StoredSizeType> {
  public:
   using reference = T&;
   using iterator = T*;
@@ -1096,12 +1103,12 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
 
   size_type max_size() const noexcept { return this->capacity(); }
 
-  void reserve(size_type capacity) { GrowingPolicy::Check(capacity, this->capacity()); }
+  void reserve(size_type capacity) { StaticPolicy::GrowingPolicy::Check(capacity, this->capacity()); }
 
   template <class... Args>
   iterator emplace(const_iterator position, Args&&... args) {
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
-    GrowingPolicy::Check(this->size() + 1U, this->capacity());
+    StaticPolicy::GrowingPolicy::Check(this->size() + 1U, this->capacity());
     iterator pos = const_cast<iterator>(position);
     emplace_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::forward<Args>(args)...);
     this->incrSize();
@@ -1110,7 +1117,7 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
 
   template <class... Args>
   reference emplace_back(Args&&... args) {
-    GrowingPolicy::Check(this->size() + 1U, this->capacity());
+    StaticPolicy::GrowingPolicy::Check(this->size() + 1U, this->capacity());
     return *this->constructBack(std::forward<Args>(args)...);
   }
 
@@ -1139,7 +1146,8 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
 
  protected:
   template <class... Args>
-  explicit StaticVector(Args&&... args) noexcept : StaticVectorBase<T, SizeType>(std::forward<Args&&>(args)...) {}
+  explicit StaticVector(Args&&... args) noexcept
+      : StaticVectorBase<T, SizeType, typename StaticPolicy::StoredSizeType>(std::forward<Args&&>(args)...) {}
 
   template <class, class, class>
   friend class StaticVector;
@@ -1162,7 +1170,9 @@ class StaticVector : public StaticVectorBase<T, SizeType> {
   void reserveExactly(std::uintmax_t) const noexcept {}
 
   // Adjust capacity methods take uintmax_t as parameter to check for size_type overflow
-  void adjustCapacity(std::uintmax_t neededCapacity) const { GrowingPolicy::Check(neededCapacity, this->capacity()); }
+  void adjustCapacity(std::uintmax_t neededCapacity) const {
+    StaticPolicy::GrowingPolicy::Check(neededCapacity, this->capacity());
+  }
 
   /// Counterpart of DynamicVector's 'assignInNewStorage', for 'n' larger than the capacity: a FixedCapacityVector
   /// cannot grow, its growing policy handles the overflow (UncheckedGrowingPolicy returns, the behavior is undefined).
@@ -2009,10 +2019,53 @@ struct InlineCapacity<T, Alloc, SizeType, DynamicGrowingPolicy, N> : LargestInli
 template <class T, class Alloc, class SizeType>
 struct InlineCapacity<T, Alloc, SizeType, DynamicGrowingPolicy, 0> : std::integral_constant<std::uintmax_t, 0> {};
 
+/// Tells whether 'N' is at most 'Max', both of the same type: in the template arguments below, the built-in operator
+/// between N and the maximum of a smaller type would make GCC warn that the "comparison is always false due to limited
+/// range of data type" (-Wtype-limits). It also avoids the heavy <functional> header of std::less_equal.
+template <std::uintmax_t N, std::uintmax_t Max>
+struct FitsIn : std::integral_constant<bool, (N <= Max)> {};
+
+/// Wrapper to get the smallest needed type for holding a maximum number of N elements
+template <std::uintmax_t N>
+struct SmallestSizeType {
+  // clang-format off
+  using type = typename std::conditional<FitsIn<N, std::numeric_limits<std::uint8_t>::max()>::value, std::uint8_t,
+               typename std::conditional<FitsIn<N, std::numeric_limits<std::uint16_t>::max()>::value, std::uint16_t,
+               typename std::conditional<FitsIn<N, std::numeric_limits<std::uint32_t>::max()>::value, std::uint32_t,
+          std::uint64_t>::type>::type>::type;
+  // clang-format on
+};
+
+/// Growing policy given to the base classes of a FixedCapacityVector: its growing policy 'Policy', and the type in
+/// which they store its size and capacity (see BaseGrowingPolicy). It does not derive from 'Policy', which may be
+/// final.
+template <class Policy, class StoredSize>
+struct StaticGrowingPolicy {
+  using GrowingPolicy = Policy;
+  using StoredSizeType = StoredSize;
+};
+
+/// Growing policy of the base classes of a Vector. A FixedCapacityVector stores its size and capacity, which never
+/// exceed N, in the smallest unsigned type holding N if it is smaller than its size type: an inplace_vector<int, 4>,
+/// whose size type is std::size_t, takes 20 bytes instead of 32. This type is at least a std::uint16_t: a std::uint8_t
+/// is a character type, which may alias any element, so the compiler would reload the size after each store to an
+/// element (GCC does not vectorize a loop over the elements any more).
+template <class GrowingPolicy, class SizeType, std::uintmax_t N>
+struct BaseGrowingPolicy {
+  using SmallestType = typename SmallestSizeType<(N < 256U ? 256U : N)>::type;
+  using type = StaticGrowingPolicy<GrowingPolicy, typename std::conditional<(sizeof(SmallestType) < sizeof(SizeType)),
+                                                                            SmallestType, SizeType>::type>;
+};
+
+template <class SizeType, std::uintmax_t N>
+struct BaseGrowingPolicy<DynamicGrowingPolicy, SizeType, N> {
+  using type = DynamicGrowingPolicy;
+};
+
 /// Base class of Vector, with the inline storage of its inline capacity.
 template <class T, class Alloc, class SizeType, class GrowingPolicy, SizeType N>
 using VectorBase = VectorWithInplaceStorage<
-    T, Alloc, SizeType, GrowingPolicy,
+    T, Alloc, SizeType, typename BaseGrowingPolicy<GrowingPolicy, SizeType, static_cast<std::uintmax_t>(N)>::type,
     static_cast<SizeType>(InlineCapacity<T, Alloc, SizeType, GrowingPolicy, static_cast<std::uintmax_t>(N)>::value)>;
 }  // namespace vec
 

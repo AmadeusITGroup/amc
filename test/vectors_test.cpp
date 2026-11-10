@@ -42,9 +42,10 @@ class VectorTest : public ::testing::Test {
 //  - the element type: trivially copyable (and trivially default constructible or not), trivially relocatable, non
 //    trivially relocatable, unaligned, over-aligned
 //  - for growable vectors, the allocator: with 'reallocate' (amc::allocator, default) or without (std::allocator)
-//  - small and signed size types
+//  - small and signed size types, and for FixedCapacityVector, a size type larger than the type in which it stores its
+//    size (inplace_vector: std::size_t, stored in a std::uint16_t), and the growing policies
 typedef ::testing::Types<
-    FixedCapacityVector<char, 23>, FixedCapacityVector<TriviallyCopyableType, 18>,
+    FixedCapacityVector<char, 23>, inplace_vector<TriviallyCopyableType, 18>,
     FixedCapacityVector<ComplexNonTriviallyRelocatableType, 17>,
     FixedCapacityVector<ComplexTriviallyRelocatableType, 29>,
 
@@ -761,6 +762,87 @@ TEST(VectorTest, FixedCapacityVectorWithoutCapacity) {
   FixedCapacityVector<std::string, 0> strings;
   EXPECT_THROW(strings.emplace_back("abc"), std::out_of_range);
   EXPECT_THROW((inplace_vector<int, 0>().push_back(1)), std::bad_alloc);
+}
+
+/// Type in which a FixedCapacityVector of size type 'SizeType' and capacity 'N' stores its size and capacity
+template <class SizeType, std::uintmax_t N>
+using StoredSizeType = typename vec::BaseGrowingPolicy<vec::ExceptionGrowingPolicy, SizeType, N>::type::StoredSizeType;
+
+// A FixedCapacityVector whose size type is larger than the smallest unsigned type holding N, like inplace_vector (whose
+// size type is std::size_t, like the one of std::inplace_vector), stores its size and capacity in the smaller type, but
+// at least in a std::uint16_t (a std::uint8_t, a character type, would alias the elements): with elements aligned on 4
+// bytes or more, it is as small as with the default size type. Its counts are checked as values of its size type,
+// before any narrowing.
+TEST(VectorTest, FixedCapacityVectorStoresSmallestSizeType) {
+  static_assert(std::is_same<inplace_vector<int, 4>::size_type, std::size_t>::value, "");
+  static_assert(std::is_same<StoredSizeType<std::size_t, 4>, uint16_t>::value, "");
+  static_assert(std::is_same<StoredSizeType<std::size_t, 300>, uint16_t>::value, "");
+  static_assert(std::is_same<StoredSizeType<std::size_t, 70000>, uint32_t>::value, "");
+  static_assert(std::is_same<StoredSizeType<uint16_t, 200>, uint16_t>::value, "");
+  static_assert(std::is_same<StoredSizeType<uint8_t, 200>, uint8_t>::value, "");  // the default size type is kept
+  using FixedCapacityVectorChar3 = FixedCapacityVector<char, 3, vec::BadAllocGrowingPolicy, uint16_t>;
+  using FixedCapacityVectorChar0 = FixedCapacityVector<char, 0, vec::BadAllocGrowingPolicy, uint16_t>;
+  static_assert(sizeof(inplace_vector<int, 4>) == sizeof(FixedCapacityVector<int, 4>), "");
+  static_assert(sizeof(inplace_vector<char, 300>) == sizeof(FixedCapacityVector<char, 300>), "");
+  static_assert(sizeof(inplace_vector<char, 3>) == sizeof(FixedCapacityVectorChar3), "");
+  static_assert(sizeof(inplace_vector<char, 0>) == sizeof(FixedCapacityVectorChar0), "");
+  static_assert(sizeof(FixedCapacityVector<int, 10, vec::ExceptionGrowingPolicy, uint32_t>) ==
+                    sizeof(FixedCapacityVector<int, 10>),
+                "");
+  static_assert(std::is_trivially_destructible<inplace_vector<int, 4>>::value, "");
+  static_assert(is_trivially_relocatable<inplace_vector<int, 4>>::value, "");
+
+  using VectorType = inplace_vector<uint32_t, 300>;  // size and capacity stored in a uint16_t
+  VectorType v;
+  EXPECT_EQ(v.capacity(), 300U);
+  EXPECT_EQ(v.max_size(), 300U);
+  for (uint32_t i = 0; i < 300U; ++i) {
+    v.push_back(i);
+  }
+  EXPECT_EQ(v.size(), 300U);
+  EXPECT_EQ(v.try_push_back(1), nullptr);
+  EXPECT_THROW(v.push_back(1), std::bad_alloc);
+  // counts which would wrap around to a smaller value in a uint16_t
+  constexpr std::size_t kWrappingCount = std::size_t{1} << 16;
+  EXPECT_THROW(v.resize(kWrappingCount + 1), std::bad_alloc);
+  EXPECT_THROW(v.reserve(kWrappingCount), std::bad_alloc);
+  EXPECT_THROW(v.insert(v.begin(), kWrappingCount, 1U), std::bad_alloc);
+  EXPECT_THROW(static_cast<void>(VectorType(kWrappingCount + 2, 1U)), std::bad_alloc);
+  EXPECT_EQ(v.size(), 300U);
+
+  VectorType other(v.begin() + 100, v.end());
+  EXPECT_EQ(other.size(), 200U);
+  v.swap(other);
+  EXPECT_EQ(v.size(), 200U);
+  EXPECT_EQ(other.size(), 300U);
+  EXPECT_EQ(v.front(), 100U);
+  v.erase(v.begin(), v.begin() + 50);
+  v.insert(v.begin(), 150, 7U);
+  EXPECT_EQ(v.size(), 300U);
+  EXPECT_EQ(v[149], 7U);
+  EXPECT_EQ(v[150], 150U);
+  other = std::move(v);
+  EXPECT_EQ(other.size(), 300U);
+  EXPECT_TRUE(v.empty());
+}
+
+/// Growing policy of a program, which may be final: the vectors do not derive from it.
+struct FinalGrowingPolicy final {
+  static void Check(std::uintmax_t capacity, std::uintmax_t maxCapacity) {
+    if (maxCapacity < capacity) {
+      throw std::length_error("FinalGrowingPolicy");
+    }
+  }
+};
+
+TEST(VectorTest, FixedCapacityVectorFinalGrowingPolicy) {
+  FixedCapacityVector<int, 4, FinalGrowingPolicy> v{1, 2, 3, 4};
+  EXPECT_THROW(v.push_back(5), std::length_error);
+  // size and capacity stored in a smaller type than the size type
+  FixedCapacityVector<int, 4, FinalGrowingPolicy, std::size_t> wide(v.begin(), v.end());
+  EXPECT_THROW(wide.insert(wide.begin(), 0), std::length_error);
+  EXPECT_THROW(wide.reserve(5), std::length_error);
+  EXPECT_EQ(wide, decltype(wide)({1, 2, 3, 4}));
 }
 
 #ifdef AMC_CXX23

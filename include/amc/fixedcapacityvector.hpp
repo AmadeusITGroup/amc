@@ -3,33 +3,14 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <new>
 #include <stdexcept>
-#include <type_traits>
 
 #include "config.hpp"
 #include "vectorcommon.hpp"
 
 namespace amc {
 namespace vec {
-
-/// Tells whether 'N' is at most 'Max', both of the same type: in the template arguments below, the built-in operator
-/// between N and the maximum of a smaller type would make GCC warn that the "comparison is always false due to limited
-/// range of data type" (-Wtype-limits). It also avoids the heavy <functional> header of std::less_equal.
-template <std::uintmax_t N, std::uintmax_t Max>
-struct FitsIn : std::integral_constant<bool, (N <= Max)> {};
-
-/// Wrapper to get the smallest needed type for holding a maximum number of N elements
-template <std::uintmax_t N>
-struct SmallestSizeType {
-  // clang-format off
-  using type = typename std::conditional<FitsIn<N, std::numeric_limits<std::uint8_t>::max()>::value, std::uint8_t,
-               typename std::conditional<FitsIn<N, std::numeric_limits<std::uint16_t>::max()>::value, std::uint16_t,
-               typename std::conditional<FitsIn<N, std::numeric_limits<std::uint32_t>::max()>::value, std::uint32_t,
-          std::uint64_t>::type>::type>::type;
-  // clang-format on
-};
 
 /// Throw exception in the case we attempt to exceed inplace capacity (default mode)
 struct ExceptionGrowingPolicy {
@@ -84,8 +65,10 @@ struct UncheckedGrowingPolicy {
  *           all combinations are possible between the 3 types of vectors.
  *           Note that implementation is not noexcept, adjust capacity needs to be called for both operands.
  *
- * In addition, size_type can be configured and is the smallest unsigned integral type able to hold N elements. Like
- * with std::vector, the counts taken by the methods (constructors, assign, insert, resize, reserve...) are of type
+ * In addition, size_type can be configured and is the smallest unsigned integral type able to hold N elements (with a
+ * larger one, like the std::size_t of inplace_vector, the size and capacity are still stored in this smallest type, but
+ * at least in a uint16_t, which does not alias the elements).
+ * Like with std::vector, the counts taken by the methods (constructors, assign, insert, resize, reserve...) are of type
  * size_type: a larger count is converted to it by the call (wrapping around for an unsigned type), before the vector
  * can check it against its capacity. For instance, FixedCapacityVector<int, 10>::reserve(260) reserves 4 elements
  * (uint8_t size_type) and does not throw.
