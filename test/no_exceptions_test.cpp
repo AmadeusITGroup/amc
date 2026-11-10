@@ -70,7 +70,7 @@ void CheckVectorOfStrings(const char* description) {
   Check(Equals(copy, ref) && Equals(v, copyRef), description);
 }
 
-/// Fills and empties a vector of unique_ptr, which owns memory.
+/// Fills and empties a vector of unique_ptr, which grows with 'realloc' (trivially relocatable elements).
 template <class VectorType>
 void CheckVectorOfUniquePtrs(const char* description) {
   VectorType v;

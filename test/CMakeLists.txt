@@ -87,6 +87,8 @@ function(add_unit_test name)
      set_target_properties(${name} PROPERTIES CXX_STANDARD ${MY_CXX_STANDARD} CXX_STANDARD_REQUIRED ON)
    endif()
    target_include_directories(${name} PRIVATE ../include)
+   # the compile definitions of the options AMC_STD_TRIVIALLY_RELOCATABLE and AMC_STD_STRING_TRIVIALLY_RELOCATABLE
+   target_link_libraries(${name} PRIVATE amc::amc)
    if (MY_MODULE)
      target_link_libraries(${name} PRIVATE amc::module)
      # Not scanned by default: the policy CMP0155 is not set, as the project supports CMake versions without modules

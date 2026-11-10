@@ -5,21 +5,33 @@
 #include <amc/smallvector.hpp>
 #include <amc/vector.hpp>
 #include <array>
+#include <exception>
+#include <forward_list>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <list>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
+
+#if __has_include(<memory_resource>)
+#include <memory_resource>
+#endif
 
 #ifdef AMC_CXX23
 #include <ranges>
+#if __has_include(<expected>)
+#include <expected>
+#endif
 #endif
 
 #include "testhelpers.hpp"
@@ -2809,6 +2821,271 @@ TEST(VectorTest, StatefulAllocatorDynamicStorageExchange) {
   }
   EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
   EXPECT_EQ(ArenaAllocator::NbLiveAllocations(), nbLiveAllocations);
+}
+
+/// Deleter of a std::unique_ptr which is not trivially relocatable (not trivially copyable).
+struct NonTriviallyRelocatableDeleter {
+  NonTriviallyRelocatableDeleter() = default;
+  NonTriviallyRelocatableDeleter(const NonTriviallyRelocatableDeleter&) {}
+  void operator()(int* p) const { delete p; }
+};
+
+// Expected trait of the standard library types declared trivially relocatable by amc, with the same conditions as
+// type_traits.hpp: all of them unless AMC_NO_STD_TRIVIALLY_RELOCATABLE is defined, std::vector not in the debug modes
+// of the standard libraries, std::optional not with AddressSanitizer in the MSVC STL, and std::string on request, for
+// the implementations in which it is (not with AddressSanitizer).
+#if defined(__SANITIZE_ADDRESS__)
+#define AMC_TEST_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define AMC_TEST_ASAN 1
+#endif
+#endif
+
+#ifdef AMC_NO_STD_TRIVIALLY_RELOCATABLE
+constexpr bool kStdTriviallyRelocatable = false;
+#else
+constexpr bool kStdTriviallyRelocatable = true;
+#endif
+
+#if defined(_GLIBCXX_DEBUG) || defined(_LIBCPP_ENABLE_DEBUG_MODE) || defined(_LIBCPP_DEBUG) || \
+    (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0)
+constexpr bool kStdVectorTriviallyRelocatable = false;
+#else
+constexpr bool kStdVectorTriviallyRelocatable = kStdTriviallyRelocatable;
+#endif
+
+#if defined(_MSVC_STL_VERSION) && defined(AMC_TEST_ASAN)
+constexpr bool kStdOptionalTriviallyRelocatable = false;
+#else
+constexpr bool kStdOptionalTriviallyRelocatable = kStdTriviallyRelocatable;
+#endif
+
+#if defined(AMC_STD_STRING_TRIVIALLY_RELOCATABLE) && !defined(AMC_TEST_ASAN) &&                      \
+    ((defined(_LIBCPP_VERSION) && !defined(_LIBCPP_ENABLE_DEBUG_MODE) && !defined(_LIBCPP_DEBUG)) || \
+     (defined(_MSVC_STL_VERSION) && _ITERATOR_DEBUG_LEVEL == 0) ||                                   \
+     (defined(_GLIBCXX_USE_CXX11_ABI) && _GLIBCXX_USE_CXX11_ABI == 0))
+constexpr bool kStdStringTriviallyRelocatable = true;
+#else
+constexpr bool kStdStringTriviallyRelocatable = false;
+#endif
+
+// The standard library types which hold no pointer to themselves in the major implementations are trivially
+// relocatable if what they store is: vectors of them grow with 'realloc', and shift them with 'memmove', which keeps
+// their ownership. std::pair and std::allocator always are, as in the previous versions of amc.
+TEST(VectorTest, StandardTypesTriviallyRelocatable) {
+  static_assert(is_trivially_relocatable<std::unique_ptr<int>>::value == kStdTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::unique_ptr<int[]>>::value == kStdTriviallyRelocatable, "");
+  static_assert(!is_trivially_relocatable<std::unique_ptr<int, NonTriviallyRelocatableDeleter>>::value, "");
+  static_assert(is_trivially_relocatable<std::shared_ptr<int>>::value == kStdTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::weak_ptr<int>>::value == kStdTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::exception_ptr>::value == kStdTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::tuple<>>::value, "");  // trivially copyable
+  static_assert(is_trivially_relocatable<std::tuple<int, std::unique_ptr<int>>>::value == kStdTriviallyRelocatable, "");
+  static_assert(!is_trivially_relocatable<std::tuple<int, ComplexNonTriviallyRelocatableType>>::value, "");
+  static_assert(is_trivially_relocatable<std::pair<int, std::allocator<int>>>::value, "");
+  static_assert(is_trivially_relocatable<std::pair<int, std::shared_ptr<int>>>::value == kStdTriviallyRelocatable, "");
+  static_assert(!is_trivially_relocatable<std::pair<int, ComplexNonTriviallyRelocatableType>>::value, "");
+  static_assert(is_trivially_relocatable<std::array<std::unique_ptr<int>, 2>>::value == kStdTriviallyRelocatable, "");
+  static_assert(!is_trivially_relocatable<std::array<ComplexNonTriviallyRelocatableType, 2>>::value, "");
+  static_assert(is_trivially_relocatable<std::vector<int>>::value == kStdVectorTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::vector<bool>>::value == kStdVectorTriviallyRelocatable, "");
+  // the elements of a std::vector are on the heap, its allocator is in the object
+  static_assert(is_trivially_relocatable<std::vector<ComplexNonTriviallyRelocatableType>>::value ==
+                    kStdVectorTriviallyRelocatable,
+                "");
+  static_assert(!is_trivially_relocatable<std::vector<int, SelfAddressAllocator<int>>>::value, "");
+  static_assert(
+      is_trivially_relocatable<std::optional<std::unique_ptr<int>>>::value == kStdOptionalTriviallyRelocatable, "");
+  static_assert(!is_trivially_relocatable<std::optional<ComplexNonTriviallyRelocatableType>>::value, "");
+  static_assert(is_trivially_relocatable<std::variant<int, std::shared_ptr<int>>>::value == kStdTriviallyRelocatable,
+                "");
+  static_assert(!is_trivially_relocatable<std::variant<int, ComplexNonTriviallyRelocatableType>>::value, "");
+#ifdef __cpp_lib_expected
+  static_assert(is_trivially_relocatable<std::expected<std::unique_ptr<int>, std::exception_ptr>>::value ==
+                    kStdTriviallyRelocatable,
+                "");
+  static_assert(
+      is_trivially_relocatable<std::expected<const void, std::unique_ptr<int>>>::value == kStdTriviallyRelocatable, "");
+  static_assert(!is_trivially_relocatable<std::expected<int, ComplexNonTriviallyRelocatableType>>::value, "");
+#endif
+  static_assert(is_trivially_relocatable<std::string>::value == kStdStringTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::wstring>::value == kStdStringTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::pair<std::string, int>>::value == kStdStringTriviallyRelocatable, "");
+  static_assert(vec::CanReallocate<allocator<std::unique_ptr<int>>>::value == kStdTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::forward_list<int>>::value == kStdVectorTriviallyRelocatable, "");
+  // cv-qualified types are relocatable as their unqualified type: the values of map-like vectors grow with 'realloc'
+  static_assert(is_trivially_relocatable<const std::unique_ptr<int>>::value == kStdTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<const volatile std::shared_ptr<int>>::value == kStdTriviallyRelocatable, "");
+  static_assert(
+      vec::CanReallocate<allocator<std::pair<const std::unique_ptr<int>, int>>>::value == kStdTriviallyRelocatable, "");
+  static_assert(!is_trivially_relocatable<std::pair<const ComplexNonTriviallyRelocatableType, int>>::value, "");
+  static_assert(is_trivially_relocatable<const ComplexTriviallyRelocatableType>::value, "");  // member type
+
+  vector<std::unique_ptr<int>> uniquePtrs;
+  SmallVector<std::shared_ptr<int>, 2> sharedPtrs;
+  const std::shared_ptr<int> shared = std::make_shared<int>(-1);
+  for (int i = 0; i < 100; ++i) {
+    uniquePtrs.push_back(std::unique_ptr<int>(new int(i)));
+    sharedPtrs.push_back(shared);
+  }
+  uniquePtrs.insert(uniquePtrs.begin(), std::unique_ptr<int>(new int(100)));
+  uniquePtrs.erase(uniquePtrs.begin() + 1, uniquePtrs.begin() + 51);
+  sharedPtrs.erase(sharedPtrs.begin(), sharedPtrs.begin() + 10);
+  sharedPtrs.insert(sharedPtrs.begin(), 5, std::make_shared<int>(-2));
+  ASSERT_EQ(uniquePtrs.size(), 51U);
+  EXPECT_EQ(*uniquePtrs[0], 100);
+  for (int i = 1; i < 51; ++i) {
+    EXPECT_EQ(*uniquePtrs[static_cast<uint32_t>(i)], 49 + i);
+  }
+  EXPECT_EQ(shared.use_count(), 91);  // 'shared' and its 90 copies in the vector
+  EXPECT_EQ(sharedPtrs.front().use_count(), 5);
+  sharedPtrs.clear();
+  EXPECT_EQ(shared.use_count(), 1);
+
+  // containers of standard containers, optionals and variants owning memory
+  vector<std::vector<int>> vectors;
+  SmallVector<std::optional<std::unique_ptr<int>>, 3> optionals;
+  vector<std::variant<int, std::shared_ptr<int>, std::array<std::unique_ptr<int>, 2>>> variants;
+  for (int i = 0; i < 100; ++i) {
+    vectors.emplace_back(static_cast<std::size_t>(i % 7), i);
+    if (i % 3 == 0) {
+      optionals.emplace_back();
+    } else {
+      optionals.emplace_back(std::unique_ptr<int>(new int(i)));
+    }
+    if (i % 3 == 0) {
+      variants.emplace_back(i);
+    } else if (i % 3 == 1) {
+      variants.emplace_back(shared);
+    } else {
+      variants.emplace_back(std::array<std::unique_ptr<int>, 2>{std::unique_ptr<int>(new int(i)), nullptr});
+    }
+  }
+  vectors.insert(vectors.begin() + 1, std::vector<int>(3, -1));
+  vectors.erase(vectors.begin() + 2, vectors.begin() + 52);
+  optionals.erase(optionals.begin(), optionals.begin() + 50);
+  optionals.insert(optionals.begin() + 2, std::unique_ptr<int>(new int(-1)));
+  variants.erase(variants.begin(), variants.begin() + 30);
+  variants.shrink_to_fit();
+  ASSERT_EQ(vectors.size(), 51U);
+  EXPECT_EQ(vectors[0], std::vector<int>{});
+  EXPECT_EQ(vectors[1], std::vector<int>(3, -1));
+  for (int i = 51; i < 100; ++i) {
+    EXPECT_EQ(vectors[static_cast<uint32_t>(i - 49)], std::vector<int>(static_cast<std::size_t>(i % 7), i));
+  }
+  ASSERT_EQ(optionals.size(), 51U);
+  EXPECT_EQ(**optionals[2], -1);
+  for (int i = 50; i < 100; ++i) {
+    const auto& optional = optionals[static_cast<uint32_t>(i - 50 + (i >= 52 ? 1 : 0))];
+    EXPECT_EQ(optional.has_value(), i % 3 != 0);
+    if (optional.has_value()) {
+      EXPECT_EQ(**optional, i);
+    }
+  }
+  ASSERT_EQ(variants.size(), 70U);
+  EXPECT_EQ(shared.use_count(), 1 + 23);  // the variants of i = 31, 34... 97 kept
+  for (int i = 30; i < 100; ++i) {
+    const auto& variant = variants[static_cast<uint32_t>(i - 30)];
+    ASSERT_EQ(variant.index(), static_cast<std::size_t>(i % 3));
+    if (i % 3 == 0) {
+      EXPECT_EQ(std::get<0>(variant), i);
+    } else if (i % 3 == 2) {
+      EXPECT_EQ(*std::get<2>(variant)[0], i);
+      EXPECT_EQ(std::get<2>(variant)[1], nullptr);
+    }
+  }
+  variants.clear();
+  EXPECT_EQ(shared.use_count(), 1);
+
+  std::forward_list<int> list{1, 2, 3};
+  vector<std::forward_list<int>> lists(3, list);
+  lists.insert(lists.begin() + 1, std::forward_list<int>{4});
+  lists.erase(lists.begin());
+  lists.shrink_to_fit();
+  ASSERT_EQ(lists.size(), 3U);
+  EXPECT_EQ(lists[0], std::forward_list<int>{4});
+  EXPECT_EQ(lists[1], list);
+  EXPECT_EQ(lists[2], list);
+}
+
+// Inserting and erasing in the middle of a std::vector move assigns the shifted elements: a container whose allocator
+// does not propagate on move assignment (std::pmr::polymorphic_allocator, ArenaAllocatorOf) keeps its allocator, each
+// slot keeps its own. Such containers are not trivially relocatable, as a relocation would move their allocators along
+// with their elements. The allocators of containers propagating on move assignment move along in both cases.
+template <class VectorType>
+void CheckShiftedElementsAllocators() {
+  using Elem = typename VectorType::value_type;
+  using Alloc = typename Elem::allocator_type;
+  const int64_t nbLiveAllocations = ArenaAllocator::NbLiveAllocations();
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  {
+    // the same capacity in both vectors, so that none of them reallocates (moving all the elements)
+    std::vector<Elem> ref;
+    VectorType v;
+    ref.reserve(16U);
+    v.reserve(16U);
+    for (int arena = 1; arena <= 6; ++arena) {
+      ref.emplace_back(2U, arena, Alloc(ArenaAllocator(arena)));
+      v.emplace_back(2U, arena, Alloc(ArenaAllocator(arena)));
+    }
+    // The allocators of the elements in [firstUnspecified, lastUnspecified) are not compared (see "insert range")
+    const auto check = [&ref, &v](const char* operation, std::size_t firstUnspecified = 0,
+                                  std::size_t lastUnspecified = 0) {
+      ASSERT_EQ(v.size(), ref.size()) << operation;
+      for (std::size_t pos = 0; pos < ref.size(); ++pos) {
+        const Elem& elem = v[static_cast<typename VectorType::size_type>(pos)];
+        EXPECT_EQ(elem, ref[pos]) << operation;
+        if (pos < firstUnspecified || lastUnspecified <= pos) {
+          EXPECT_EQ(elem.get_allocator(), ref[pos].get_allocator()) << operation << " at " << pos;
+        }
+      }
+    };
+    ref.erase(ref.begin());
+    v.erase(v.begin());
+    check("erase");
+    ref.erase(ref.begin() + 1, ref.begin() + 3);
+    v.erase(v.begin() + 1, v.begin() + 3);
+    check("erase range");
+    const Elem value(3U, -1, Alloc(ArenaAllocator(10)));
+    ref.insert(ref.begin() + 1, value);
+    v.insert(v.begin() + 1, value);
+    check("insert");
+    ref.insert(ref.begin(), 2U, value);
+    v.insert(v.begin(), 2U, value);
+    check("insert count");
+    ref.emplace(ref.begin() + 2, 1U, -2, Alloc(ArenaAllocator(11)));
+    v.emplace(v.begin() + 2, 1U, -2, Alloc(ArenaAllocator(11)));
+    check("emplace");
+    const std::array<Elem, 3> values{Elem(1U, -3, Alloc(ArenaAllocator(12))), Elem(1U, -4, Alloc(ArenaAllocator(13))),
+                                     Elem(1U, -5, Alloc(ArenaAllocator(14)))};
+    ref.insert(ref.begin() + 5, values.begin(), values.end());
+    v.insert(v.begin() + 5, values.begin(), values.end());
+    // The standard does not specify whether the new elements replacing shifted ones are assigned or constructed: the
+    // MSVC STL destroys the shifted elements and copy constructs the new ones (they get the allocators of their
+    // sources), libstdc++, libc++ and amc assign them (they keep the allocators of the slots)
+    check("insert range", 5U, 5U + values.size());
+  }
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
+  EXPECT_EQ(ArenaAllocator::NbLiveAllocations(), nbLiveAllocations);
+}
+
+TEST(VectorTest, StandardContainersOfNonPropagatingAllocators) {
+  static_assert(!is_trivially_relocatable<std::vector<int, ArenaAllocatorOf<int>>>::value, "");
+  static_assert(!is_trivially_relocatable<std::forward_list<int, ArenaAllocatorOf<int>>>::value, "");
+  using ArenaString = std::basic_string<char, std::char_traits<char>, ArenaAllocatorOf<char>>;
+  static_assert(!is_trivially_relocatable<ArenaString>::value, "");
+  static_assert(is_trivially_relocatable<std::vector<int, PropagatingArenaAllocator<int>>>::value ==
+                    kStdVectorTriviallyRelocatable,
+                "");
+#ifdef __cpp_lib_memory_resource
+  static_assert(!is_trivially_relocatable<std::pmr::vector<int>>::value, "");
+#endif
+
+  CheckShiftedElementsAllocators<vector<std::vector<int, ArenaAllocatorOf<int>>>>();
+  CheckShiftedElementsAllocators<SmallVector<std::vector<int, ArenaAllocatorOf<int>>, 16>>();
+  CheckShiftedElementsAllocators<vector<std::forward_list<int, ArenaAllocatorOf<int>>>>();
+  CheckShiftedElementsAllocators<vector<std::vector<int, PropagatingArenaAllocator<int>>>>();
 }
 
 TEST(VectorTest, RelocatabilityAgainstRefVector) {

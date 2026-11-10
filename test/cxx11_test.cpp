@@ -18,9 +18,38 @@
 #include <cstdio>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
+
+/// Deleter of a std::unique_ptr which is not trivially copyable
+struct NonTriviallyCopyableDeleter {
+  NonTriviallyCopyableDeleter() = default;
+  NonTriviallyCopyableDeleter(const NonTriviallyCopyableDeleter&) {}
+  void operator()(int* p) const { delete p; }
+};
+
+// A program can specialize amc::is_trivially_relocatable for the standard library types that amc declares trivially
+// relocatable (as it may have done before amc declared them): its specializations take precedence.
+namespace amc {
+template <class T, class Deleter>
+struct is_trivially_relocatable<std::unique_ptr<T, Deleter>> : std::true_type {};
+
+template <>
+struct is_trivially_relocatable<std::shared_ptr<int>> : std::false_type {};
+}  // namespace amc
+
+static_assert(amc::is_trivially_relocatable<std::unique_ptr<int, NonTriviallyCopyableDeleter>>::value, "");
+static_assert(!amc::is_trivially_relocatable<std::shared_ptr<int>>::value, "");
+// a cv-qualified type follows the specialization of its unqualified type
+static_assert(amc::is_trivially_relocatable<const std::unique_ptr<int, NonTriviallyCopyableDeleter>>::value, "");
+static_assert(!amc::is_trivially_relocatable<std::pair<const std::shared_ptr<int>, int>>::value, "");
+#ifndef AMC_NO_STD_TRIVIALLY_RELOCATABLE
+static_assert(amc::is_trivially_relocatable<std::shared_ptr<char>>::value, "");
+static_assert(amc::is_trivially_relocatable<std::tuple<int, std::unique_ptr<int>>>::value, "");
+#endif
 
 namespace {
 
@@ -328,6 +357,21 @@ int main() {
     Check(*greater.begin() == 3 && *less.begin() == 1, "FlatSet of a function pointer or a final comparator");
   }
   static_assert(std::is_trivially_destructible<amc::FixedCapacityVector<int, 0>>::value, "");
+  {
+    // vectors of standard library types, relocated with memcpy (std::vector: except in the debug modes)
+    amc::vector<std::vector<int>> vectors;
+    amc::SmallVector<std::tuple<int, std::unique_ptr<int>>, 2> tuples;
+    for (int i = 0; i < 20; ++i) {
+      vectors.push_back(std::vector<int>(static_cast<std::size_t>(i), i));
+      tuples.emplace_back(i, std::unique_ptr<int>(new int(i)));
+    }
+    vectors.erase(vectors.begin());
+    tuples.erase(tuples.begin());
+    Check(vectors.size() == 19U && vectors[0] == std::vector<int>(1, 1) && vectors.back() == std::vector<int>(19, 19),
+          "vector of std::vector");
+    Check(tuples.size() == 19U && std::get<0>(tuples.front()) == 1 && *std::get<1>(tuples.back()) == 19,
+          "SmallVector of std::tuple");
+  }
   CheckSaturatingAdd<std::uint8_t>("saturating_add of all the uint8_t");
   CheckSaturatingAdd<std::int8_t>("saturating_add of all the int8_t");
 

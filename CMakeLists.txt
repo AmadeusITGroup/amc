@@ -31,12 +31,15 @@ option(AMC_PEDANTIC "If set, only standard API (in respect to STL) will be defin
 option(AMC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors in Debug builds of the unit tests and benchmarks" OFF)
 option(AMC_ENABLE_MODULE "Add the amc::module target, providing the amc C++20 module (CMake 3.28 or later)" OFF)
 option(AMC_MODULE_NONSTD_FEATURES "Build the amc module with the non standard extensions, and define AMC_NONSTD_FEATURES for the targets linking amc::module" OFF)
+option(AMC_STD_TRIVIALLY_RELOCATABLE "Declare trivially relocatable the standard library types which are in libstdc++, libc++ and the MSVC STL (std::unique_ptr, std::vector...). OFF defines AMC_NO_STD_TRIVIALLY_RELOCATABLE for the targets linking amc" ON)
+option(AMC_STD_STRING_TRIVIALLY_RELOCATABLE "Declare std::basic_string trivially relocatable with the standard libraries in which it is (libc++, MSVC STL without iterator debugging, old ABI of libstdc++), defining AMC_STD_STRING_TRIVIALLY_RELOCATABLE for the targets linking amc" OFF)
 
 if (AMC_PEDANTIC)
   message(STATUS "[amc] Compile without non standard features")
 else()
   message(STATUS "[amc] Compile with non standard features")
 endif()
+message(STATUS "[amc] Standard types trivially relocatable: ${AMC_STD_TRIVIALLY_RELOCATABLE}, std::basic_string: ${AMC_STD_STRING_TRIVIALLY_RELOCATABLE}")
 
 # Compilation options of the unit tests and benchmarks (AmcSetProjectProperties), never set globally
 include(cmake/SetProjectProperties.cmake)
@@ -54,6 +57,15 @@ target_include_directories(
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_11)
+
+# They change amc::is_trivially_relocatable: defined for all the targets linking amc (and for the module), as the whole
+# program must see the same trait
+if (NOT AMC_STD_TRIVIALLY_RELOCATABLE)
+  target_compile_definitions(${PROJECT_NAME} INTERFACE AMC_NO_STD_TRIVIALLY_RELOCATABLE)
+endif()
+if (AMC_STD_STRING_TRIVIALLY_RELOCATABLE)
+  target_compile_definitions(${PROJECT_NAME} INTERFACE AMC_STD_STRING_TRIVIALLY_RELOCATABLE)
+endif()
 
 # C++20 module 'amc' ('import amc;'): a static library holding the module interface unit, whose BMI is built in the
 # build of its consumers. Static, as it has nothing to export from a shared library.

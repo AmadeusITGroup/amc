@@ -113,14 +113,23 @@ struct is_trivially_relocatable<Handle> : std::true_type {};
 namespace {
 static_assert(amc::is_trivially_relocatable<Message>::value);
 static_assert(amc::is_trivially_relocatable_v<Handle>);
+#ifndef AMC_STD_STRING_TRIVIALLY_RELOCATABLE
 static_assert(!amc::is_trivially_relocatable_v<std::string>);
-// Specializations of the module for std types, and for its containers
+#endif
+// Standard library types declared by the module (built with the same definitions), and its containers
+#ifdef AMC_NO_STD_TRIVIALLY_RELOCATABLE
+static_assert(!amc::is_trivially_relocatable_v<std::unique_ptr<int>>);
+#else
+static_assert(amc::is_trivially_relocatable_v<std::unique_ptr<int>>);
+#endif
 static_assert(amc::is_trivially_relocatable_v<std::pair<Message, Handle>>);
-static_assert(!amc::is_trivially_relocatable_v<std::pair<Message, std::string>>);
+static_assert(amc::is_trivially_relocatable_v<std::pair<Message, std::string>> ==
+              amc::is_trivially_relocatable_v<std::string>);
 static_assert(amc::is_trivially_relocatable_v<std::allocator<std::string>>);
 static_assert(amc::is_trivially_relocatable_v<amc::vector<std::string>>);
 static_assert(amc::is_trivially_relocatable_v<amc::SmallVector<Handle, 4>>);
-static_assert(!amc::is_trivially_relocatable_v<amc::SmallVector<std::string, 4>>);
+static_assert(amc::is_trivially_relocatable_v<amc::SmallVector<std::string, 4>> ==
+              amc::is_trivially_relocatable_v<std::string>);
 static_assert(amc::is_trivially_relocatable_v<amc::FixedCapacityVector<Message, 4>>);
 static_assert(amc::is_trivially_relocatable_v<amc::FlatSet<int>>);
 static_assert(

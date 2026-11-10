@@ -10,7 +10,7 @@
 
 Header-only C++ library of containers with the interface of `std::vector` and `std::set`, used instead of the standard ones in the Amadeus pricing and shopping engines. They are faster in two common cases:
 
-- **Trivially relocatable elements**, which are most types (integers, pointers, structures of them, and the types which [declare it](docs/containers.md#trivially-relocatable-types), such as a structure holding a `std::unique_ptr`): the containers move them in bulk with `memcpy`, `memmove` or `realloc` when they grow, insert or erase, instead of calling a move constructor and a destructor per element.
+- **Trivially relocatable elements**, which are most types (integers, pointers, structures of them, standard library types such as `std::unique_ptr` and `std::vector`, and the types which [declare it](docs/containers.md#trivially-relocatable-types), such as a structure holding a `std::unique_ptr`): the containers move them in bulk with `memcpy`, `memmove` or `realloc` when they grow, insert or erase, instead of calling a move constructor and a destructor per element.
 - **Small sizes**: up to a compile-time capacity `N`, the elements are stored in the container object itself, without any allocation.
 
 The library needs C++11 (C++17 for `SmallSet`), and is tested up to C++23 with GCC, Clang, MSVC, clang-cl and Apple Clang. From C++20, it is also a [module](#c20-module): `import amc;`.
@@ -140,7 +140,7 @@ import amc;
 amc::SmallVector<std::uint32_t, 8> path;
 ```
 
-It needs a generator and a compiler supporting C++20 modules in CMake: Ninja or Visual Studio, and Clang with `clang-scan-deps`, GCC 15 or later (not with `-fsanitize=undefined`, which makes GCC crash building any module), or MSVC 2022. The module exports the public names of the headers, which declare the same entities: a program can import it in some translation units and include the headers in others, or do both in the same one (headers first). Like with the headers, `AMC_NONSTD_FEATURES` must be defined in the whole program or nowhere, and compilers do not diagnose a mismatch: `-DAMC_MODULE_NONSTD_FEATURES=ON` builds the module with the extensions, and defines `AMC_NONSTD_FEATURES` for the targets linking `amc::module`. The module and its importers must also be built with exceptions enabled or disabled alike. Modules do not export macros: include `<amc/config.hpp>` for the `AMC_*` ones.
+It needs a generator and a compiler supporting C++20 modules in CMake: Ninja or Visual Studio, and Clang with `clang-scan-deps`, GCC 15 or later (not with `-fsanitize=undefined`, which makes GCC crash building any module), or MSVC 2022. The module exports the public names of the headers, which declare the same entities: a program can import it in some translation units and include the headers in others, or do both in the same one (headers first). Like with the headers, `AMC_NONSTD_FEATURES` must be defined in the whole program or nowhere, and compilers do not diagnose a mismatch: `-DAMC_MODULE_NONSTD_FEATURES=ON` builds the module with the extensions, and defines `AMC_NONSTD_FEATURES` for the targets linking `amc::module`. The same goes for the macros of the [trivially relocatable standard types](docs/containers.md#trivially-relocatable-types), which their CMake options define for the targets linking `amc::amc`, `amc::module` included. The module and its importers must also be built with exceptions enabled or disabled alike. Modules do not export macros: include `<amc/config.hpp>` for the `AMC_*` ones.
 
 ## Building the tests and benchmarks
 
@@ -152,16 +152,18 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-| CMake option                 | Description                                                                                                               | Default                              |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `AMC_ENABLE_TESTS`           | Build the unit tests                                                                                                      | `ON` for the main project            |
-| `AMC_ENABLE_BENCHMARKS`      | Build the benchmarks                                                                                                      | `ON` for the main project, not Debug |
-| `AMC_ENABLE_ASAN`            | Build with the address and undefined behavior sanitizers (GCC and Clang)                                                  | `OFF`                                |
-| `AMC_ENABLE_COVERAGE`        | Instrument the unit tests for code coverage, and add a `coverage` target (Clang)                                          | `OFF`                                |
-| `AMC_WARNINGS_AS_ERRORS`     | Treat warnings as errors in Debug builds of the unit tests and benchmarks                                                 | `OFF`                                |
-| `AMC_PEDANTIC`               | Build the unit tests and benchmarks without the [non-standard extensions](docs/containers.md#non-standard-extensions)     | `OFF`                                |
-| `AMC_ENABLE_MODULE`          | Add the `amc::module` target, providing the [C++20 module](#c20-module) `amc` (CMake 3.28 or later)                       | `OFF`                                |
-| `AMC_MODULE_NONSTD_FEATURES` | Build the module with the non-standard extensions, and define `AMC_NONSTD_FEATURES` for the targets linking `amc::module` | `OFF`                                |
+| CMake option                           | Description                                                                                                                                                                                      | Default                              |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| `AMC_ENABLE_TESTS`                     | Build the unit tests                                                                                                                                                                             | `ON` for the main project            |
+| `AMC_ENABLE_BENCHMARKS`                | Build the benchmarks                                                                                                                                                                             | `ON` for the main project, not Debug |
+| `AMC_ENABLE_ASAN`                      | Build with the address and undefined behavior sanitizers (GCC and Clang)                                                                                                                         | `OFF`                                |
+| `AMC_ENABLE_COVERAGE`                  | Instrument the unit tests for code coverage, and add a `coverage` target (Clang)                                                                                                                 | `OFF`                                |
+| `AMC_WARNINGS_AS_ERRORS`               | Treat warnings as errors in Debug builds of the unit tests and benchmarks                                                                                                                        | `OFF`                                |
+| `AMC_PEDANTIC`                         | Build the unit tests and benchmarks without the [non-standard extensions](docs/containers.md#non-standard-extensions)                                                                            | `OFF`                                |
+| `AMC_ENABLE_MODULE`                    | Add the `amc::module` target, providing the [C++20 module](#c20-module) `amc` (CMake 3.28 or later)                                                                                              | `OFF`                                |
+| `AMC_MODULE_NONSTD_FEATURES`           | Build the module with the non-standard extensions, and define `AMC_NONSTD_FEATURES` for the targets linking `amc::module`                                                                        | `OFF`                                |
+| `AMC_STD_TRIVIALLY_RELOCATABLE`        | Declare the [standard library types](docs/containers.md#trivially-relocatable-types) trivially relocatable (`OFF` defines `AMC_NO_STD_TRIVIALLY_RELOCATABLE` for the targets linking `amc::amc`) | `ON`                                 |
+| `AMC_STD_STRING_TRIVIALLY_RELOCATABLE` | Declare [`std::string`](docs/containers.md#trivially-relocatable-types) trivially relocatable where it is: libc++, MSVC STL in Release (defines the macro for the targets linking `amc::amc`)    | `OFF`                                |
 
 Code coverage uses [LLVM source-based code coverage](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html), so it needs Clang, and `llvm-profdata` and `llvm-cov` of the same version (package `llvm-<version>` on Debian and Ubuntu):
 
