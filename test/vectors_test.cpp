@@ -336,6 +336,33 @@ TYPED_TEST(VectorTest, Shrink) {
   EXPECT_EQ(v, VectorType{Type(4)});
 }
 
+// Like the ones of std::vector, the constructors allocate exactly the capacity of their elements: the growth factor of
+// the vectors does not apply to the inline capacity of a SmallVector. A FixedCapacityVector has its fixed capacity.
+TYPED_TEST(VectorTest, ConstructorsAllocateExactCapacity) {
+  using VectorType = TypeParam;
+  using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
+  constexpr bool kFixedCapacity = std::is_same<typename VectorType::allocator_type, vec::EmptyAlloc>::value;
+  const SzType inlineCapacity = VectorType::kInlineCapacity;
+  const SzType n = kFixedCapacity ? inlineCapacity : static_cast<SzType>(inlineCapacity + 3);
+  VectorType source;
+  for (SzType i = 0; i < n; ++i) {
+    source.push_back(Type(static_cast<int>(i)));  // grows by the growth factor
+  }
+  const std::list<Type> list(source.begin(), source.end());
+
+  if constexpr (std::is_default_constructible_v<Type>) {
+    EXPECT_EQ(VectorType(n).capacity(), n);
+  }
+  EXPECT_EQ(VectorType(n, Type(1)).capacity(), n);
+  EXPECT_EQ(VectorType(source).capacity(), n);
+  EXPECT_EQ(VectorType(source, source.get_allocator()).capacity(), n);
+  EXPECT_EQ(VectorType(source.begin(), source.end()).capacity(), n);
+  EXPECT_EQ(VectorType(list.begin(), list.end()).capacity(), n);
+  const VectorType fromList{1, 2, 3, 4, 5, 6, 7, 8, 9};
+  EXPECT_EQ(fromList.capacity(), std::max(SzType{9}, inlineCapacity));
+}
+
 TYPED_TEST(VectorTest, SelfAssignment) {
   using VectorType = TypeParam;
   using Type = typename VectorType::value_type;
