@@ -71,7 +71,7 @@ inline void construct_at_impl(T* pos, const T& v, NonTriviallyCopyable) {
 template <class T>
 inline void construct_at_impl(T* pos, const T& v, NonTriviallyCopyableArray) {
   int i = 0;
-  try {
+  AMC_TRY {
     using ElemT = typename std::remove_reference<decltype(**pos)>::type;
     typedef
         typename std::conditional<std::is_array<ElemT>::value, NonTriviallyCopyableArray, NonTriviallyCopyable>::type
@@ -79,9 +79,9 @@ inline void construct_at_impl(T* pos, const T& v, NonTriviallyCopyableArray) {
     for (ElemT& elem : *pos) {
       construct_at_impl(&elem, v[i++], TypeTraits());
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(*pos, *pos + --i);
-    throw;
+    AMC_RETHROW;
   }
 }
 
@@ -93,7 +93,7 @@ inline void construct_at_impl(T* pos, T&& v, NonTriviallyCopyable) {
 template <class T>
 inline void construct_at_impl(T* pos, T&& v, NonTriviallyCopyableArray) {
   int i = 0;
-  try {
+  AMC_TRY {
     using ElemT = typename std::remove_reference<decltype(**pos)>::type;
     typedef
         typename std::conditional<std::is_array<ElemT>::value, NonTriviallyCopyableArray, NonTriviallyCopyable>::type
@@ -101,9 +101,9 @@ inline void construct_at_impl(T* pos, T&& v, NonTriviallyCopyableArray) {
     for (ElemT& elem : *pos) {
       construct_at_impl(&elem, ::std::move(v[i++]), TypeTraits());
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(*pos, *pos + --i);
-    throw;
+    AMC_RETHROW;
   }
 }
 
@@ -165,13 +165,13 @@ void uninitialized_default_construct(ForwardIt first, ForwardIt last,
                                          typename std::iterator_traits<ForwardIt>::value_type>::value>::type* = 0) {
   using Value = typename std::iterator_traits<ForwardIt>::value_type;
   ForwardIt current = first;
-  try {
+  AMC_TRY {
     for (; current != last; ++current) {
       ::new (static_cast<void*>(std::addressof(*current))) Value;
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(first, current);
-    throw;
+    AMC_RETHROW;
   }
 }
 template <class ForwardIt>
@@ -187,14 +187,14 @@ ForwardIt uninitialized_default_construct_n(
         0) {
   using Value = typename std::iterator_traits<ForwardIt>::value_type;
   ForwardIt current = first;
-  try {
+  AMC_TRY {
     for (; n > 0; (void)++current, --n) {
       ::new (static_cast<void*>(std::addressof(*current))) Value;
     }
     return current;
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(first, current);
-    throw;
+    AMC_RETHROW;
   }
 }
 template <class ForwardIt, class Size>
@@ -212,13 +212,13 @@ void uninitialized_value_construct(
     ForwardIt first, ForwardIt last,
     typename std::enable_if<!std::is_trivial<typename std::iterator_traits<ForwardIt>::value_type>::value>::type* = 0) {
   ForwardIt current = first;
-  try {
+  AMC_TRY {
     for (; current != last; ++current) {
       amc::construct_at(std::addressof(*current));
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(first, current);
-    throw;
+    AMC_RETHROW;
   }
 }
 template <class ForwardIt>
@@ -233,14 +233,14 @@ ForwardIt uninitialized_value_construct_n(
     ForwardIt first, Size n,
     typename std::enable_if<!std::is_trivial<typename std::iterator_traits<ForwardIt>::value_type>::value>::type* = 0) {
   ForwardIt current = first;
-  try {
+  AMC_TRY {
     for (; n > 0; (void)++current, --n) {
       amc::construct_at(std::addressof(*current));
     }
     return current;
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(first, current);
-    throw;
+    AMC_RETHROW;
   }
 }
 template <class ForwardIt, class Size>
@@ -313,13 +313,13 @@ inline OutputIt uninitialized_copy_impl(InputIt first, InputIt last, OutputIt de
 template <class InputIt, class Size, class OutputIt>
 inline OutputIt uninitialized_copy_n_impl(InputIt first, Size count, OutputIt dest, Default) {
   OutputIt current = dest;
-  try {
+  AMC_TRY {
     for (; count > 0; ++first, (void)++current, --count) {
       amc::construct_at(std::addressof(*current), *first);
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(dest, current);
-    throw;
+    AMC_RETHROW;
   }
   return current;
 }
@@ -362,13 +362,13 @@ inline OutputIt uninitialized_move_impl(InputIt first, InputIt last, OutputIt de
 template <class InputIt, class Size, class OutputIt>
 std::pair<InputIt, OutputIt> uninitialized_move_n_impl(InputIt first, Size count, OutputIt dest, Default) {
   OutputIt current = dest;
-  try {
+  AMC_TRY {
     for (; count > 0; ++first, (void)++current, --count) {
       amc::construct_at(std::addressof(*current), ::std::move(*first));
     }
-  } catch (...) {
+  } AMC_CATCH_ALL {
     amc::destroy(dest, current);
-    throw;
+    AMC_RETHROW;
   }
   return std::pair<InputIt, OutputIt>(first, current);
 }

@@ -4,8 +4,9 @@
 /// declarations: the entities are the same as the ones of the headers, so a program may both import the module and
 /// include the headers, in different translation units or in the same one (preferably including the headers first).
 ///
-/// Build the module with the options of the translation units importing it: same C++ standard (C++20 or later), and
-/// AMC_NONSTD_FEATURES defined or not like in the whole program, as it changes the definitions of the classes
+/// Build the module with the options of the translation units importing it: same C++ standard (C++20 or later),
+/// exceptions enabled or disabled alike (without them, the errors abort instead of throwing; Clang refuses a mismatch),
+/// and AMC_NONSTD_FEATURES defined or not like in the whole program, as it changes the definitions of the classes
 /// (compilers do not diagnose a mismatch). Macros are not exported: include <amc/config.hpp> for the AMC_* ones, and
 /// the standard headers for the std names.
 module;

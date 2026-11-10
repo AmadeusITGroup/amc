@@ -273,12 +273,12 @@ class SmallSet {
   /// otherwise leave a mix of the previous and new elements, with duplicates.
   SmallSet& operator=(const SmallSet& o) {
     if (this != &o) {
-      try {
+      AMC_TRY {
         _vec = o._vec;
         _set = o._set;
-      } catch (...) {
+      } AMC_CATCH_ALL {
         clearBoth();
-        throw;
+        AMC_RETHROW;
       }
     }
     return *this;
@@ -296,11 +296,11 @@ class SmallSet {
   /// If an exception is thrown, the set is emptied.
   SmallSet& operator=(std::initializer_list<T> list) {
     clear();
-    try {
+    AMC_TRY {
       insert(list.begin(), list.end());
-    } catch (...) {
+    } AMC_CATCH_ALL {
       clearBoth();
-      throw;
+      AMC_RETHROW;
     }
     return *this;
   }
@@ -396,12 +396,12 @@ class SmallSet {
     // The element is constructed in place before being compared, to avoid a temporary.
     miterator elIt = std::addressof(_vec.emplace_back(std::forward<Args&&>(args)...));
     miterator it;
-    try {
+    AMC_TRY {
       it = std::find_if(_vec.begin(), elIt, FindFunctor<T>(key_comp(), *elIt));
-    } catch (...) {
+    } AMC_CATCH_ALL {
       // the new element may be a duplicate: it is removed if the comparator (or its copy) throws
       _vec.pop_back();
-      throw;
+      AMC_RETHROW;
     }
     const bool isNew = it == elIt;
     if (!isNew) {
@@ -735,17 +735,17 @@ class SmallSet {
   std::pair<iterator, bool> growAndInsert(V&& v) {
     const PtrVec sortedPtrs = ComputeSortedPtrVec(_vec, key_comp());
     moveToEmptySet(_set, sortedPtrs, 1U);
-    try {
+    AMC_TRY {
       std::pair<iterator, bool> ret = _set.insert(std::forward<V>(v));
       _vec.clear();
       return ret;
-    } catch (...) {
+    } AMC_CATCH_ALL {
       if (_set.size() == sortedPtrs.size()) {
         restoreSmallState(_set, sortedPtrs);
       } else {
         clearBoth();  // the elements left in the vector are moved from
       }
-      throw;
+      AMC_RETHROW;
     }
   }
 
@@ -755,13 +755,13 @@ class SmallSet {
   /// are moved back (see restoreSmallState). 'nbExtraElems' is the number of elements to be inserted just after.
   template <class S>
   void moveToEmptySet(S& set, const PtrVec& sortedPtrs, std::size_t) {
-    try {
+    AMC_TRY {
       for (const_pointer ptr : sortedPtrs) {
         set.insert(set.end(), std::move(const_cast<T&>(*ptr)));
       }
-    } catch (...) {
+    } AMC_CATCH_ALL {
       restoreSmallState(set, sortedPtrs);
-      throw;
+      AMC_RETHROW;
     }
   }
 
@@ -771,14 +771,14 @@ class SmallSet {
   template <class V>
   void moveToEmptySet(FlatSet<T, Compare, Alloc, V>& set, const PtrVec& sortedPtrs, std::size_t nbExtraElems) {
     V& setVec = set._sortedVector;
-    try {
+    AMC_TRY {
       setVec.reserve(static_cast<typename V::size_type>(sortedPtrs.size() + nbExtraElems));
       for (const_pointer ptr : sortedPtrs) {
         setVec.emplace_back(std::move(const_cast<T&>(*ptr)));
       }
-    } catch (...) {
+    } AMC_CATCH_ALL {
       restoreSmallState(set, sortedPtrs);
-      throw;
+      AMC_RETHROW;
     }
   }
 
@@ -789,13 +789,13 @@ class SmallSet {
   /// elements.
   template <class S>
   void restoreSmallState(S& set, const PtrVec& sortedPtrs) noexcept {
-    try {
+    AMC_TRY {
       auto ptrIt = sortedPtrs.begin();
       for (auto setIt = set.begin(); setIt != set.end(); ++setIt) {
         // the set is cleared just after, it does not need to stay sorted
         const_cast<T&>(**ptrIt++) = std::move(const_cast<T&>(*setIt));
       }
-    } catch (...) {
+    } AMC_CATCH_ALL {
       _vec.clear();
     }
     set.clear();
@@ -839,13 +839,13 @@ class SmallSet {
   }
 
   void moveAssign(SmallSet&& o, std::false_type) {
-    try {
+    AMC_TRY {
       _vec = std::move(o._vec);
       _set = std::move(o._set);
-    } catch (...) {
+    } AMC_CATCH_ALL {
       clearBoth();
       o.clearBoth();
-      throw;
+      AMC_RETHROW;
     }
     o._set.clear();  // the elements are moved one by one between unequal allocators: 'o' could keep them
   }
@@ -858,11 +858,11 @@ class SmallSet {
     if constexpr (std::is_nothrow_move_assignable_v<T>) {
       return _vec.erase(pos, last...);
     } else {
-      try {
+      AMC_TRY {
         return _vec.erase(pos, last...);
-      } catch (...) {
+      } AMC_CATCH_ALL {
         _vec.clear();
-        throw;
+        AMC_RETHROW;
       }
     }
   }

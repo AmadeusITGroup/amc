@@ -102,6 +102,23 @@
 
 #endif
 
+// Exceptions may be disabled (-fno-exceptions for GCC and Clang, no /EH option for MSVC): the errors which throw then
+// abort the program, and the clean-up code which rethrows the exceptions of the elements is never executed. AMC_TRY
+// and AMC_CATCH_ALL become an 'if (true)' and its 'else', a single statement in both modes. AMC_RETHROW then aborts
+// too, so that a 'try' block returning a value does not fall off the end of its function in the 'else' branch.
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+#define AMC_TRY try
+#define AMC_CATCH_ALL catch (...)
+#define AMC_RETHROW throw
+#define AMC_THROW(exception) throw exception
+#else
+#include <cstdlib>
+#define AMC_TRY if (true)
+#define AMC_CATCH_ALL else
+#define AMC_RETHROW std::abort()
+#define AMC_THROW(exception) std::abort()
+#endif
+
 // Namespace scope constants of the headers: inline from C++17, which gives them external linkage (the C++20 module must
 // not expose entities with internal linkage to the code importing it).
 #ifdef AMC_CXX17

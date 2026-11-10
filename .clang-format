@@ -1,2 +1,6 @@
 BasedOnStyle: Google
 ColumnLimit: 120
+# Formatted as their expansion without exceptions (see config.hpp): like 'try' and 'catch' blocks
+Macros:
+  - AMC_TRY=if (true)
+  - AMC_CATCH_ALL=else

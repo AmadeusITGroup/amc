@@ -11,7 +11,7 @@
 - [Node handles](#node-handles)
 - [Non-standard extensions](#non-standard-extensions)
 
-Each container has its own header in `include/amc/`, and from C++20 the module `amc` provides all of them (`import amc;`, see the [README](../README.md#c20-module)). All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. The containers are not designed to be base classes: deriving from them is undefined behavior. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
+Each container has its own header in `include/amc/`, and from C++20 the module `amc` provides all of them (`import amc;`, see the [README](../README.md#c20-module)). All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. The containers are not designed to be base classes: deriving from them is undefined behavior. They also compile with exceptions disabled (`-fno-exceptions`): the errors which would throw then abort the program, like with libstdc++ and libc++. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
 
 ## Choosing a container
 
