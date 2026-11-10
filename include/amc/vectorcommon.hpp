@@ -749,8 +749,8 @@ class StdVectorBase : private Alloc {
   template <class Construct>
   void assignInNewStorage(std::uintmax_t n, Construct construct);
 
-  template <class... Args>
-  T* growEmplace(SizeType pos, Args&&... args);
+  template <class Construct>
+  T* growInsert(SizeType pos, std::uintmax_t newSize, Construct construct);
 
   void shrink_impl(SizeType) {
     if (_size != _capa) {
@@ -955,8 +955,8 @@ class SmallVectorBase : private Alloc {
   template <class Construct>
   void assignInNewStorage(std::uintmax_t n, Construct construct);
 
-  template <class... Args>
-  T* growEmplace(SizeType pos, Args&&... args);
+  template <class Construct>
+  T* growInsert(SizeType pos, std::uintmax_t newSize, Construct construct);
 
   void shrink_impl(SizeType inplaceCapa) {
     if (!isSmall()) {
@@ -1181,17 +1181,18 @@ class StaticVector : public StaticVectorBase<T, SizeType, typename StaticPolicy:
     adjustCapacity(n);
   }
 
-  T* adjustCapacity(std::uintmax_t neededCapacity, const T* position) const {
-    adjustCapacity(neededCapacity);
+  /// Counterparts of DynamicVector's 'growFor', for a size larger than the capacity: see 'assignInNewStorage'.
+  T* growFor(std::uintmax_t newSize, const T* position) const {
+    adjustCapacity(newSize);
     return const_cast<T*>(position);
   }
 
-  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v) const {
-    adjustCapacity(neededCapacity);
+  const T& growFor(std::uintmax_t newSize, const T& v, const T**) const {
+    adjustCapacity(newSize);
     return v;
   }
 
-  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v, const T**) const {
+  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v) const {
     adjustCapacity(neededCapacity);
     return v;
   }
@@ -1210,6 +1211,31 @@ struct CanReallocate
     : public std::integral_constant<bool, is_trivially_relocatable<typename Alloc::value_type>::value &&
                                               has_reallocate<Alloc>::value> {};
 
+/// How a vector without room for new elements inserts them before its end (emplace, insert):
+enum class GrowingInsert {
+  /// In a new storage, in which the new elements are constructed while the elements are still in place (they may be
+  /// their source), before the elements are relocated once, around them, like in std::vector. Nothing is relocated
+  /// before the new elements are constructed: if this throws, the vector is unchanged, capacity included.
+  kInNewStorage,
+  /// By growing its storage with 'reallocate', which may extend it in place, then shifting the elements in it (a single
+  /// memmove). FixedCapacityVector does not grow: its growing policy handles the overflow.
+  kGrowAndShift,
+  /// SmallVector growing with 'reallocate': in a new storage while its elements are inline, which 'reallocate' cannot
+  /// extend, by growing its dynamic storage otherwise.
+  kInNewStorageIfInline
+};
+
+template <GrowingInsert Kind>
+using GrowingInsertTag = std::integral_constant<GrowingInsert, Kind>;
+
+template <class Alloc, bool WithInlineElements>
+struct GrowingInsertOf : GrowingInsertTag<!CanReallocate<Alloc>::value ? GrowingInsert::kInNewStorage
+                                          : WithInlineElements         ? GrowingInsert::kInNewStorageIfInline
+                                                                       : GrowingInsert::kGrowAndShift> {};
+
+template <bool WithInlineElements>
+struct GrowingInsertOf<EmptyAlloc, WithInlineElements> : GrowingInsertTag<GrowingInsert::kGrowAndShift> {};
+
 template <class T, class Alloc, class SizeType, bool WithInlineElements>
 class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType, WithInlineElements>::type {
  public:
@@ -1226,14 +1252,12 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   template <class... Args>
   iterator emplace(const_iterator position, Args&&... args) {
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
-    iterator pos;
     if (this->isFull()) {
-      pos = emplaceGrowing(typename CanReallocate<Alloc>::type(), static_cast<SizeType>(position - this->begin()),
-                           std::forward<Args>(args)...);
-    } else {
-      pos = const_cast<iterator>(position);
-      emplace_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::forward<Args>(args)...);
+      return emplaceGrowing(typename GrowingInsertOf<Alloc, WithInlineElements>::type(),
+                            static_cast<SizeType>(position - this->begin()), std::forward<Args>(args)...);
     }
+    iterator pos = const_cast<iterator>(position);
+    emplace_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::forward<Args>(args)...);
     this->incrSize();
     return pos;
   }
@@ -1241,9 +1265,7 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   template <class... Args>
   reference emplace_back(Args&&... args) {
     if (this->isFull()) {
-      iterator endIt = emplaceBackGrowing(typename CanReallocate<Alloc>::type(), std::forward<Args>(args)...);
-      this->incrSize();
-      return *endIt;
+      return *emplaceBackGrowing(typename CanReallocate<Alloc>::type(), std::forward<Args>(args)...);
     }
     return *this->constructBack(std::forward<Args>(args)...);
   }
@@ -1304,13 +1326,23 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     }
   }
 
-  T* adjustCapacity(std::uintmax_t neededCapacity, const T* position) {
-    if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
-      SizeType idx = static_cast<SizeType>(position - this->begin());  // pos will be invalidated
-      this->grow(neededCapacity);
-      return this->begin() + idx;
-    }
-    return const_cast<T*>(position);
+  /// Grows the storage, without room for 'newSize' elements, and returns 'position' in the grown storage.
+  T* growFor(std::uintmax_t newSize, const T* position) {
+    assert(static_cast<std::uintmax_t>(this->capacity()) < newSize);
+    SizeType idx = static_cast<SizeType>(position - this->begin());  // pos will be invalidated
+    this->grow(newSize);
+    return this->begin() + idx;
+  }
+
+  /// Same as above, also returning 'v' in the grown storage if it is one of the elements.
+  const T& growFor(std::uintmax_t newSize, const T& v, const T** position) {
+    assert(static_cast<std::uintmax_t>(this->capacity()) < newSize);
+    const T* ptr = std::addressof(v);
+    std::ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
+    SizeType itIdx = static_cast<SizeType>(*position - this->begin());  // pos will be invalidated
+    this->grow(newSize);
+    *position = this->begin() + itIdx;
+    return idx != -1 ? this->begin()[idx] : v;
   }
 
   const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v) {
@@ -1325,24 +1357,19 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     return v;
   }
 
-  const T& adjustCapacity(std::uintmax_t neededCapacity, const T& v, const T** position) {
-    if (static_cast<std::uintmax_t>(this->capacity()) < neededCapacity) {
-      const T* ptr = std::addressof(v);
-      std::ptrdiff_t idx = IsInRange(ptr, this->begin(), this->size()) ? ptr - this->begin() : -1;
-      SizeType itIdx = static_cast<SizeType>(*position - this->begin());  // pos will be invalidated
-      this->grow(neededCapacity);
-      *position = this->begin() + itIdx;
-      if (idx != -1) {
-        return this->begin()[idx];
-      }
-    }
-    return v;
+ private:
+  // The growing emplace methods increment the size. The arguments of the emplace methods may reference elements of the
+  // vector, so the new element is constructed while they are still in place: directly in a new storage, before the
+  // elements are relocated into it around the new one (like the standard library implementations), without temporary
+  // to relocate nor element to shift (see GrowingInsert).
+  template <class... Args>
+  iterator emplaceInNewStorage(SizeType idx, Args&&... args) {
+    return this->growInsert(idx, static_cast<std::uintmax_t>(this->size()) + 1U,
+                            [&](T* elem) { amc::construct_at(elem, std::forward<Args>(args)...); });
   }
 
- private:
-  // The arguments of the emplace methods may reference elements of the vector, so the new element is constructed while
-  // they are still in place. 'reallocate' may extend the storage in place: the new element is then constructed in a
-  // temporary storage before growing, and relocated into the vector afterwards.
+  // 'reallocate' may extend the storage in place: the new element is then constructed in a temporary storage before
+  // growing, and relocated into the vector afterwards.
   template <class... Args>
   iterator emplaceBackGrowing(std::true_type, Args&&... args) {
     TemporaryElem<T> e(std::forward<Args>(args)...);
@@ -1350,29 +1377,37 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     iterator endIt = this->dynStorage() + this->size();
     amc::relocate_at(e.ptr(), endIt);
     e.release();
+    this->incrSize();
     return endIt;
   }
 
-  // Otherwise the new element is constructed directly in the new storage, before the elements are relocated into it
-  // around the new one (like the standard library implementations): no temporary to relocate, and no element to shift.
   template <class... Args>
   iterator emplaceBackGrowing(std::false_type, Args&&... args) {
-    return this->growEmplace(this->size(), std::forward<Args>(args)...);
+    return emplaceInNewStorage(this->size(), std::forward<Args>(args)...);
   }
 
   template <class... Args>
-  iterator emplaceGrowing(std::true_type, SizeType idx, Args&&... args) {
+  iterator emplaceGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>, SizeType idx, Args&&... args) {
     TemporaryElem<T> e(std::forward<Args>(args)...);
     this->grow(static_cast<std::uintmax_t>(this->size()) + 1U);
     iterator pos = this->begin() + idx;
     relocate_insert_n(pos, static_cast<SizeType>(this->size() - idx), e.ptr());
     e.release();
+    this->incrSize();
     return pos;
   }
 
   template <class... Args>
-  iterator emplaceGrowing(std::false_type, SizeType idx, Args&&... args) {
-    return this->growEmplace(idx, std::forward<Args>(args)...);
+  iterator emplaceGrowing(GrowingInsertTag<GrowingInsert::kInNewStorage>, SizeType idx, Args&&... args) {
+    return emplaceInNewStorage(idx, std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
+  iterator emplaceGrowing(GrowingInsertTag<GrowingInsert::kInNewStorageIfInline>, SizeType idx, Args&&... args) {
+    if (this->isSmall()) {
+      return emplaceInNewStorage(idx, std::forward<Args>(args)...);
+    }
+    return emplaceGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>(), idx, std::forward<Args>(args)...);
   }
 
   // An rvalue of 'T' (such as the argument of 'push_back(T&&)' or 'insert(pos, T&&)') is only moved from once the
@@ -1382,14 +1417,16 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
     const T& newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
     iterator endIt = this->dynStorage() + this->size();
     amc::construct_at(endIt, std::move(const_cast<T&>(newV)));
+    this->incrSize();
     return endIt;
   }
 
-  iterator emplaceGrowing(std::true_type, SizeType idx, T&& v) {
+  iterator emplaceGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>, SizeType idx, T&& v) {
     const T& newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
     iterator pos = this->begin() + idx;
     // 'newV' may be one of the elements to shift: 'emplace_n' moves from it before shifting them
     emplace_n(pos, static_cast<SizeType>(this->size() - idx), std::move(const_cast<T&>(newV)));
+    this->incrSize();
     return pos;
   }
 };
@@ -1602,11 +1639,16 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   }
 #endif
 
+  /// 'v' may be an element of the vector. A full vector copies it like 'emplace': before relocating its elements, once
+  /// (around the new element, unless it extends its storage with 'reallocate', see GrowingInsert), instead of growing
+  /// and then shifting them. If the copy throws, the vector is unchanged, capacity included.
   iterator insert(const_iterator position, const_reference v) {
     assert(position >= this->cbegin() && position <= cend());
-    const_reference newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v, &position);
+    if (this->isFull()) {
+      return this->emplace(position, v);
+    }
     iterator pos = const_cast<iterator>(position);
-    insert_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), newV);
+    insert_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), v);
     this->incrSize();
     return pos;
   }
@@ -1625,32 +1667,14 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   iterator insert(const_iterator position, size_type count, const_reference v) {
     assert(position >= this->cbegin() && position <= cend());
-    iterator pos;
-    if (count != 0) {
-      const_reference newV = this->adjustCapacity(NeededCapacity(this->size(), count), v, &position);
-      pos = const_cast<iterator>(position);
-      SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
-      if (nElemsToShift == 0) {
-        std::uninitialized_fill_n(pos, count, newV);
-      } else {
-        // 'newV' may alias one of the elements about to be shifted (e.g. inserting several copies of an element
-        // located at or after 'pos'). 'shift_right' relocates that element 'count' slots to the right, so bind the
-        // source to its post-shift location to keep reading the intended value - same rationale as 'insert_n'.
-        const T* pv = std::addressof(newV);
-        const_reference src = IsInRange(pv, pos, nElemsToShift) ? *(pv + count) : newV;
-        shift_right(pos, nElemsToShift, count);
-        AMC_TRY {
-          fill_after_shift(pos, nElemsToShift, count, src);
-        } AMC_CATCH_ALL {
-          undo_shift_right(pos, nElemsToShift, count);
-          AMC_RETHROW;
-        }
-      }
-      this->setSize(this->size() + count);
-    } else {
-      pos = const_cast<iterator>(position);
+    if (count == 0) {
+      return const_cast<iterator>(position);
     }
-    return pos;
+    const std::uintmax_t newSize = NeededCapacity(this->size(), count);
+    if (static_cast<std::uintmax_t>(this->capacity()) < newSize) {
+      return insertGrowing(typename GrowingInsertOf<Alloc, WithInlineElements>::type(), position, newSize, count, v);
+    }
+    return insertFill(const_cast<iterator>(position), count, v);
   }
 
   /// Inserts elements at the specified location in the container.
@@ -1872,26 +1896,105 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     }
   }
 
+  // Insertions without room for the new elements (see GrowingInsert): in a new storage, where they are constructed
+  // while the elements are still in place ('v' may be one of them), or after having grown the storage.
+  iterator insertGrowing(GrowingInsertTag<GrowingInsert::kInNewStorage>, const_iterator position,
+                         std::uintmax_t newSize, size_type count, const_reference v) {
+    return this->growInsert(static_cast<SizeType>(position - this->begin()), newSize,
+                            [&v, count](T* first) { std::uninitialized_fill_n(first, count, v); });
+  }
+
+  iterator insertGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>, const_iterator position,
+                         std::uintmax_t newSize, size_type count, const_reference v) {
+    const_reference newV = this->growFor(newSize, v, &position);
+    return insertFill(const_cast<iterator>(position), count, newV);
+  }
+
+  iterator insertGrowing(GrowingInsertTag<GrowingInsert::kInNewStorageIfInline>, const_iterator position,
+                         std::uintmax_t newSize, size_type count, const_reference v) {
+    if (this->isSmall()) {
+      return insertGrowing(GrowingInsertTag<GrowingInsert::kInNewStorage>(), position, newSize, count, v);
+    }
+    return insertGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>(), position, newSize, count, v);
+  }
+
+  /// Inserts 'count' (> 0) copies of 'v' at 'pos', the capacity being large enough.
+  iterator insertFill(iterator pos, size_type count, const_reference v) {
+    const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
+    if (nElemsToShift == 0) {
+      std::uninitialized_fill_n(pos, count, v);
+    } else {
+      // 'v' may alias one of the elements about to be shifted (e.g. inserting several copies of an element located at
+      // or after 'pos'). 'shift_right' relocates that element 'count' slots to the right, so bind the source to its
+      // post-shift location to keep reading the intended value - same rationale as 'insert_n'.
+      const T* pv = std::addressof(v);
+      const_reference src = IsInRange(pv, pos, nElemsToShift) ? *(pv + count) : v;
+      shift_right(pos, nElemsToShift, count);
+      AMC_TRY {
+        fill_after_shift(pos, nElemsToShift, count, src);
+      } AMC_CATCH_ALL {
+        undo_shift_right(pos, nElemsToShift, count);
+        AMC_RETHROW;
+      }
+    }
+    this->setSize(static_cast<SizeType>(this->size() + count));
+    return pos;
+  }
+
   template <class ForwardIt>
   iterator insertN(const_iterator position, ForwardIt first, std::uintmax_t count) {
     iterator pos = const_cast<iterator>(position);
-    if (count > 0) {
-      pos = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count, pos);
-      const SizeType n = static_cast<SizeType>(count);
-      const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
-      if (nElemsToShift == 0) {
-        amc::uninitialized_copy_n(first, n, pos);
-      } else {
-        shift_right(pos, nElemsToShift, n);
-        AMC_TRY {
-          copy_after_shift(first, nElemsToShift, n, pos);
-        } AMC_CATCH_ALL {
-          undo_shift_right(pos, nElemsToShift, n);
-          AMC_RETHROW;
-        }
-      }
-      this->setSize(static_cast<SizeType>(this->size() + count));
+    if (count == 0) {
+      return pos;
     }
+    const std::uintmax_t newSize = static_cast<std::uintmax_t>(this->size()) + count;
+    if (static_cast<std::uintmax_t>(this->capacity()) < newSize) {
+      return insertNGrowing(typename GrowingInsertOf<Alloc, WithInlineElements>::type(), pos, first, newSize, count);
+    }
+    return insertCopy(pos, first, static_cast<SizeType>(count));
+  }
+
+  template <class ForwardIt>
+  iterator insertNGrowing(GrowingInsertTag<GrowingInsert::kInNewStorage>, iterator pos, ForwardIt first,
+                          std::uintmax_t newSize, std::uintmax_t count) {
+    // 'growInsert' has checked that 'newSize', hence 'count', fits in SizeType when it constructs the new elements
+    return this->growInsert(static_cast<SizeType>(pos - this->begin()), newSize, [&first, count](T* dest) {
+      amc::uninitialized_copy_n(first, static_cast<SizeType>(count), dest);
+    });
+  }
+
+  template <class ForwardIt>
+  iterator insertNGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>, iterator pos, ForwardIt first,
+                          std::uintmax_t newSize, std::uintmax_t count) {
+    pos = this->growFor(newSize, pos);
+    return insertCopy(pos, first, static_cast<SizeType>(count));
+  }
+
+  template <class ForwardIt>
+  iterator insertNGrowing(GrowingInsertTag<GrowingInsert::kInNewStorageIfInline>, iterator pos, ForwardIt first,
+                          std::uintmax_t newSize, std::uintmax_t count) {
+    if (this->isSmall()) {
+      return insertNGrowing(GrowingInsertTag<GrowingInsert::kInNewStorage>(), pos, first, newSize, count);
+    }
+    return insertNGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>(), pos, first, newSize, count);
+  }
+
+  /// Inserts the 'n' (> 0) elements starting at 'first' at 'pos', the capacity being large enough.
+  template <class ForwardIt>
+  iterator insertCopy(iterator pos, ForwardIt first, SizeType n) {
+    const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
+    if (nElemsToShift == 0) {
+      amc::uninitialized_copy_n(first, n, pos);
+    } else {
+      shift_right(pos, nElemsToShift, n);
+      AMC_TRY {
+        copy_after_shift(first, nElemsToShift, n, pos);
+      } AMC_CATCH_ALL {
+        undo_shift_right(pos, nElemsToShift, n);
+        AMC_RETHROW;
+      }
+    }
+    this->setSize(static_cast<SizeType>(this->size() + n));
     return pos;
   }
 

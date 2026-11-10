@@ -68,21 +68,21 @@ inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, Siz
   return newPtr;
 }
 
-// Relocates the 'n' elements starting at 'first' to the raw memory starting at 'dest', the ones from index 'pos' one
-// slot further: the slot 'dest + pos' is left to the inserted element.
+// Relocates the 'n' elements starting at 'first' to the raw memory starting at 'dest', the ones from index 'pos' 'gap'
+// slots further: the 'gap' slots starting at 'dest + pos' are left to the inserted elements.
 template <class T, class SizeType, typename std::enable_if<is_move_construct_nothrow<T>::value, bool>::type = true>
-inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, T* dest) noexcept {
+inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, SizeType gap, T* dest) noexcept {
   (void)amc::uninitialized_relocate_n(first, pos, dest);
-  (void)amc::uninitialized_relocate_n(first + pos, n - pos, dest + pos + 1);
+  (void)amc::uninitialized_relocate_n(first + pos, n - pos, dest + pos + gap);
 }
 
 // If a move throws, the elements constructed at 'dest' are destroyed and all the source elements stay alive (some of
 // them moved from), like with 'amc::uninitialized_relocate_n': all of them are moved before any is destroyed.
 template <class T, class SizeType, typename std::enable_if<!is_move_construct_nothrow<T>::value, bool>::type = true>
-inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, T* dest) {
+inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, SizeType gap, T* dest) {
   (void)amc::uninitialized_move_n(first, pos, dest);
   AMC_TRY {
-    (void)amc::uninitialized_move_n(first + pos, n - pos, dest + pos + 1);
+    (void)amc::uninitialized_move_n(first + pos, n - pos, dest + pos + gap);
   } AMC_CATCH_ALL {
     amc::destroy_n(dest, pos);
     AMC_RETHROW;
@@ -90,19 +90,22 @@ inline void uninitialized_relocate_around(T* first, SizeType n, SizeType pos, T*
   amc::destroy_n(first, n);
 }
 
-// Allocates a storage of 'newCapa' elements and constructs in it the element at index 'pos' from 'args', then
-// relocates the 'size' elements of 'p' around it. 'args' may reference elements of 'p': they are still in place when
-// the new element is constructed.
+// Allocates a storage of 'newCapa' elements, in which 'construct(newPtr + pos)' constructs the 'count' new elements
+// starting at index 'pos' (destroying the ones it constructed if it throws, like std::uninitialized_fill_n), then
+// relocates the 'size' elements of 'p' around them. Their source may reference elements of 'p': these are still in
+// place when the new elements are constructed. Like for std::vector, the elements are relocated once, instead of being
+// relocated to a grown storage and then shifted in it.
 // If anything throws, the new storage is deallocated and the elements stay in 'p'.
-template <class Alloc, class T, class SizeType, class... Args>
-inline T* AllocateEmplace(Alloc& alloc, T* p, SizeType size, SizeType newCapa, SizeType pos, Args&&... args) {
+template <class Alloc, class T, class SizeType, class Construct>
+inline T* AllocateInsert(Alloc& alloc, T* p, SizeType size, SizeType newCapa, SizeType pos, SizeType count,
+                         Construct& construct) {
   T* newPtr = alloc.allocate(static_cast<std::size_t>(newCapa));
   AMC_TRY {
-    amc::construct_at(newPtr + pos, std::forward<Args>(args)...);
+    construct(newPtr + pos);
     AMC_TRY {
-      uninitialized_relocate_around(p, size, pos, newPtr);
+      uninitialized_relocate_around(p, size, pos, count, newPtr);
     } AMC_CATCH_ALL {
-      amc::destroy_at(newPtr + pos);
+      amc::destroy_n(newPtr + pos, count);
       AMC_RETHROW;
     }
   } AMC_CATCH_ALL {
@@ -196,37 +199,41 @@ void StdVectorBase<T, Alloc, SizeType>::assignInNewStorage(std::uintmax_t n, Con
   _size = capa;
 }
 
-// Grows to a new dynamic storage, in which the element at index 'pos' is constructed from 'args' before the elements
-// are relocated around it (see AllocateEmplace). Returns the new element, without incrementing the size.
+// Grows to a new dynamic storage for 'newSize' elements, in which 'construct' constructs the 'newSize - size()' new
+// elements starting at index 'pos' before the elements are relocated around them (see AllocateInsert): the insertions
+// into a full vector which cannot extend its storage with 'reallocate', emplace included. Sets the size and returns
+// the first new element. Declared inline, like 'grow', as emplace_back calls it to grow such a vector.
 template <class T, class Alloc, class SizeType>
-template <class... Args>
-inline T* SmallVectorBase<T, Alloc, SizeType>::growEmplace(SizeType pos, Args&&... args) {
+template <class Construct>
+inline T* SmallVectorBase<T, Alloc, SizeType>::growInsert(SizeType pos, std::uintmax_t newSize, Construct construct) {
   const SizeType size = this->size();
-  const SizeType newCapa =
-      SafeNextCapacity(capacity(), static_cast<std::uintmax_t>(size) + 1U,
-                       MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)), MaxDoublingCapacity<T>(), false);
-  T* dynStorage = AllocateEmplace(static_cast<Alloc&>(*this), begin(), size, newCapa, pos, std::forward<Args>(args)...);
+  const SizeType newCapa = SafeNextCapacity(
+      capacity(), newSize, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)), MaxDoublingCapacity<T>(), false);
+  // 'newSize' does not exceed the maximum capacity, which fits in SizeType
+  T* dynStorage = AllocateInsert(static_cast<Alloc&>(*this), begin(), size, newCapa, pos,
+                                 static_cast<SizeType>(newSize - static_cast<std::uintmax_t>(size)), construct);
   if (!isSmall()) {
     freeStorage();
   }
   _storage.setDyn(dynStorage);
   _capa = newCapa;
-  _size = size;
+  _size = static_cast<SizeType>(newSize);
   return dynStorage + pos;
 }
 
 template <class T, class Alloc, class SizeType>
-template <class... Args>
-inline T* StdVectorBase<T, Alloc, SizeType>::growEmplace(SizeType pos, Args&&... args) {
-  const SizeType newCapa =
-      SafeNextCapacity(_capa, static_cast<std::uintmax_t>(_size) + 1U,
-                       MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)), MaxDoublingCapacity<T>(), false);
-  T* storage = AllocateEmplace(static_cast<Alloc&>(*this), _storage, _size, newCapa, pos, std::forward<Args>(args)...);
+template <class Construct>
+inline T* StdVectorBase<T, Alloc, SizeType>::growInsert(SizeType pos, std::uintmax_t newSize, Construct construct) {
+  const SizeType newCapa = SafeNextCapacity(_capa, newSize, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)),
+                                            MaxDoublingCapacity<T>(), false);
+  T* storage = AllocateInsert(static_cast<Alloc&>(*this), _storage, _size, newCapa, pos,
+                              static_cast<SizeType>(newSize - static_cast<std::uintmax_t>(_size)), construct);
   if (_capa != 0U) {
     freeStorage();
   }
   _storage = storage;
   _capa = newCapa;
+  _size = static_cast<SizeType>(newSize);
   return storage + pos;
 }
 
