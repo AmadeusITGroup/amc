@@ -1717,16 +1717,20 @@ TEST(VectorTest, EmplaceGrowthOperations) {
   CheckEmplaceGrowthOperations<SmallVector<TrivRelocType, 2>>();
 }
 
-/// The emplace methods of a full vector throw when constructing the new element or when relocating an element.
+/// The emplace methods, and the insertions of several elements, of a full vector throw when constructing the new
+/// element or when relocating an element. Once enough moves succeed, the same insertion succeeds.
 template <class VectorType>
 void CheckEmplaceGrowthThrowsKeepsElements() {
   using Type = typename VectorType::value_type;
-  for (int method = 0; method < 2; ++method) {
+  using SzType = typename VectorType::size_type;
+  const Type values[] = {7, 8, 9};
+  for (int method = 0; method < 4; ++method) {
     for (uint32_t nbElems : {0U, 2U, 5U}) {
       for (uint32_t pos = method == 0 ? nbElems : 0U; pos <= nbElems; ++pos) {
-        // The new element is move constructed first, then the elements are moved: the move after the 'nbMoves' first
-        // ones throws
-        for (int nbMoves = 0; nbMoves <= static_cast<int>(nbElems); ++nbMoves) {
+        // The new element is move constructed first (the insertions of several elements copy them), then the elements
+        // are moved: the move after the 'nbMoves' first ones throws, none if they are all the moves
+        const int nbMovesTotal = static_cast<int>(nbElems) + (method < 2 ? 1 : 0);
+        for (int nbMoves = 0; nbMoves <= nbMovesTotal; ++nbMoves) {
           VectorType v;
           for (uint32_t i = 0; i < nbElems; ++i) {
             v.emplace_back(static_cast<int32_t>(i + 1U));
@@ -1741,12 +1745,34 @@ void CheckEmplaceGrowthThrowsKeepsElements() {
           const int nbLive = Type::NbLive();
           const int64_t nbLiveAllocations = CountingAllocator::NbLiveAllocations();
 
+          const auto insert = [&]() {
+            if (method == 0) {
+              v.emplace_back(std::move(value));
+            } else if (method == 1) {
+              v.emplace(v.begin() + pos, std::move(value));
+            } else if (method == 2) {
+              v.insert(v.begin() + pos, SzType{2}, value);
+            } else {
+              v.insert(v.begin() + pos, std::begin(values), std::end(values));
+            }
+          };
           Type::NbMovesBeforeThrow() = nbMoves;
-          if (method == 0) {
-            EXPECT_THROW(v.emplace_back(std::move(value)), MoveForbiddenException);
-          } else {
-            EXPECT_THROW(v.emplace(v.begin() + pos, std::move(value)), MoveForbiddenException);
+          if (nbMoves == nbMovesTotal) {
+            insert();
+            Type::NbMovesBeforeThrow() = -1;
+            std::vector<int32_t> expectedValues(expected.begin(), expected.end());
+            const auto at = expectedValues.begin() + static_cast<std::ptrdiff_t>(pos);
+            if (method < 2) {
+              expectedValues.insert(at, 42);
+            } else if (method == 2) {
+              expectedValues.insert(at, 2, 42);
+            } else {
+              expectedValues.insert(at, std::begin(values), std::end(values));
+            }
+            EXPECT_TRUE(std::equal(v.begin(), v.end(), expectedValues.begin(), expectedValues.end()));
+            continue;
           }
+          EXPECT_THROW(insert(), MoveForbiddenException);
           Type::NbMovesBeforeThrow() = -1;
 
           EXPECT_EQ(v, expected);  // ThrowingMoveType copies its value when moved
@@ -1775,7 +1801,7 @@ TEST(VectorTest, EmplaceGrowthThrowsKeepsElements) {
 }
 
 // When copying the inserted element throws, the elements shifted to make room for it are shifted back: the vector keeps
-// its elements, without any leak.
+// its elements, without any leak. A full vector copies it before growing (like emplace): it also keeps its storage.
 template <class VectorType>
 void CheckInsertCopyThrowsKeepsElements() {
   using Type = typename VectorType::value_type;
@@ -1787,6 +1813,8 @@ void CheckInsertCopyThrowsKeepsElements() {
       if (inplace) {
         v.reserve(5U);  // no reallocation: the elements are shifted in place
       }
+      const auto capacity = v.capacity();
+      const Type* data = v.data();
       stats = TypeStats();
       stats.start();
       stats._nbCopiesBeforeThrow = 0;
@@ -1796,9 +1824,77 @@ void CheckInsertCopyThrowsKeepsElements() {
       stats._nbCopiesBeforeThrow = -1;
       stats.end();
       EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
+      EXPECT_EQ(v.capacity(), capacity);
+      EXPECT_EQ(v.data(), data);
       EXPECT_EQ(stats._nbConstructs + stats._nbCopyConstructs + stats._nbMoveConstructs, stats._nbDestructs);
     }
   }
+}
+
+// Like std::vector, inserting several elements into a vector without room for them, which cannot extend its storage
+// with 'reallocate' (it has no 'reallocate', or it is a SmallVector storing its elements inline), constructs them in a
+// new storage and then relocates each element once around them, instead of relocating the elements to a grown storage
+// and then shifting them in it. As the new elements are constructed before anything is relocated, a throwing copy
+// leaves the vector unchanged, storage and capacity included.
+template <class VectorType>
+void CheckInsertSeveralIntoFullVector() {
+  using Type = typename VectorType::value_type;
+  using SzType = typename VectorType::size_type;
+  const Type value(5);
+  const std::vector<Type> src{6, 7, 8};
+  TypeStats& stats = TypeStats::_stats;
+  for (int method = 0; method < 3; ++method) {
+    for (int pos = 0; pos <= 4; ++pos) {
+      for (int nbCopiesBeforeThrow : {-1, 0, 2}) {
+        VectorType v{1, 2, 3, 4};
+        ASSERT_EQ(v.capacity(), v.size());
+        const auto capacity = v.capacity();
+        const Type* data = v.data();
+        const std::vector<Type> inserted = method == 2 ? src : std::vector<Type>(3, method == 0 ? value : v[3]);
+        std::vector<Type> expected(v.begin(), v.end());
+        expected.insert(expected.begin() + pos, inserted.begin(), inserted.end());
+        stats = TypeStats();
+        stats.start();
+        stats._nbCopiesBeforeThrow = nbCopiesBeforeThrow;
+        const auto insert = [&]() {
+          if (method == 0) {
+            return v.insert(v.begin() + pos, SzType{3}, value);
+          }
+          if (method == 1) {
+            return v.insert(v.begin() + pos, SzType{3}, v[3]);  // source among the elements to relocate
+          }
+          return v.insert(v.begin() + pos, src.begin(), src.end());
+        };
+        if (nbCopiesBeforeThrow < 0) {
+          const auto it = insert();
+          EXPECT_EQ(it, v.begin() + pos);
+          EXPECT_TRUE(std::equal(v.begin(), v.end(), expected.begin(), expected.end()));
+          // each element is relocated once, with a move for the non trivially relocatable ones
+          EXPECT_EQ(stats._nbMoveConstructs, amc::is_trivially_relocatable<Type>::value ? 0U : 4U);
+          EXPECT_EQ(stats._nbMoveAssignments, 0U);
+        } else {
+          EXPECT_THROW(insert(), CopyException);
+          EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
+          EXPECT_EQ(v.capacity(), capacity);
+          EXPECT_EQ(v.data(), data);
+          EXPECT_EQ(stats._nbConstructs + stats._nbCopyConstructs + stats._nbMoveConstructs, stats._nbDestructs);
+        }
+        stats._nbCopiesBeforeThrow = -1;
+        stats.end();
+      }
+    }
+  }
+}
+
+TEST(VectorTest, InsertSeveralIntoFullVector) {
+  CheckInsertSeveralIntoFullVector<vector<ComplexNonTriviallyRelocatableType>>();  // no 'reallocate' for this type
+  CheckInsertSeveralIntoFullVector<
+      vector<ComplexTriviallyRelocatableType, std::allocator<ComplexTriviallyRelocatableType>>>();
+  CheckInsertSeveralIntoFullVector<SmallVector<ComplexNonTriviallyRelocatableType, 4>>();  // from the inline storage
+  CheckInsertSeveralIntoFullVector<
+      SmallVector<ComplexTriviallyRelocatableType, 4, std::allocator<ComplexTriviallyRelocatableType>>>();
+  // grows with 'realloc' once on the heap, not from the inline storage
+  CheckInsertSeveralIntoFullVector<SmallVector<ComplexTriviallyRelocatableType, 4>>();
 }
 
 TEST(VectorTest, InsertCopyThrowsKeepsElements) {
@@ -1861,59 +1957,48 @@ void CheckInsertUndoShiftThrowsDoesNotLeak() {
   int& nbAssignmentsBeforeThrow = Type::NbAssignmentsBeforeThrow();
   int& nbAssignmentsBeforeNextThrow = Type::NbAssignmentsBeforeNextThrow();
   const int nbLive = Type::NbLive();
+  // The vector has room for the new element (growing, the insertions relocate the elements around it, without shifting)
   for (int method = 0; method < 3; ++method) {
-    for (bool grow : {false, true}) {
-      if (grow && method != 0) {
-        continue;  // insert(T&&) and emplace do not shift elements when growing, they relocate them around the new one
-      }
-      for (int pos = 0; pos < 4; ++pos) {  // inserting at the end shifts nothing
-        const int nbShifted = 4 - pos;
-        // Undoing the shift move assigns the 'nbShifted' elements back: the 'nbUndoMoves' first ones succeed, the next
-        // one throws (none if all of them succeed)
-        for (int nbUndoMoves = 0; nbUndoMoves <= nbShifted; ++nbUndoMoves) {
-          {
-            VectorType v{1, 2, 3, 4};
-            if (grow) {
-              v.shrink_to_fit();
-              if (v.capacity() != v.size()) {
-                continue;  // cannot grow (FixedCapacityVector) or room left in the inline storage
-              }
-            } else {
-              v.reserve(5U);
-            }
-            const Type value(5);
-            Type::NbThrows() = 0;
-            // the shift move constructs the last element past the end, then move assigns the 'nbShifted - 1' other
-            // ones: the next assignment, of the inserted element, throws
-            nbAssignmentsBeforeThrow = nbShifted - 1;
-            nbAssignmentsBeforeNextThrow = nbUndoMoves;
-            if (method == 0) {
-              EXPECT_THROW(v.insert(v.begin() + pos, value), AssignmentException);
-            } else if (method == 1) {
-              EXPECT_THROW(v.insert(v.begin() + pos, Type(5)), AssignmentException);
-            } else {
-              EXPECT_THROW(v.emplace(v.begin() + pos, 5), AssignmentException);
-            }
-            nbAssignmentsBeforeThrow = -1;
-            nbAssignmentsBeforeNextThrow = -1;
-
-            const bool undoThrows = nbUndoMoves < nbShifted;
-            EXPECT_EQ(Type::NbThrows(), undoThrows ? 2 : 1);
-            EXPECT_EQ(v.size(), 4U);
-            EXPECT_EQ(Type::NbLive(), nbLive + 5);  // the elements of 'v' and 'value', none past the end of 'v'
-            if (undoThrows) {
-              for (const Type& elem : v) {
-                const int32_t i = elem;
-                EXPECT_TRUE(i == -1 || (1 <= i && i <= 4));  // moved from, or one of the initial values
-              }
-            } else {
-              EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
-            }
-            v.push_back(value);  // still usable
-            EXPECT_EQ(static_cast<int32_t>(v.back()), 5);
+    for (int pos = 0; pos < 4; ++pos) {  // inserting at the end shifts nothing
+      const int nbShifted = 4 - pos;
+      // Undoing the shift move assigns the 'nbShifted' elements back: the 'nbUndoMoves' first ones succeed, the next
+      // one throws (none if all of them succeed)
+      for (int nbUndoMoves = 0; nbUndoMoves <= nbShifted; ++nbUndoMoves) {
+        {
+          VectorType v{1, 2, 3, 4};
+          v.reserve(5U);
+          const Type value(5);
+          Type::NbThrows() = 0;
+          // the shift move constructs the last element past the end, then move assigns the 'nbShifted - 1' other
+          // ones: the next assignment, of the inserted element, throws
+          nbAssignmentsBeforeThrow = nbShifted - 1;
+          nbAssignmentsBeforeNextThrow = nbUndoMoves;
+          if (method == 0) {
+            EXPECT_THROW(v.insert(v.begin() + pos, value), AssignmentException);
+          } else if (method == 1) {
+            EXPECT_THROW(v.insert(v.begin() + pos, Type(5)), AssignmentException);
+          } else {
+            EXPECT_THROW(v.emplace(v.begin() + pos, 5), AssignmentException);
           }
-          EXPECT_EQ(Type::NbLive(), nbLive);
+          nbAssignmentsBeforeThrow = -1;
+          nbAssignmentsBeforeNextThrow = -1;
+
+          const bool undoThrows = nbUndoMoves < nbShifted;
+          EXPECT_EQ(Type::NbThrows(), undoThrows ? 2 : 1);
+          EXPECT_EQ(v.size(), 4U);
+          EXPECT_EQ(Type::NbLive(), nbLive + 5);  // the elements of 'v' and 'value', none past the end of 'v'
+          if (undoThrows) {
+            for (const Type& elem : v) {
+              const int32_t i = elem;
+              EXPECT_TRUE(i == -1 || (1 <= i && i <= 4));  // moved from, or one of the initial values
+            }
+          } else {
+            EXPECT_EQ(v, VectorType({1, 2, 3, 4}));
+          }
+          v.push_back(value);  // still usable
+          EXPECT_EQ(static_cast<int32_t>(v.back()), 5);
         }
+        EXPECT_EQ(Type::NbLive(), nbLive);
       }
     }
   }
