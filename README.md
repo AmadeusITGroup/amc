@@ -164,6 +164,7 @@ ctest --test-dir build --output-on-failure
 | `AMC_MODULE_NONSTD_FEATURES`           | Build the module with the non-standard extensions, and define `AMC_NONSTD_FEATURES` for the targets linking `amc::module`                                                                        | `OFF`                                |
 | `AMC_STD_TRIVIALLY_RELOCATABLE`        | Declare the [standard library types](docs/containers.md#trivially-relocatable-types) trivially relocatable (`OFF` defines `AMC_NO_STD_TRIVIALLY_RELOCATABLE` for the targets linking `amc::amc`) | `ON`                                 |
 | `AMC_STD_STRING_TRIVIALLY_RELOCATABLE` | Declare [`std::string`](docs/containers.md#trivially-relocatable-types) trivially relocatable where it is: libc++, MSVC STL in Release (defines the macro for the targets linking `amc::amc`)    | `OFF`                                |
+| `AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE`  | Declare [`std::deque`](docs/containers.md#trivially-relocatable-types) trivially relocatable where it is: libstdc++, libc++ (defines the macro for the targets linking `amc::amc`)               | `OFF`                                |
 
 Code coverage uses [LLVM source-based code coverage](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html), so it needs Clang, and `llvm-profdata` and `llvm-cov` of the same version (package `llvm-<version>` on Debian and Ubuntu):
 

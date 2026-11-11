@@ -33,13 +33,14 @@ option(AMC_ENABLE_MODULE "Add the amc::module target, providing the amc C++20 mo
 option(AMC_MODULE_NONSTD_FEATURES "Build the amc module with the non standard extensions, and define AMC_NONSTD_FEATURES for the targets linking amc::module" OFF)
 option(AMC_STD_TRIVIALLY_RELOCATABLE "Declare trivially relocatable the standard library types which are in libstdc++, libc++ and the MSVC STL (std::unique_ptr, std::vector...). OFF defines AMC_NO_STD_TRIVIALLY_RELOCATABLE for the targets linking amc" ON)
 option(AMC_STD_STRING_TRIVIALLY_RELOCATABLE "Declare std::basic_string trivially relocatable with the standard libraries in which it is (libc++, MSVC STL without iterator debugging, old ABI of libstdc++), defining AMC_STD_STRING_TRIVIALLY_RELOCATABLE for the targets linking amc" OFF)
+option(AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE "Declare std::deque trivially relocatable with the standard libraries in which it is (libstdc++ and libc++, without iterator debugging), defining AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE for the targets linking amc" OFF)
 
 if (AMC_PEDANTIC)
   message(STATUS "[amc] Compile without non standard features")
 else()
   message(STATUS "[amc] Compile with non standard features")
 endif()
-message(STATUS "[amc] Standard types trivially relocatable: ${AMC_STD_TRIVIALLY_RELOCATABLE}, std::basic_string: ${AMC_STD_STRING_TRIVIALLY_RELOCATABLE}")
+message(STATUS "[amc] Standard types trivially relocatable: ${AMC_STD_TRIVIALLY_RELOCATABLE}, std::basic_string: ${AMC_STD_STRING_TRIVIALLY_RELOCATABLE}, std::deque: ${AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE}")
 
 # Compilation options of the unit tests and benchmarks (AmcSetProjectProperties), never set globally
 include(cmake/SetProjectProperties.cmake)
@@ -65,6 +66,9 @@ if (NOT AMC_STD_TRIVIALLY_RELOCATABLE)
 endif()
 if (AMC_STD_STRING_TRIVIALLY_RELOCATABLE)
   target_compile_definitions(${PROJECT_NAME} INTERFACE AMC_STD_STRING_TRIVIALLY_RELOCATABLE)
+endif()
+if (AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE)
+  target_compile_definitions(${PROJECT_NAME} INTERFACE AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE)
 endif()
 
 # C++20 module 'amc' ('import amc;'): a static library holding the module interface unit, whose BMI is built in the

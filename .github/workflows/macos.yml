@@ -12,15 +12,15 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        # libc++: std::string is trivially relocatable when declared so
-        std_string: ["OFF", "ON"]
+        # libc++: std::string and std::deque are trivially relocatable when declared so
+        std_opt_in: ["OFF", "ON"]
     steps:
       - uses: actions/checkout@v5
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
       - name: cmake
-        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=Release -DAMC_STD_STRING_TRIVIALLY_RELOCATABLE=${{ matrix.std_string }}
+        run: cmake -S . -B build -D CMAKE_BUILD_TYPE=Release -DAMC_STD_STRING_TRIVIALLY_RELOCATABLE=${{ matrix.std_opt_in }} -DAMC_STD_DEQUE_TRIVIALLY_RELOCATABLE=${{ matrix.std_opt_in }}
       - name: build
         run: cmake --build build --parallel
       - name: test

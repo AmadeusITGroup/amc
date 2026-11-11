@@ -5,6 +5,7 @@
 #include <amc/smallvector.hpp>
 #include <amc/vector.hpp>
 #include <array>
+#include <deque>
 #include <exception>
 #include <forward_list>
 #include <initializer_list>
@@ -2832,8 +2833,9 @@ struct NonTriviallyRelocatableDeleter {
 
 // Expected trait of the standard library types declared trivially relocatable by amc, with the same conditions as
 // type_traits.hpp: all of them unless AMC_NO_STD_TRIVIALLY_RELOCATABLE is defined, std::vector not in the debug modes
-// of the standard libraries, std::optional not with AddressSanitizer in the MSVC STL, and std::string on request, for
-// the implementations in which it is (not with AddressSanitizer).
+// of the standard libraries, std::optional not with AddressSanitizer in the MSVC STL, and std::string and std::deque
+// on request, for the implementations in which they are (std::string not with AddressSanitizer, std::deque not in the
+// debug modes).
 #if defined(__SANITIZE_ADDRESS__)
 #define AMC_TEST_ASAN 1
 #elif defined(__has_feature)
@@ -2851,8 +2853,14 @@ constexpr bool kStdTriviallyRelocatable = true;
 #if defined(_GLIBCXX_DEBUG) || defined(_LIBCPP_ENABLE_DEBUG_MODE) || defined(_LIBCPP_DEBUG) || \
     (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0)
 constexpr bool kStdVectorTriviallyRelocatable = false;
+constexpr bool kStdDequeTriviallyRelocatable = false;
 #else
 constexpr bool kStdVectorTriviallyRelocatable = kStdTriviallyRelocatable;
+#if defined(AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE) && (defined(__GLIBCXX__) || defined(_LIBCPP_VERSION))
+constexpr bool kStdDequeTriviallyRelocatable = true;
+#else
+constexpr bool kStdDequeTriviallyRelocatable = false;  // the MSVC STL allocates a proxy pointing back to the deque
+#endif
 #endif
 
 #if defined(_MSVC_STL_VERSION) && defined(AMC_TEST_ASAN)
@@ -2914,6 +2922,10 @@ TEST(VectorTest, StandardTypesTriviallyRelocatable) {
   static_assert(is_trivially_relocatable<std::pair<std::string, int>>::value == kStdStringTriviallyRelocatable, "");
   static_assert(vec::CanReallocate<allocator<std::unique_ptr<int>>>::value == kStdTriviallyRelocatable, "");
   static_assert(is_trivially_relocatable<std::forward_list<int>>::value == kStdVectorTriviallyRelocatable, "");
+  static_assert(is_trivially_relocatable<std::deque<int>>::value == kStdDequeTriviallyRelocatable, "");
+  static_assert(
+      is_trivially_relocatable<std::deque<ComplexNonTriviallyRelocatableType>>::value == kStdDequeTriviallyRelocatable,
+      "");
   // cv-qualified types are relocatable as their unqualified type: the values of map-like vectors grow with 'realloc'
   static_assert(is_trivially_relocatable<const std::unique_ptr<int>>::value == kStdTriviallyRelocatable, "");
   static_assert(is_trivially_relocatable<const volatile std::shared_ptr<int>>::value == kStdTriviallyRelocatable, "");
@@ -3007,6 +3019,24 @@ TEST(VectorTest, StandardTypesTriviallyRelocatable) {
   EXPECT_EQ(lists[0], std::forward_list<int>{4});
   EXPECT_EQ(lists[1], list);
   EXPECT_EQ(lists[2], list);
+
+  // deques of several blocks, starting inside one: their iterators and their maps follow them when they are relocated
+  std::deque<int> deque(1000, -1);
+  for (int i = 0; i < 1000; ++i) {
+    deque.push_front(i);
+  }
+  vector<std::deque<int>> deques(3, deque);
+  deques.insert(deques.begin() + 1, std::deque<int>{4});
+  deques.erase(deques.begin());
+  deques.shrink_to_fit();
+  ASSERT_EQ(deques.size(), 3U);
+  EXPECT_EQ(deques[0], std::deque<int>{4});
+  EXPECT_EQ(deques[1], deque);
+  deques[2].pop_back();
+  deques[2].push_front(-2);
+  ASSERT_EQ(deques[2].size(), deque.size());
+  EXPECT_EQ(deques[2].front(), -2);
+  EXPECT_TRUE(std::equal(deques[2].begin() + 1, deques[2].end(), deque.begin()));
 }
 
 // Inserting and erasing in the middle of a std::vector move assigns the shifted elements: a container whose allocator
@@ -3073,11 +3103,15 @@ void CheckShiftedElementsAllocators() {
 TEST(VectorTest, StandardContainersOfNonPropagatingAllocators) {
   static_assert(!is_trivially_relocatable<std::vector<int, ArenaAllocatorOf<int>>>::value, "");
   static_assert(!is_trivially_relocatable<std::forward_list<int, ArenaAllocatorOf<int>>>::value, "");
+  static_assert(!is_trivially_relocatable<std::deque<int, ArenaAllocatorOf<int>>>::value, "");
   using ArenaString = std::basic_string<char, std::char_traits<char>, ArenaAllocatorOf<char>>;
   static_assert(!is_trivially_relocatable<ArenaString>::value, "");
   static_assert(is_trivially_relocatable<std::vector<int, PropagatingArenaAllocator<int>>>::value ==
                     kStdVectorTriviallyRelocatable,
                 "");
+  static_assert(
+      is_trivially_relocatable<std::deque<int, PropagatingArenaAllocator<int>>>::value == kStdDequeTriviallyRelocatable,
+      "");
 #ifdef __cpp_lib_memory_resource
   static_assert(!is_trivially_relocatable<std::pmr::vector<int>>::value, "");
 #endif
@@ -3086,6 +3120,7 @@ TEST(VectorTest, StandardContainersOfNonPropagatingAllocators) {
   CheckShiftedElementsAllocators<SmallVector<std::vector<int, ArenaAllocatorOf<int>>, 16>>();
   CheckShiftedElementsAllocators<vector<std::forward_list<int, ArenaAllocatorOf<int>>>>();
   CheckShiftedElementsAllocators<vector<std::vector<int, PropagatingArenaAllocator<int>>>>();
+  CheckShiftedElementsAllocators<vector<std::deque<int, PropagatingArenaAllocator<int>>>>();
 }
 
 TEST(VectorTest, RelocatabilityAgainstRefVector) {
