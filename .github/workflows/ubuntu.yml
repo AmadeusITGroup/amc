@@ -88,7 +88,8 @@ jobs:
           chmod +x llvm.sh
           sudo ./llvm.sh ${{ matrix.compiler }}
       - name: cmake
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
+        # libstdc++: std::deque is trivially relocatable when declared so (AddressSanitizer catches stale back pointers)
+        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON -DAMC_STD_DEQUE_TRIVIALLY_RELOCATABLE=ON
       - name: build
         run: cmake --build build --parallel
       - name: test

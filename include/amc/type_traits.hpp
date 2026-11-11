@@ -29,6 +29,10 @@
 #include <string>
 #endif
 
+#ifdef AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE
+#include <deque>
+#endif
+
 // AddressSanitizer, which may poison bytes inside the objects of some standard library types (undefined at the end)
 #if defined(__SANITIZE_ADDRESS__)
 #define AMC_TYPETRAITS_ASAN 1
@@ -36,6 +40,14 @@
 #if __has_feature(address_sanitizer)
 #define AMC_TYPETRAITS_ASAN 1
 #endif
+#endif
+
+// Debug modes of the standard libraries checking iterators, in which the containers point back to themselves
+// (undefined at the end): libstdc++ with _GLIBCXX_DEBUG, the MSVC STL with an _ITERATOR_DEBUG_LEVEL of 1 or 2 (2 by
+// default in Debug builds), libc++ before LLVM 17 with its debug mode.
+#if defined(_GLIBCXX_DEBUG) || defined(_LIBCPP_ENABLE_DEBUG_MODE) || defined(_LIBCPP_DEBUG) || \
+    (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0)
+#define AMC_TYPETRAITS_DEBUG_ITERATORS 1
 #endif
 
 namespace amc {
@@ -226,12 +238,10 @@ struct default_trivially_relocatable<std::exception_ptr> : std::true_type {};
 
 // A std::vector (and std::vector<bool>) holds its allocator and pointers to its heap storage, and a std::forward_list
 // its allocator and a pointer to its first node, except in the debug modes checking the iterators, in which the
-// containers point back to themselves: libstdc++ with _GLIBCXX_DEBUG, the MSVC STL with an _ITERATOR_DEBUG_LEVEL of 1
-// or 2 (2 by default in Debug builds), libc++ before LLVM 17 with its debug mode. The other containers are not here: in
-// all modes, the MSVC STL allocates a proxy pointing back to a std::deque, and libstdc++ and libc++ store in std::list,
-// std::map, std::set and the unordered containers a node to which the other nodes point.
-#if !defined(_GLIBCXX_DEBUG) && !defined(_LIBCPP_ENABLE_DEBUG_MODE) && !defined(_LIBCPP_DEBUG) && \
-    (!defined(_ITERATOR_DEBUG_LEVEL) || _ITERATOR_DEBUG_LEVEL == 0)
+// containers point back to themselves. The other containers are not here: std::deque is only declared on request
+// (below), and libstdc++ and libc++ store in std::list, std::map, std::set and the unordered containers a node to which
+// the other nodes point.
+#ifndef AMC_TYPETRAITS_DEBUG_ITERATORS
 template <class T, class Alloc>
 struct default_trivially_relocatable<std::vector<T, Alloc> > : allocator_trivially_relocatable<Alloc> {};
 
@@ -274,6 +284,17 @@ template <class CharT, class Traits, class Alloc>
 struct default_trivially_relocatable<std::basic_string<CharT, Traits, Alloc> >
     : allocator_trivially_relocatable<Alloc> {};
 #endif
+
+// std::deque is only declared trivially relocatable on request (AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE), as <deque> makes
+// every file including amc compile 2 to 5 % slower, for vectors which rarely hold deques. It is then declared like
+// std::vector for libstdc++ and libc++, whose deques hold their allocator, a pointer to their map of pointers to the
+// blocks of elements and positions in them. Not for the MSVC STL, nor for the other implementations: in all modes, the
+// MSVC STL allocates a proxy pointing back to the deque, through which its iterators reach it.
+#if defined(AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE) && !defined(AMC_TYPETRAITS_DEBUG_ITERATORS) && \
+    (defined(__GLIBCXX__) || defined(_LIBCPP_VERSION))
+template <class T, class Alloc>
+struct default_trivially_relocatable<std::deque<T, Alloc> > : allocator_trivially_relocatable<Alloc> {};
+#endif
 }  // namespace typetraits_details
 
 #ifdef AMC_CXX17
@@ -283,3 +304,4 @@ inline constexpr bool is_trivially_relocatable_v = is_trivially_relocatable<T>::
 }  // namespace amc
 
 #undef AMC_TYPETRAITS_ASAN
+#undef AMC_TYPETRAITS_DEBUG_ITERATORS

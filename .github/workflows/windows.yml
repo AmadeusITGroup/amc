@@ -16,14 +16,15 @@ jobs:
         standard: [20]
         include:
           - { build_type: Debug, architecture: x64, standard: 17 }
-          # Release: no iterator debugging, std::vector (and std::string when declared so) are trivially relocatable
-          - { build_type: Release, architecture: x64, standard: 23, std_string: "ON" }
+          # Release: no iterator debugging, std::vector (and std::string when declared so) are trivially relocatable,
+          # std::deque is not even when declared so
+          - { build_type: Release, architecture: x64, standard: 23, std_opt_in: "ON" }
 
     steps:
       - uses: actions/checkout@v5
       - name: cmake
         # warnings are only treated as errors in Debug
-        run: cmake -S . -B build -A ${{ matrix.architecture }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DAMC_STD_STRING_TRIVIALLY_RELOCATABLE=${{ matrix.std_string || 'OFF' }} -DAMC_WARNINGS_AS_ERRORS=ON
+        run: cmake -S . -B build -A ${{ matrix.architecture }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DAMC_STD_STRING_TRIVIALLY_RELOCATABLE=${{ matrix.std_opt_in || 'OFF' }} -DAMC_STD_DEQUE_TRIVIALLY_RELOCATABLE=${{ matrix.std_opt_in || 'OFF' }} -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
       - name: test
