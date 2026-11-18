@@ -67,69 +67,69 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="316.5" y="394.0" class="tick" text-anchor="middle">512</text>
 <text x="374.6" y="394.0" class="tick" text-anchor="middle">2048</text>
 <line x1="74.0" y1="376.0" x2="422.0" y2="376.0" class="axis"/>
-<path d="M84.0,312.4 L113.1,305.7 L142.1,300.5 L171.2,291.6 L200.2,286.3 L229.3,283.8 L258.3,282.1 L287.4,280.5 L316.5,279.8 L345.5,278.5 L374.6,276.5 L403.6,274.6" class="line ref"/>
-<circle cx="84.0" cy="312.4" r="5.5" class="ring ref"/>
-<circle cx="113.1" cy="305.7" r="5.5" class="ring ref"/>
-<circle cx="142.1" cy="300.5" r="5.5" class="ring ref"/>
-<circle cx="171.2" cy="291.6" r="5.5" class="ring ref"/>
-<circle cx="200.2" cy="286.3" r="5.5" class="ring ref"/>
+<path d="M84.0,312.0 L113.1,306.2 L142.1,300.4 L171.2,290.7 L200.2,286.7 L229.3,283.8 L258.3,282.4 L287.4,281.0 L316.5,279.8 L345.5,278.8 L374.6,276.6 L403.6,274.9" class="line ref"/>
+<circle cx="84.0" cy="312.0" r="5.5" class="ring ref"/>
+<circle cx="113.1" cy="306.2" r="5.5" class="ring ref"/>
+<circle cx="142.1" cy="300.4" r="5.5" class="ring ref"/>
+<circle cx="171.2" cy="290.7" r="5.5" class="ring ref"/>
+<circle cx="200.2" cy="286.7" r="5.5" class="ring ref"/>
 <circle cx="229.3" cy="283.8" r="5.5" class="ring ref"/>
-<circle cx="258.3" cy="282.1" r="5.5" class="ring ref"/>
-<circle cx="287.4" cy="280.5" r="5.5" class="ring ref"/>
+<circle cx="258.3" cy="282.4" r="5.5" class="ring ref"/>
+<circle cx="287.4" cy="281.0" r="5.5" class="ring ref"/>
 <circle cx="316.5" cy="279.8" r="5.5" class="ring ref"/>
-<circle cx="345.5" cy="278.5" r="5.5" class="ring ref"/>
-<circle cx="374.6" cy="276.5" r="5.5" class="ring ref"/>
-<circle cx="403.6" cy="274.6" r="5.5" class="ring ref"/>
-<path d="M84.0,299.5 L113.1,305.1 L142.1,303.7 L171.2,296.2 L200.2,292.5 L229.3,291.5 L258.3,291.2 L287.4,289.6 L316.5,285.8 L345.5,284.7 L374.6,284.1 L403.6,283.7" class="line uno"/>
-<circle cx="84.0" cy="299.5" r="5.5" class="ring uno"/>
-<circle cx="113.1" cy="305.1" r="5.5" class="ring uno"/>
-<circle cx="142.1" cy="303.7" r="5.5" class="ring uno"/>
-<circle cx="171.2" cy="296.2" r="5.5" class="ring uno"/>
-<circle cx="200.2" cy="292.5" r="5.5" class="ring uno"/>
-<circle cx="229.3" cy="291.5" r="5.5" class="ring uno"/>
-<circle cx="258.3" cy="291.2" r="5.5" class="ring uno"/>
-<circle cx="287.4" cy="289.6" r="5.5" class="ring uno"/>
-<circle cx="316.5" cy="285.8" r="5.5" class="ring uno"/>
-<circle cx="345.5" cy="284.7" r="5.5" class="ring uno"/>
+<circle cx="345.5" cy="278.8" r="5.5" class="ring ref"/>
+<circle cx="374.6" cy="276.6" r="5.5" class="ring ref"/>
+<circle cx="403.6" cy="274.9" r="5.5" class="ring ref"/>
+<path d="M84.0,299.4 L113.1,305.2 L142.1,304.2 L171.2,296.3 L200.2,292.1 L229.3,291.6 L258.3,290.6 L287.4,289.1 L316.5,285.7 L345.5,284.6 L374.6,284.1 L403.6,283.7" class="line uno"/>
+<circle cx="84.0" cy="299.4" r="5.5" class="ring uno"/>
+<circle cx="113.1" cy="305.2" r="5.5" class="ring uno"/>
+<circle cx="142.1" cy="304.2" r="5.5" class="ring uno"/>
+<circle cx="171.2" cy="296.3" r="5.5" class="ring uno"/>
+<circle cx="200.2" cy="292.1" r="5.5" class="ring uno"/>
+<circle cx="229.3" cy="291.6" r="5.5" class="ring uno"/>
+<circle cx="258.3" cy="290.6" r="5.5" class="ring uno"/>
+<circle cx="287.4" cy="289.1" r="5.5" class="ring uno"/>
+<circle cx="316.5" cy="285.7" r="5.5" class="ring uno"/>
+<circle cx="345.5" cy="284.6" r="5.5" class="ring uno"/>
 <circle cx="374.6" cy="284.1" r="5.5" class="ring uno"/>
 <circle cx="403.6" cy="283.7" r="5.5" class="ring uno"/>
-<path d="M84.0,315.4 L113.1,312.7 L142.1,310.5 L171.2,307.4 L200.2,304.7 L229.3,302.4 L258.3,300.0 L287.4,297.2 L316.5,294.3 L345.5,290.8 L374.6,286.2 L403.6,279.7" class="line amc"/>
-<circle cx="84.0" cy="315.4" r="4.5" class="dot amc"/>
-<circle cx="113.1" cy="312.7" r="4.5" class="dot amc"/>
-<circle cx="142.1" cy="310.5" r="4.5" class="dot amc"/>
-<circle cx="171.2" cy="307.4" r="4.5" class="dot amc"/>
-<circle cx="200.2" cy="304.7" r="4.5" class="dot amc"/>
-<circle cx="229.3" cy="302.4" r="4.5" class="dot amc"/>
-<circle cx="258.3" cy="300.0" r="4.5" class="dot amc"/>
-<circle cx="287.4" cy="297.2" r="4.5" class="dot amc"/>
+<path d="M84.0,312.3 L113.1,306.6 L142.1,306.7 L171.2,304.9 L200.2,303.7 L229.3,301.8 L258.3,299.6 L287.4,296.9 L316.5,294.3 L345.5,290.9 L374.6,286.3 L403.6,279.7" class="line amc"/>
+<circle cx="84.0" cy="312.3" r="4.5" class="dot amc"/>
+<circle cx="113.1" cy="306.6" r="4.5" class="dot amc"/>
+<circle cx="142.1" cy="306.7" r="4.5" class="dot amc"/>
+<circle cx="171.2" cy="304.9" r="4.5" class="dot amc"/>
+<circle cx="200.2" cy="303.7" r="4.5" class="dot amc"/>
+<circle cx="229.3" cy="301.8" r="4.5" class="dot amc"/>
+<circle cx="258.3" cy="299.6" r="4.5" class="dot amc"/>
+<circle cx="287.4" cy="296.9" r="4.5" class="dot amc"/>
 <circle cx="316.5" cy="294.3" r="4.5" class="dot amc"/>
-<circle cx="345.5" cy="290.8" r="4.5" class="dot amc"/>
-<circle cx="374.6" cy="286.2" r="4.5" class="dot amc"/>
+<circle cx="345.5" cy="290.9" r="4.5" class="dot amc"/>
+<circle cx="374.6" cy="286.3" r="4.5" class="dot amc"/>
 <circle cx="403.6" cy="279.7" r="4.5" class="dot amc"/>
-<path d="M84.0,359.2 L113.1,358.4 L142.1,356.9 L171.2,343.1 L200.2,289.1 L229.3,285.0 L258.3,282.3 L287.4,280.5 L316.5,279.2 L345.5,278.0 L374.6,275.8 L403.6,273.9" class="line small"/>
-<polygon points="84.0,352.7 90.5,359.2 84.0,365.7 77.5,359.2" class="diamond small"/>
-<polygon points="113.1,351.9 119.6,358.4 113.1,364.9 106.6,358.4" class="diamond small"/>
-<polygon points="142.1,350.4 148.6,356.9 142.1,363.4 135.6,356.9" class="diamond small"/>
-<polygon points="171.2,336.6 177.7,343.1 171.2,349.6 164.7,343.1" class="diamond small"/>
-<polygon points="200.2,282.6 206.7,289.1 200.2,295.6 193.7,289.1" class="diamond small"/>
-<polygon points="229.3,278.5 235.8,285.0 229.3,291.5 222.8,285.0" class="diamond small"/>
-<polygon points="258.3,275.8 264.8,282.3 258.3,288.8 251.8,282.3" class="diamond small"/>
-<polygon points="287.4,274.0 293.9,280.5 287.4,287.0 280.9,280.5" class="diamond small"/>
-<polygon points="316.5,272.7 323.0,279.2 316.5,285.7 310.0,279.2" class="diamond small"/>
-<polygon points="345.5,271.5 352.0,278.0 345.5,284.5 339.0,278.0" class="diamond small"/>
-<polygon points="374.6,269.3 381.1,275.8 374.6,282.3 368.1,275.8" class="diamond small"/>
+<path d="M84.0,357.4 L113.1,359.8 L142.1,355.8 L171.2,344.7 L200.2,288.8 L229.3,284.7 L258.3,282.1 L287.4,280.3 L316.5,279.0 L345.5,277.7 L374.6,275.6 L403.6,273.9" class="line small"/>
+<polygon points="84.0,350.9 90.5,357.4 84.0,363.9 77.5,357.4" class="diamond small"/>
+<polygon points="113.1,353.3 119.6,359.8 113.1,366.3 106.6,359.8" class="diamond small"/>
+<polygon points="142.1,349.3 148.6,355.8 142.1,362.3 135.6,355.8" class="diamond small"/>
+<polygon points="171.2,338.2 177.7,344.7 171.2,351.2 164.7,344.7" class="diamond small"/>
+<polygon points="200.2,282.3 206.7,288.8 200.2,295.3 193.7,288.8" class="diamond small"/>
+<polygon points="229.3,278.2 235.8,284.7 229.3,291.2 222.8,284.7" class="diamond small"/>
+<polygon points="258.3,275.6 264.8,282.1 258.3,288.6 251.8,282.1" class="diamond small"/>
+<polygon points="287.4,273.8 293.9,280.3 287.4,286.8 280.9,280.3" class="diamond small"/>
+<polygon points="316.5,272.5 323.0,279.0 316.5,285.5 310.0,279.0" class="diamond small"/>
+<polygon points="345.5,271.2 352.0,277.7 345.5,284.2 339.0,277.7" class="diamond small"/>
+<polygon points="374.6,269.1 381.1,275.6 374.6,282.1 368.1,275.6" class="diamond small"/>
 <polygon points="403.6,267.4 410.1,273.9 403.6,280.4 397.1,273.9" class="diamond small"/>
-<path d="M84.0,359.6 L113.1,360.6 L142.1,356.3 L171.2,346.6 L200.2,306.3 L229.3,303.2 L258.3,300.2 L287.4,296.8 L316.5,294.3 L345.5,290.9 L374.6,286.3 L403.6,279.8" class="line smallflat"/>
-<polygon points="84.0,353.1 90.5,359.6 84.0,366.1 77.5,359.6" class="diamond smallflat"/>
-<polygon points="113.1,354.1 119.6,360.6 113.1,367.1 106.6,360.6" class="diamond smallflat"/>
-<polygon points="142.1,349.8 148.6,356.3 142.1,362.8 135.6,356.3" class="diamond smallflat"/>
-<polygon points="171.2,340.1 177.7,346.6 171.2,353.1 164.7,346.6" class="diamond smallflat"/>
-<polygon points="200.2,299.8 206.7,306.3 200.2,312.8 193.7,306.3" class="diamond smallflat"/>
-<polygon points="229.3,296.7 235.8,303.2 229.3,309.7 222.8,303.2" class="diamond smallflat"/>
-<polygon points="258.3,293.7 264.8,300.2 258.3,306.7 251.8,300.2" class="diamond smallflat"/>
-<polygon points="287.4,290.3 293.9,296.8 287.4,303.3 280.9,296.8" class="diamond smallflat"/>
+<path d="M84.0,353.3 L113.1,360.3 L142.1,356.1 L171.2,345.2 L200.2,306.0 L229.3,303.1 L258.3,300.1 L287.4,297.2 L316.5,294.3 L345.5,291.0 L374.6,286.3 L403.6,279.8" class="line smallflat"/>
+<polygon points="84.0,346.8 90.5,353.3 84.0,359.8 77.5,353.3" class="diamond smallflat"/>
+<polygon points="113.1,353.8 119.6,360.3 113.1,366.8 106.6,360.3" class="diamond smallflat"/>
+<polygon points="142.1,349.6 148.6,356.1 142.1,362.6 135.6,356.1" class="diamond smallflat"/>
+<polygon points="171.2,338.7 177.7,345.2 171.2,351.7 164.7,345.2" class="diamond smallflat"/>
+<polygon points="200.2,299.5 206.7,306.0 200.2,312.5 193.7,306.0" class="diamond smallflat"/>
+<polygon points="229.3,296.6 235.8,303.1 229.3,309.6 222.8,303.1" class="diamond smallflat"/>
+<polygon points="258.3,293.6 264.8,300.1 258.3,306.6 251.8,300.1" class="diamond smallflat"/>
+<polygon points="287.4,290.7 293.9,297.2 287.4,303.7 280.9,297.2" class="diamond smallflat"/>
 <polygon points="316.5,287.8 323.0,294.3 316.5,300.8 310.0,294.3" class="diamond smallflat"/>
-<polygon points="345.5,284.4 352.0,290.9 345.5,297.4 339.0,290.9" class="diamond smallflat"/>
+<polygon points="345.5,284.5 352.0,291.0 345.5,297.5 339.0,291.0" class="diamond smallflat"/>
 <polygon points="374.6,279.8 381.1,286.3 374.6,292.8 368.1,286.3" class="diamond smallflat"/>
 <polygon points="403.6,273.3 410.1,279.8 403.6,286.3 397.1,279.8" class="diamond smallflat"/>
 <text x="458.0" y="174.0" class="panel" text-anchor="start">std::string of 12 characters · fill, per element</text>
@@ -148,71 +148,71 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="746.5" y="394.0" class="tick" text-anchor="middle">512</text>
 <text x="804.6" y="394.0" class="tick" text-anchor="middle">2048</text>
 <line x1="504.0" y1="376.0" x2="852.0" y2="376.0" class="axis"/>
-<path d="M514.0,301.5 L543.1,295.4 L572.1,289.8 L601.2,280.9 L630.2,275.3 L659.3,271.4 L688.3,268.6 L717.4,266.4 L746.5,264.4 L775.5,261.6 L804.6,259.3 L833.6,257.1" class="line ref"/>
-<circle cx="514.0" cy="301.5" r="5.5" class="ring ref"/>
-<circle cx="543.1" cy="295.4" r="5.5" class="ring ref"/>
-<circle cx="572.1" cy="289.8" r="5.5" class="ring ref"/>
-<circle cx="601.2" cy="280.9" r="5.5" class="ring ref"/>
-<circle cx="630.2" cy="275.3" r="5.5" class="ring ref"/>
-<circle cx="659.3" cy="271.4" r="5.5" class="ring ref"/>
-<circle cx="688.3" cy="268.6" r="5.5" class="ring ref"/>
-<circle cx="717.4" cy="266.4" r="5.5" class="ring ref"/>
-<circle cx="746.5" cy="264.4" r="5.5" class="ring ref"/>
-<circle cx="775.5" cy="261.6" r="5.5" class="ring ref"/>
-<circle cx="804.6" cy="259.3" r="5.5" class="ring ref"/>
-<circle cx="833.6" cy="257.1" r="5.5" class="ring ref"/>
-<path d="M514.0,292.4 L543.1,295.9 L572.1,293.7 L601.2,284.7 L630.2,282.3 L659.3,282.6 L688.3,283.0 L717.4,283.1 L746.5,281.3 L775.5,279.9 L804.6,279.6 L833.6,279.6" class="line uno"/>
-<circle cx="514.0" cy="292.4" r="5.5" class="ring uno"/>
+<path d="M514.0,300.3 L543.1,294.4 L572.1,288.9 L601.2,280.5 L630.2,275.1 L659.3,270.9 L688.3,268.0 L717.4,266.0 L746.5,263.3 L775.5,261.3 L804.6,258.7 L833.6,256.4" class="line ref"/>
+<circle cx="514.0" cy="300.3" r="5.5" class="ring ref"/>
+<circle cx="543.1" cy="294.4" r="5.5" class="ring ref"/>
+<circle cx="572.1" cy="288.9" r="5.5" class="ring ref"/>
+<circle cx="601.2" cy="280.5" r="5.5" class="ring ref"/>
+<circle cx="630.2" cy="275.1" r="5.5" class="ring ref"/>
+<circle cx="659.3" cy="270.9" r="5.5" class="ring ref"/>
+<circle cx="688.3" cy="268.0" r="5.5" class="ring ref"/>
+<circle cx="717.4" cy="266.0" r="5.5" class="ring ref"/>
+<circle cx="746.5" cy="263.3" r="5.5" class="ring ref"/>
+<circle cx="775.5" cy="261.3" r="5.5" class="ring ref"/>
+<circle cx="804.6" cy="258.7" r="5.5" class="ring ref"/>
+<circle cx="833.6" cy="256.4" r="5.5" class="ring ref"/>
+<path d="M514.0,292.2 L543.1,295.9 L572.1,294.6 L601.2,284.9 L630.2,281.9 L659.3,282.4 L688.3,283.1 L717.4,283.0 L746.5,281.0 L775.5,279.6 L804.6,279.7 L833.6,279.3" class="line uno"/>
+<circle cx="514.0" cy="292.2" r="5.5" class="ring uno"/>
 <circle cx="543.1" cy="295.9" r="5.5" class="ring uno"/>
-<circle cx="572.1" cy="293.7" r="5.5" class="ring uno"/>
-<circle cx="601.2" cy="284.7" r="5.5" class="ring uno"/>
-<circle cx="630.2" cy="282.3" r="5.5" class="ring uno"/>
-<circle cx="659.3" cy="282.6" r="5.5" class="ring uno"/>
-<circle cx="688.3" cy="283.0" r="5.5" class="ring uno"/>
-<circle cx="717.4" cy="283.1" r="5.5" class="ring uno"/>
-<circle cx="746.5" cy="281.3" r="5.5" class="ring uno"/>
-<circle cx="775.5" cy="279.9" r="5.5" class="ring uno"/>
-<circle cx="804.6" cy="279.6" r="5.5" class="ring uno"/>
-<circle cx="833.6" cy="279.6" r="5.5" class="ring uno"/>
-<path d="M514.0,303.5 L543.1,297.9 L572.1,293.2 L601.2,286.8 L630.2,278.8 L659.3,271.5 L688.3,263.5 L717.4,254.0 L746.5,243.3 L775.5,230.6 L804.6,216.5 L833.6,201.1" class="line amc"/>
-<circle cx="514.0" cy="303.5" r="4.5" class="dot amc"/>
-<circle cx="543.1" cy="297.9" r="4.5" class="dot amc"/>
-<circle cx="572.1" cy="293.2" r="4.5" class="dot amc"/>
-<circle cx="601.2" cy="286.8" r="4.5" class="dot amc"/>
-<circle cx="630.2" cy="278.8" r="4.5" class="dot amc"/>
-<circle cx="659.3" cy="271.5" r="4.5" class="dot amc"/>
-<circle cx="688.3" cy="263.5" r="4.5" class="dot amc"/>
-<circle cx="717.4" cy="254.0" r="4.5" class="dot amc"/>
-<circle cx="746.5" cy="243.3" r="4.5" class="dot amc"/>
-<circle cx="775.5" cy="230.6" r="4.5" class="dot amc"/>
-<circle cx="804.6" cy="216.5" r="4.5" class="dot amc"/>
-<circle cx="833.6" cy="201.1" r="4.5" class="dot amc"/>
-<path d="M514.0,327.2 L543.1,320.2 L572.1,314.2 L601.2,305.7 L630.2,273.1 L659.3,269.8 L688.3,266.8 L717.4,264.3 L746.5,262.0 L775.5,259.4 L804.6,257.3 L833.6,254.9" class="line small"/>
-<polygon points="514.0,320.7 520.5,327.2 514.0,333.7 507.5,327.2" class="diamond small"/>
-<polygon points="543.1,313.7 549.6,320.2 543.1,326.7 536.6,320.2" class="diamond small"/>
-<polygon points="572.1,307.7 578.6,314.2 572.1,320.7 565.6,314.2" class="diamond small"/>
-<polygon points="601.2,299.2 607.7,305.7 601.2,312.2 594.7,305.7" class="diamond small"/>
-<polygon points="630.2,266.6 636.7,273.1 630.2,279.6 623.7,273.1" class="diamond small"/>
-<polygon points="659.3,263.3 665.8,269.8 659.3,276.3 652.8,269.8" class="diamond small"/>
-<polygon points="688.3,260.3 694.8,266.8 688.3,273.3 681.8,266.8" class="diamond small"/>
-<polygon points="717.4,257.8 723.9,264.3 717.4,270.8 710.9,264.3" class="diamond small"/>
-<polygon points="746.5,255.5 753.0,262.0 746.5,268.5 740.0,262.0" class="diamond small"/>
-<polygon points="775.5,252.9 782.0,259.4 775.5,265.9 769.0,259.4" class="diamond small"/>
-<polygon points="804.6,250.8 811.1,257.3 804.6,263.8 798.1,257.3" class="diamond small"/>
-<polygon points="833.6,248.4 840.1,254.9 833.6,261.4 827.1,254.9" class="diamond small"/>
-<path d="M514.0,326.5 L543.1,319.4 L572.1,314.0 L601.2,304.7 L630.2,276.6 L659.3,269.4 L688.3,261.5 L717.4,252.6 L746.5,242.3 L775.5,230.0 L804.6,216.1 L833.6,200.7" class="line smallflat"/>
-<polygon points="514.0,320.0 520.5,326.5 514.0,333.0 507.5,326.5" class="diamond smallflat"/>
-<polygon points="543.1,312.9 549.6,319.4 543.1,325.9 536.6,319.4" class="diamond smallflat"/>
-<polygon points="572.1,307.5 578.6,314.0 572.1,320.5 565.6,314.0" class="diamond smallflat"/>
-<polygon points="601.2,298.2 607.7,304.7 601.2,311.2 594.7,304.7" class="diamond smallflat"/>
-<polygon points="630.2,270.1 636.7,276.6 630.2,283.1 623.7,276.6" class="diamond smallflat"/>
-<polygon points="659.3,262.9 665.8,269.4 659.3,275.9 652.8,269.4" class="diamond smallflat"/>
-<polygon points="688.3,255.0 694.8,261.5 688.3,268.0 681.8,261.5" class="diamond smallflat"/>
+<circle cx="572.1" cy="294.6" r="5.5" class="ring uno"/>
+<circle cx="601.2" cy="284.9" r="5.5" class="ring uno"/>
+<circle cx="630.2" cy="281.9" r="5.5" class="ring uno"/>
+<circle cx="659.3" cy="282.4" r="5.5" class="ring uno"/>
+<circle cx="688.3" cy="283.1" r="5.5" class="ring uno"/>
+<circle cx="717.4" cy="283.0" r="5.5" class="ring uno"/>
+<circle cx="746.5" cy="281.0" r="5.5" class="ring uno"/>
+<circle cx="775.5" cy="279.6" r="5.5" class="ring uno"/>
+<circle cx="804.6" cy="279.7" r="5.5" class="ring uno"/>
+<circle cx="833.6" cy="279.3" r="5.5" class="ring uno"/>
+<path d="M514.0,304.2 L543.1,299.0 L572.1,293.7 L601.2,286.7 L630.2,279.0 L659.3,271.2 L688.3,263.1 L717.4,253.8 L746.5,242.4 L775.5,229.9 L804.6,215.7 L833.6,200.3" class="line amc"/>
+<circle cx="514.0" cy="304.2" r="4.5" class="dot amc"/>
+<circle cx="543.1" cy="299.0" r="4.5" class="dot amc"/>
+<circle cx="572.1" cy="293.7" r="4.5" class="dot amc"/>
+<circle cx="601.2" cy="286.7" r="4.5" class="dot amc"/>
+<circle cx="630.2" cy="279.0" r="4.5" class="dot amc"/>
+<circle cx="659.3" cy="271.2" r="4.5" class="dot amc"/>
+<circle cx="688.3" cy="263.1" r="4.5" class="dot amc"/>
+<circle cx="717.4" cy="253.8" r="4.5" class="dot amc"/>
+<circle cx="746.5" cy="242.4" r="4.5" class="dot amc"/>
+<circle cx="775.5" cy="229.9" r="4.5" class="dot amc"/>
+<circle cx="804.6" cy="215.7" r="4.5" class="dot amc"/>
+<circle cx="833.6" cy="200.3" r="4.5" class="dot amc"/>
+<path d="M514.0,327.0 L543.1,319.3 L572.1,313.7 L601.2,303.5 L630.2,273.3 L659.3,270.2 L688.3,267.5 L717.4,264.7 L746.5,262.9 L775.5,260.5 L804.6,258.3 L833.6,256.0" class="line small"/>
+<polygon points="514.0,320.5 520.5,327.0 514.0,333.5 507.5,327.0" class="diamond small"/>
+<polygon points="543.1,312.8 549.6,319.3 543.1,325.8 536.6,319.3" class="diamond small"/>
+<polygon points="572.1,307.2 578.6,313.7 572.1,320.2 565.6,313.7" class="diamond small"/>
+<polygon points="601.2,297.0 607.7,303.5 601.2,310.0 594.7,303.5" class="diamond small"/>
+<polygon points="630.2,266.8 636.7,273.3 630.2,279.8 623.7,273.3" class="diamond small"/>
+<polygon points="659.3,263.7 665.8,270.2 659.3,276.7 652.8,270.2" class="diamond small"/>
+<polygon points="688.3,261.0 694.8,267.5 688.3,274.0 681.8,267.5" class="diamond small"/>
+<polygon points="717.4,258.2 723.9,264.7 717.4,271.2 710.9,264.7" class="diamond small"/>
+<polygon points="746.5,256.4 753.0,262.9 746.5,269.4 740.0,262.9" class="diamond small"/>
+<polygon points="775.5,254.0 782.0,260.5 775.5,267.0 769.0,260.5" class="diamond small"/>
+<polygon points="804.6,251.8 811.1,258.3 804.6,264.8 798.1,258.3" class="diamond small"/>
+<polygon points="833.6,249.5 840.1,256.0 833.6,262.5 827.1,256.0" class="diamond small"/>
+<path d="M514.0,327.1 L543.1,319.9 L572.1,313.9 L601.2,304.8 L630.2,277.0 L659.3,269.6 L688.3,261.9 L717.4,252.6 L746.5,241.9 L775.5,229.6 L804.6,215.5 L833.6,200.2" class="line smallflat"/>
+<polygon points="514.0,320.6 520.5,327.1 514.0,333.6 507.5,327.1" class="diamond smallflat"/>
+<polygon points="543.1,313.4 549.6,319.9 543.1,326.4 536.6,319.9" class="diamond smallflat"/>
+<polygon points="572.1,307.4 578.6,313.9 572.1,320.4 565.6,313.9" class="diamond smallflat"/>
+<polygon points="601.2,298.3 607.7,304.8 601.2,311.3 594.7,304.8" class="diamond smallflat"/>
+<polygon points="630.2,270.5 636.7,277.0 630.2,283.5 623.7,277.0" class="diamond smallflat"/>
+<polygon points="659.3,263.1 665.8,269.6 659.3,276.1 652.8,269.6" class="diamond smallflat"/>
+<polygon points="688.3,255.4 694.8,261.9 688.3,268.4 681.8,261.9" class="diamond smallflat"/>
 <polygon points="717.4,246.1 723.9,252.6 717.4,259.1 710.9,252.6" class="diamond smallflat"/>
-<polygon points="746.5,235.8 753.0,242.3 746.5,248.8 740.0,242.3" class="diamond smallflat"/>
-<polygon points="775.5,223.5 782.0,230.0 775.5,236.5 769.0,230.0" class="diamond smallflat"/>
-<polygon points="804.6,209.6 811.1,216.1 804.6,222.6 798.1,216.1" class="diamond smallflat"/>
-<polygon points="833.6,194.2 840.1,200.7 833.6,207.2 827.1,200.7" class="diamond smallflat"/>
+<polygon points="746.5,235.4 753.0,241.9 746.5,248.4 740.0,241.9" class="diamond smallflat"/>
+<polygon points="775.5,223.1 782.0,229.6 775.5,236.1 769.0,229.6" class="diamond smallflat"/>
+<polygon points="804.6,209.0 811.1,215.5 804.6,222.0 798.1,215.5" class="diamond smallflat"/>
+<polygon points="833.6,193.7 840.1,200.2 833.6,206.7 827.1,200.2" class="diamond smallflat"/>
 <text x="28.0" y="444.0" class="panel" text-anchor="start">uint32_t · lookup</text>
 <line x1="74.0" y1="640.0" x2="422.0" y2="640.0" class="grid"/>
 <text x="68.0" y="644.0" class="tick" text-anchor="end">1 ns</text>
@@ -229,71 +229,71 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="316.5" y="664.0" class="tick" text-anchor="middle">512</text>
 <text x="374.6" y="664.0" class="tick" text-anchor="middle">2048</text>
 <line x1="74.0" y1="646.0" x2="422.0" y2="646.0" class="axis"/>
-<path d="M84.0,599.8 L113.1,588.5 L142.1,586.7 L171.2,578.9 L200.2,574.7 L229.3,570.0 L258.3,565.8 L287.4,562.6 L316.5,559.2 L345.5,554.8 L374.6,549.8 L403.6,545.7" class="line ref"/>
-<circle cx="84.0" cy="599.8" r="5.5" class="ring ref"/>
-<circle cx="113.1" cy="588.5" r="5.5" class="ring ref"/>
-<circle cx="142.1" cy="586.7" r="5.5" class="ring ref"/>
-<circle cx="171.2" cy="578.9" r="5.5" class="ring ref"/>
-<circle cx="200.2" cy="574.7" r="5.5" class="ring ref"/>
-<circle cx="229.3" cy="570.0" r="5.5" class="ring ref"/>
-<circle cx="258.3" cy="565.8" r="5.5" class="ring ref"/>
-<circle cx="287.4" cy="562.6" r="5.5" class="ring ref"/>
-<circle cx="316.5" cy="559.2" r="5.5" class="ring ref"/>
-<circle cx="345.5" cy="554.8" r="5.5" class="ring ref"/>
-<circle cx="374.6" cy="549.8" r="5.5" class="ring ref"/>
-<circle cx="403.6" cy="545.7" r="5.5" class="ring ref"/>
-<path d="M84.0,594.0 L113.1,594.0 L142.1,586.4 L171.2,578.7 L200.2,580.6 L229.3,579.7 L258.3,580.1 L287.4,576.2 L316.5,576.1 L345.5,575.6 L374.6,574.8 L403.6,574.8" class="line uno"/>
-<circle cx="84.0" cy="594.0" r="5.5" class="ring uno"/>
-<circle cx="113.1" cy="594.0" r="5.5" class="ring uno"/>
-<circle cx="142.1" cy="586.4" r="5.5" class="ring uno"/>
-<circle cx="171.2" cy="578.7" r="5.5" class="ring uno"/>
+<path d="M84.0,599.9 L113.1,588.9 L142.1,586.9 L171.2,579.7 L200.2,575.1 L229.3,570.1 L258.3,566.1 L287.4,562.8 L316.5,559.9 L345.5,555.5 L374.6,550.4 L403.6,546.1" class="line ref"/>
+<circle cx="84.0" cy="599.9" r="5.5" class="ring ref"/>
+<circle cx="113.1" cy="588.9" r="5.5" class="ring ref"/>
+<circle cx="142.1" cy="586.9" r="5.5" class="ring ref"/>
+<circle cx="171.2" cy="579.7" r="5.5" class="ring ref"/>
+<circle cx="200.2" cy="575.1" r="5.5" class="ring ref"/>
+<circle cx="229.3" cy="570.1" r="5.5" class="ring ref"/>
+<circle cx="258.3" cy="566.1" r="5.5" class="ring ref"/>
+<circle cx="287.4" cy="562.8" r="5.5" class="ring ref"/>
+<circle cx="316.5" cy="559.9" r="5.5" class="ring ref"/>
+<circle cx="345.5" cy="555.5" r="5.5" class="ring ref"/>
+<circle cx="374.6" cy="550.4" r="5.5" class="ring ref"/>
+<circle cx="403.6" cy="546.1" r="5.5" class="ring ref"/>
+<path d="M84.0,593.7 L113.1,593.6 L142.1,586.3 L171.2,578.4 L200.2,580.6 L229.3,579.5 L258.3,580.0 L287.4,576.1 L316.5,575.8 L345.5,575.7 L374.6,574.5 L403.6,574.4" class="line uno"/>
+<circle cx="84.0" cy="593.7" r="5.5" class="ring uno"/>
+<circle cx="113.1" cy="593.6" r="5.5" class="ring uno"/>
+<circle cx="142.1" cy="586.3" r="5.5" class="ring uno"/>
+<circle cx="171.2" cy="578.4" r="5.5" class="ring uno"/>
 <circle cx="200.2" cy="580.6" r="5.5" class="ring uno"/>
-<circle cx="229.3" cy="579.7" r="5.5" class="ring uno"/>
-<circle cx="258.3" cy="580.1" r="5.5" class="ring uno"/>
-<circle cx="287.4" cy="576.2" r="5.5" class="ring uno"/>
-<circle cx="316.5" cy="576.1" r="5.5" class="ring uno"/>
-<circle cx="345.5" cy="575.6" r="5.5" class="ring uno"/>
-<circle cx="374.6" cy="574.8" r="5.5" class="ring uno"/>
-<circle cx="403.6" cy="574.8" r="5.5" class="ring uno"/>
-<path d="M84.0,595.0 L113.1,609.6 L142.1,616.5 L171.2,606.9 L200.2,607.3 L229.3,603.6 L258.3,600.8 L287.4,598.9 L316.5,595.3 L345.5,592.8 L374.6,590.7 L403.6,588.5" class="line amc"/>
-<circle cx="84.0" cy="595.0" r="4.5" class="dot amc"/>
-<circle cx="113.1" cy="609.6" r="4.5" class="dot amc"/>
-<circle cx="142.1" cy="616.5" r="4.5" class="dot amc"/>
-<circle cx="171.2" cy="606.9" r="4.5" class="dot amc"/>
+<circle cx="229.3" cy="579.5" r="5.5" class="ring uno"/>
+<circle cx="258.3" cy="580.0" r="5.5" class="ring uno"/>
+<circle cx="287.4" cy="576.1" r="5.5" class="ring uno"/>
+<circle cx="316.5" cy="575.8" r="5.5" class="ring uno"/>
+<circle cx="345.5" cy="575.7" r="5.5" class="ring uno"/>
+<circle cx="374.6" cy="574.5" r="5.5" class="ring uno"/>
+<circle cx="403.6" cy="574.4" r="5.5" class="ring uno"/>
+<path d="M84.0,595.3 L113.1,610.0 L142.1,616.1 L171.2,607.0 L200.2,607.3 L229.3,603.6 L258.3,600.7 L287.4,598.9 L316.5,595.2 L345.5,592.8 L374.6,590.7 L403.6,588.4" class="line amc"/>
+<circle cx="84.0" cy="595.3" r="4.5" class="dot amc"/>
+<circle cx="113.1" cy="610.0" r="4.5" class="dot amc"/>
+<circle cx="142.1" cy="616.1" r="4.5" class="dot amc"/>
+<circle cx="171.2" cy="607.0" r="4.5" class="dot amc"/>
 <circle cx="200.2" cy="607.3" r="4.5" class="dot amc"/>
 <circle cx="229.3" cy="603.6" r="4.5" class="dot amc"/>
-<circle cx="258.3" cy="600.8" r="4.5" class="dot amc"/>
+<circle cx="258.3" cy="600.7" r="4.5" class="dot amc"/>
 <circle cx="287.4" cy="598.9" r="4.5" class="dot amc"/>
-<circle cx="316.5" cy="595.3" r="4.5" class="dot amc"/>
+<circle cx="316.5" cy="595.2" r="4.5" class="dot amc"/>
 <circle cx="345.5" cy="592.8" r="4.5" class="dot amc"/>
 <circle cx="374.6" cy="590.7" r="4.5" class="dot amc"/>
-<circle cx="403.6" cy="588.5" r="4.5" class="dot amc"/>
-<path d="M84.0,600.3 L113.1,599.4 L142.1,597.9 L171.2,594.7 L200.2,576.0 L229.3,570.4 L258.3,567.2 L287.4,563.7 L316.5,560.7 L345.5,556.2 L374.6,551.1 L403.6,546.6" class="line small"/>
-<polygon points="84.0,593.8 90.5,600.3 84.0,606.8 77.5,600.3" class="diamond small"/>
-<polygon points="113.1,592.9 119.6,599.4 113.1,605.9 106.6,599.4" class="diamond small"/>
-<polygon points="142.1,591.4 148.6,597.9 142.1,604.4 135.6,597.9" class="diamond small"/>
-<polygon points="171.2,588.2 177.7,594.7 171.2,601.2 164.7,594.7" class="diamond small"/>
-<polygon points="200.2,569.5 206.7,576.0 200.2,582.5 193.7,576.0" class="diamond small"/>
-<polygon points="229.3,563.9 235.8,570.4 229.3,576.9 222.8,570.4" class="diamond small"/>
-<polygon points="258.3,560.7 264.8,567.2 258.3,573.7 251.8,567.2" class="diamond small"/>
-<polygon points="287.4,557.2 293.9,563.7 287.4,570.2 280.9,563.7" class="diamond small"/>
-<polygon points="316.5,554.2 323.0,560.7 316.5,567.2 310.0,560.7" class="diamond small"/>
-<polygon points="345.5,549.7 352.0,556.2 345.5,562.7 339.0,556.2" class="diamond small"/>
-<polygon points="374.6,544.6 381.1,551.1 374.6,557.6 368.1,551.1" class="diamond small"/>
-<polygon points="403.6,540.1 410.1,546.6 403.6,553.1 397.1,546.6" class="diamond small"/>
-<path d="M84.0,599.5 L113.1,599.0 L142.1,597.3 L171.2,594.8 L200.2,606.8 L229.3,604.3 L258.3,600.9 L287.4,598.5 L316.5,595.4 L345.5,593.2 L374.6,590.8 L403.6,588.5" class="line smallflat"/>
-<polygon points="84.0,593.0 90.5,599.5 84.0,606.0 77.5,599.5" class="diamond smallflat"/>
-<polygon points="113.1,592.5 119.6,599.0 113.1,605.5 106.6,599.0" class="diamond smallflat"/>
-<polygon points="142.1,590.8 148.6,597.3 142.1,603.8 135.6,597.3" class="diamond smallflat"/>
-<polygon points="171.2,588.3 177.7,594.8 171.2,601.3 164.7,594.8" class="diamond smallflat"/>
-<polygon points="200.2,600.3 206.7,606.8 200.2,613.3 193.7,606.8" class="diamond smallflat"/>
-<polygon points="229.3,597.8 235.8,604.3 229.3,610.8 222.8,604.3" class="diamond smallflat"/>
-<polygon points="258.3,594.4 264.8,600.9 258.3,607.4 251.8,600.9" class="diamond smallflat"/>
+<circle cx="403.6" cy="588.4" r="4.5" class="dot amc"/>
+<path d="M84.0,600.5 L113.1,599.5 L142.1,598.3 L171.2,594.9 L200.2,576.4 L229.3,570.7 L258.3,567.3 L287.4,563.9 L316.5,560.8 L345.5,556.8 L374.6,551.7 L403.6,547.4" class="line small"/>
+<polygon points="84.0,594.0 90.5,600.5 84.0,607.0 77.5,600.5" class="diamond small"/>
+<polygon points="113.1,593.0 119.6,599.5 113.1,606.0 106.6,599.5" class="diamond small"/>
+<polygon points="142.1,591.8 148.6,598.3 142.1,604.8 135.6,598.3" class="diamond small"/>
+<polygon points="171.2,588.4 177.7,594.9 171.2,601.4 164.7,594.9" class="diamond small"/>
+<polygon points="200.2,569.9 206.7,576.4 200.2,582.9 193.7,576.4" class="diamond small"/>
+<polygon points="229.3,564.2 235.8,570.7 229.3,577.2 222.8,570.7" class="diamond small"/>
+<polygon points="258.3,560.8 264.8,567.3 258.3,573.8 251.8,567.3" class="diamond small"/>
+<polygon points="287.4,557.4 293.9,563.9 287.4,570.4 280.9,563.9" class="diamond small"/>
+<polygon points="316.5,554.3 323.0,560.8 316.5,567.3 310.0,560.8" class="diamond small"/>
+<polygon points="345.5,550.3 352.0,556.8 345.5,563.3 339.0,556.8" class="diamond small"/>
+<polygon points="374.6,545.2 381.1,551.7 374.6,558.2 368.1,551.7" class="diamond small"/>
+<polygon points="403.6,540.9 410.1,547.4 403.6,553.9 397.1,547.4" class="diamond small"/>
+<path d="M84.0,600.6 L113.1,599.6 L142.1,598.4 L171.2,595.4 L200.2,607.2 L229.3,604.1 L258.3,600.6 L287.4,598.5 L316.5,595.2 L345.5,593.1 L374.6,590.6 L403.6,588.2" class="line smallflat"/>
+<polygon points="84.0,594.1 90.5,600.6 84.0,607.1 77.5,600.6" class="diamond smallflat"/>
+<polygon points="113.1,593.1 119.6,599.6 113.1,606.1 106.6,599.6" class="diamond smallflat"/>
+<polygon points="142.1,591.9 148.6,598.4 142.1,604.9 135.6,598.4" class="diamond smallflat"/>
+<polygon points="171.2,588.9 177.7,595.4 171.2,601.9 164.7,595.4" class="diamond smallflat"/>
+<polygon points="200.2,600.7 206.7,607.2 200.2,613.7 193.7,607.2" class="diamond smallflat"/>
+<polygon points="229.3,597.6 235.8,604.1 229.3,610.6 222.8,604.1" class="diamond smallflat"/>
+<polygon points="258.3,594.1 264.8,600.6 258.3,607.1 251.8,600.6" class="diamond smallflat"/>
 <polygon points="287.4,592.0 293.9,598.5 287.4,605.0 280.9,598.5" class="diamond smallflat"/>
-<polygon points="316.5,588.9 323.0,595.4 316.5,601.9 310.0,595.4" class="diamond smallflat"/>
-<polygon points="345.5,586.7 352.0,593.2 345.5,599.7 339.0,593.2" class="diamond smallflat"/>
-<polygon points="374.6,584.3 381.1,590.8 374.6,597.3 368.1,590.8" class="diamond smallflat"/>
-<polygon points="403.6,582.0 410.1,588.5 403.6,595.0 397.1,588.5" class="diamond smallflat"/>
+<polygon points="316.5,588.7 323.0,595.2 316.5,601.7 310.0,595.2" class="diamond smallflat"/>
+<polygon points="345.5,586.6 352.0,593.1 345.5,599.6 339.0,593.1" class="diamond smallflat"/>
+<polygon points="374.6,584.1 381.1,590.6 374.6,597.1 368.1,590.6" class="diamond smallflat"/>
+<polygon points="403.6,581.7 410.1,588.2 403.6,594.7 397.1,588.2" class="diamond smallflat"/>
 <text x="458.0" y="444.0" class="panel" text-anchor="start">std::string of 12 characters · lookup</text>
 <line x1="504.0" y1="640.0" x2="852.0" y2="640.0" class="grid"/>
 <text x="498.0" y="644.0" class="tick" text-anchor="end">1 ns</text>
@@ -310,70 +310,70 @@ text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans
 <text x="746.5" y="664.0" class="tick" text-anchor="middle">512</text>
 <text x="804.6" y="664.0" class="tick" text-anchor="middle">2048</text>
 <line x1="504.0" y1="646.0" x2="852.0" y2="646.0" class="axis"/>
-<path d="M514.0,583.0 L543.1,570.1 L572.1,566.8 L601.2,561.4 L630.2,557.4 L659.3,552.3 L688.3,548.2 L717.4,545.3 L746.5,541.2 L775.5,537.1 L804.6,533.9 L833.6,530.8" class="line ref"/>
-<circle cx="514.0" cy="583.0" r="5.5" class="ring ref"/>
+<path d="M514.0,582.6 L543.1,570.1 L572.1,566.7 L601.2,561.3 L630.2,557.5 L659.3,552.4 L688.3,548.1 L717.4,545.0 L746.5,541.5 L775.5,537.3 L804.6,534.1 L833.6,530.7" class="line ref"/>
+<circle cx="514.0" cy="582.6" r="5.5" class="ring ref"/>
 <circle cx="543.1" cy="570.1" r="5.5" class="ring ref"/>
-<circle cx="572.1" cy="566.8" r="5.5" class="ring ref"/>
-<circle cx="601.2" cy="561.4" r="5.5" class="ring ref"/>
-<circle cx="630.2" cy="557.4" r="5.5" class="ring ref"/>
-<circle cx="659.3" cy="552.3" r="5.5" class="ring ref"/>
-<circle cx="688.3" cy="548.2" r="5.5" class="ring ref"/>
-<circle cx="717.4" cy="545.3" r="5.5" class="ring ref"/>
-<circle cx="746.5" cy="541.2" r="5.5" class="ring ref"/>
-<circle cx="775.5" cy="537.1" r="5.5" class="ring ref"/>
-<circle cx="804.6" cy="533.9" r="5.5" class="ring ref"/>
-<circle cx="833.6" cy="530.8" r="5.5" class="ring ref"/>
-<path d="M514.0,588.3 L543.1,584.4 L572.1,577.6 L601.2,566.6 L630.2,571.4 L659.3,572.6 L688.3,571.9 L717.4,566.4 L746.5,566.0 L775.5,564.8 L804.6,564.3 L833.6,563.8" class="line uno"/>
-<circle cx="514.0" cy="588.3" r="5.5" class="ring uno"/>
-<circle cx="543.1" cy="584.4" r="5.5" class="ring uno"/>
+<circle cx="572.1" cy="566.7" r="5.5" class="ring ref"/>
+<circle cx="601.2" cy="561.3" r="5.5" class="ring ref"/>
+<circle cx="630.2" cy="557.5" r="5.5" class="ring ref"/>
+<circle cx="659.3" cy="552.4" r="5.5" class="ring ref"/>
+<circle cx="688.3" cy="548.1" r="5.5" class="ring ref"/>
+<circle cx="717.4" cy="545.0" r="5.5" class="ring ref"/>
+<circle cx="746.5" cy="541.5" r="5.5" class="ring ref"/>
+<circle cx="775.5" cy="537.3" r="5.5" class="ring ref"/>
+<circle cx="804.6" cy="534.1" r="5.5" class="ring ref"/>
+<circle cx="833.6" cy="530.7" r="5.5" class="ring ref"/>
+<path d="M514.0,587.6 L543.1,584.2 L572.1,577.6 L601.2,567.4 L630.2,571.5 L659.3,572.7 L688.3,572.0 L717.4,566.5 L746.5,566.2 L775.5,565.0 L804.6,564.5 L833.6,563.8" class="line uno"/>
+<circle cx="514.0" cy="587.6" r="5.5" class="ring uno"/>
+<circle cx="543.1" cy="584.2" r="5.5" class="ring uno"/>
 <circle cx="572.1" cy="577.6" r="5.5" class="ring uno"/>
-<circle cx="601.2" cy="566.6" r="5.5" class="ring uno"/>
-<circle cx="630.2" cy="571.4" r="5.5" class="ring uno"/>
-<circle cx="659.3" cy="572.6" r="5.5" class="ring uno"/>
-<circle cx="688.3" cy="571.9" r="5.5" class="ring uno"/>
-<circle cx="717.4" cy="566.4" r="5.5" class="ring uno"/>
-<circle cx="746.5" cy="566.0" r="5.5" class="ring uno"/>
-<circle cx="775.5" cy="564.8" r="5.5" class="ring uno"/>
-<circle cx="804.6" cy="564.3" r="5.5" class="ring uno"/>
+<circle cx="601.2" cy="567.4" r="5.5" class="ring uno"/>
+<circle cx="630.2" cy="571.5" r="5.5" class="ring uno"/>
+<circle cx="659.3" cy="572.7" r="5.5" class="ring uno"/>
+<circle cx="688.3" cy="572.0" r="5.5" class="ring uno"/>
+<circle cx="717.4" cy="566.5" r="5.5" class="ring uno"/>
+<circle cx="746.5" cy="566.2" r="5.5" class="ring uno"/>
+<circle cx="775.5" cy="565.0" r="5.5" class="ring uno"/>
+<circle cx="804.6" cy="564.5" r="5.5" class="ring uno"/>
 <circle cx="833.6" cy="563.8" r="5.5" class="ring uno"/>
-<path d="M514.0,583.0 L543.1,571.9 L572.1,568.3 L601.2,560.2 L630.2,556.6 L659.3,551.5 L688.3,547.3 L717.4,543.9 L746.5,541.1 L775.5,536.7 L804.6,533.4 L833.6,530.4" class="line amc"/>
-<circle cx="514.0" cy="583.0" r="4.5" class="dot amc"/>
+<path d="M514.0,582.6 L543.1,571.9 L572.1,568.2 L601.2,560.2 L630.2,556.2 L659.3,551.3 L688.3,546.9 L717.4,543.3 L746.5,540.3 L775.5,536.8 L804.6,533.6 L833.6,530.6" class="line amc"/>
+<circle cx="514.0" cy="582.6" r="4.5" class="dot amc"/>
 <circle cx="543.1" cy="571.9" r="4.5" class="dot amc"/>
-<circle cx="572.1" cy="568.3" r="4.5" class="dot amc"/>
+<circle cx="572.1" cy="568.2" r="4.5" class="dot amc"/>
 <circle cx="601.2" cy="560.2" r="4.5" class="dot amc"/>
-<circle cx="630.2" cy="556.6" r="4.5" class="dot amc"/>
-<circle cx="659.3" cy="551.5" r="4.5" class="dot amc"/>
-<circle cx="688.3" cy="547.3" r="4.5" class="dot amc"/>
-<circle cx="717.4" cy="543.9" r="4.5" class="dot amc"/>
-<circle cx="746.5" cy="541.1" r="4.5" class="dot amc"/>
-<circle cx="775.5" cy="536.7" r="4.5" class="dot amc"/>
-<circle cx="804.6" cy="533.4" r="4.5" class="dot amc"/>
-<circle cx="833.6" cy="530.4" r="4.5" class="dot amc"/>
-<path d="M514.0,581.5 L543.1,579.2 L572.1,571.1 L601.2,559.1 L630.2,557.7 L659.3,552.5 L688.3,548.8 L717.4,545.4 L746.5,541.4 L775.5,538.0 L804.6,534.8 L833.6,530.8" class="line small"/>
-<polygon points="514.0,575.0 520.5,581.5 514.0,588.0 507.5,581.5" class="diamond small"/>
-<polygon points="543.1,572.7 549.6,579.2 543.1,585.7 536.6,579.2" class="diamond small"/>
-<polygon points="572.1,564.6 578.6,571.1 572.1,577.6 565.6,571.1" class="diamond small"/>
-<polygon points="601.2,552.6 607.7,559.1 601.2,565.6 594.7,559.1" class="diamond small"/>
-<polygon points="630.2,551.2 636.7,557.7 630.2,564.2 623.7,557.7" class="diamond small"/>
-<polygon points="659.3,546.0 665.8,552.5 659.3,559.0 652.8,552.5" class="diamond small"/>
-<polygon points="688.3,542.3 694.8,548.8 688.3,555.3 681.8,548.8" class="diamond small"/>
-<polygon points="717.4,538.9 723.9,545.4 717.4,551.9 710.9,545.4" class="diamond small"/>
-<polygon points="746.5,534.9 753.0,541.4 746.5,547.9 740.0,541.4" class="diamond small"/>
-<polygon points="775.5,531.5 782.0,538.0 775.5,544.5 769.0,538.0" class="diamond small"/>
-<polygon points="804.6,528.3 811.1,534.8 804.6,541.3 798.1,534.8" class="diamond small"/>
-<polygon points="833.6,524.3 840.1,530.8 833.6,537.3 827.1,530.8" class="diamond small"/>
-<path d="M514.0,581.9 L543.1,579.5 L572.1,571.5 L601.2,559.6 L630.2,555.3 L659.3,550.6 L688.3,546.7 L717.4,543.2 L746.5,540.5 L775.5,537.3 L804.6,533.6 L833.6,529.8" class="line smallflat"/>
-<polygon points="514.0,575.4 520.5,581.9 514.0,588.4 507.5,581.9" class="diamond smallflat"/>
-<polygon points="543.1,573.0 549.6,579.5 543.1,586.0 536.6,579.5" class="diamond smallflat"/>
-<polygon points="572.1,565.0 578.6,571.5 572.1,578.0 565.6,571.5" class="diamond smallflat"/>
-<polygon points="601.2,553.1 607.7,559.6 601.2,566.1 594.7,559.6" class="diamond smallflat"/>
+<circle cx="630.2" cy="556.2" r="4.5" class="dot amc"/>
+<circle cx="659.3" cy="551.3" r="4.5" class="dot amc"/>
+<circle cx="688.3" cy="546.9" r="4.5" class="dot amc"/>
+<circle cx="717.4" cy="543.3" r="4.5" class="dot amc"/>
+<circle cx="746.5" cy="540.3" r="4.5" class="dot amc"/>
+<circle cx="775.5" cy="536.8" r="4.5" class="dot amc"/>
+<circle cx="804.6" cy="533.6" r="4.5" class="dot amc"/>
+<circle cx="833.6" cy="530.6" r="4.5" class="dot amc"/>
+<path d="M514.0,581.8 L543.1,579.6 L572.1,571.4 L601.2,559.4 L630.2,557.0 L659.3,552.0 L688.3,548.6 L717.4,544.9 L746.5,541.1 L775.5,537.3 L804.6,534.5 L833.6,531.1" class="line small"/>
+<polygon points="514.0,575.3 520.5,581.8 514.0,588.3 507.5,581.8" class="diamond small"/>
+<polygon points="543.1,573.1 549.6,579.6 543.1,586.1 536.6,579.6" class="diamond small"/>
+<polygon points="572.1,564.9 578.6,571.4 572.1,577.9 565.6,571.4" class="diamond small"/>
+<polygon points="601.2,552.9 607.7,559.4 601.2,565.9 594.7,559.4" class="diamond small"/>
+<polygon points="630.2,550.5 636.7,557.0 630.2,563.5 623.7,557.0" class="diamond small"/>
+<polygon points="659.3,545.5 665.8,552.0 659.3,558.5 652.8,552.0" class="diamond small"/>
+<polygon points="688.3,542.1 694.8,548.6 688.3,555.1 681.8,548.6" class="diamond small"/>
+<polygon points="717.4,538.4 723.9,544.9 717.4,551.4 710.9,544.9" class="diamond small"/>
+<polygon points="746.5,534.6 753.0,541.1 746.5,547.6 740.0,541.1" class="diamond small"/>
+<polygon points="775.5,530.8 782.0,537.3 775.5,543.8 769.0,537.3" class="diamond small"/>
+<polygon points="804.6,528.0 811.1,534.5 804.6,541.0 798.1,534.5" class="diamond small"/>
+<polygon points="833.6,524.6 840.1,531.1 833.6,537.6 827.1,531.1" class="diamond small"/>
+<path d="M514.0,581.4 L543.1,578.9 L572.1,570.9 L601.2,559.0 L630.2,555.3 L659.3,550.7 L688.3,546.8 L717.4,543.1 L746.5,540.5 L775.5,537.4 L804.6,533.6 L833.6,529.9" class="line smallflat"/>
+<polygon points="514.0,574.9 520.5,581.4 514.0,587.9 507.5,581.4" class="diamond smallflat"/>
+<polygon points="543.1,572.4 549.6,578.9 543.1,585.4 536.6,578.9" class="diamond smallflat"/>
+<polygon points="572.1,564.4 578.6,570.9 572.1,577.4 565.6,570.9" class="diamond smallflat"/>
+<polygon points="601.2,552.5 607.7,559.0 601.2,565.5 594.7,559.0" class="diamond smallflat"/>
 <polygon points="630.2,548.8 636.7,555.3 630.2,561.8 623.7,555.3" class="diamond smallflat"/>
-<polygon points="659.3,544.1 665.8,550.6 659.3,557.1 652.8,550.6" class="diamond smallflat"/>
-<polygon points="688.3,540.2 694.8,546.7 688.3,553.2 681.8,546.7" class="diamond smallflat"/>
-<polygon points="717.4,536.7 723.9,543.2 717.4,549.7 710.9,543.2" class="diamond smallflat"/>
+<polygon points="659.3,544.2 665.8,550.7 659.3,557.2 652.8,550.7" class="diamond smallflat"/>
+<polygon points="688.3,540.3 694.8,546.8 688.3,553.3 681.8,546.8" class="diamond smallflat"/>
+<polygon points="717.4,536.6 723.9,543.1 717.4,549.6 710.9,543.1" class="diamond smallflat"/>
 <polygon points="746.5,534.0 753.0,540.5 746.5,547.0 740.0,540.5" class="diamond smallflat"/>
-<polygon points="775.5,530.8 782.0,537.3 775.5,543.8 769.0,537.3" class="diamond smallflat"/>
+<polygon points="775.5,530.9 782.0,537.4 775.5,543.9 769.0,537.4" class="diamond smallflat"/>
 <polygon points="804.6,527.1 811.1,533.6 804.6,540.1 798.1,533.6" class="diamond smallflat"/>
-<polygon points="833.6,523.3 840.1,529.8 833.6,536.3 827.1,529.8" class="diamond smallflat"/>
+<polygon points="833.6,523.4 840.1,529.9 833.6,536.4 827.1,529.9" class="diamond smallflat"/>
 <text x="28.0" y="700.0" class="subtitle" text-anchor="start">Number of elements in the set, log scale</text>
 </svg>
