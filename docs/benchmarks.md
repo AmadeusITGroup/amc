@@ -90,6 +90,7 @@ A run which stops after the builds (Ctrl-C, a failed benchmark, a killed process
 | Option               | Effect                                                                                                                                       |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--cxx COMPILER`     | Compiler to benchmark, repeatable (default: `g++` and `clang++-23`)                                                                          |
+| `--kind KIND`        | Only build and run `vectors`, `sets` or `smallsets`, repeatable: the import keeps the stored results of the other ones                       |
 | `--cpu CPUS`         | `auto` (default) picks one of the fastest cores. A list like `2,3` runs a benchmark on each of these cores at the same time                  |
 | `--jobs N`           | With `--cpu auto`, run `N` benchmarks at the same time, each on its own fast core (default: 1). See [below](#running-benchmarks-in-parallel) |
 | `--repetitions N`    | Repetitions of each benchmark, whose median is kept (default: 5)                                                                             |
