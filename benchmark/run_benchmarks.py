@@ -23,6 +23,9 @@ directory and prints the command which continues it: --resume DIR only runs the 
 executables and the options of the stopped run, then imports the results as the stopped run would have. The default
 outputs directory is in $XDG_RUNTIME_DIR though, which a reboot wipes.
 
+--kind runs some of the benchmark executables only, like '--kind sets': the import then replaces the stored results of
+these executables, and keeps the other ones.
+
 The machine should be idle. --jobs N runs N benchmarks at the same time, each on its own core, almost N times faster.
 The cores share the L3 cache and the memory bandwidth though: with 4 jobs on the 4 fastest cores of a Ryzen AI 9 HX PRO
 370 (GCC 13, 58 benchmarks), lookups in sets of up to 10 000 elements and the vector benchmarks did not move beyond
@@ -181,9 +184,9 @@ def build(cxx, tag, tree, std, kinds, benchmark_src):
     run(["cmake", "--build", tree, "--target"] + [f"{kind}_benchmark" for kind in kinds])
 
 
-def build_all(compilers, out, ram):
-    """Builds the benchmarks of every compiler, each in a temporary tree in 'ram', and copies the executables into
-    <out>/bin/<tag>/. The first tree which downloads Google Benchmark is kept until the end, as the next trees build
+def build_all(compilers, selected, out, ram):
+    """Builds the benchmarks 'selected' of every compiler, each in a temporary tree in 'ram', and copies the executables
+    into <out>/bin/<tag>/. The first tree which downloads Google Benchmark is kept until the end, as the next trees build
     its sources (passed before their first configure: switching the sources of a configured tree rebuilds them)."""
     trees = []
     benchmark_src = None
@@ -194,6 +197,9 @@ def build_all(compilers, out, ram):
             bin_dir = os.path.join(out, BIN_DIR, tag)
             os.makedirs(bin_dir, exist_ok=True)
             for std, kinds in BUILDS:
+                kinds = [kind for kind in kinds if kind in selected]
+                if not kinds:
+                    continue
                 build(cxx, tag, tree, std, kinds, benchmark_src)
                 for kind in kinds:
                     shutil.copy2(os.path.join(tree, "benchmark", f"{kind}_benchmark"), bin_dir)
@@ -212,6 +218,11 @@ def regex_escape(name):
     return re.sub(r"([.^$|()\[\]{}*+?\\])", r"\\\1", name)
 
 
+def selected_kinds(args):
+    """The benchmark executables of the run (--kind), all of them by default."""
+    return args.kind or KINDS
+
+
 def run_benchmarks(out, tag, args, cores):
     """Runs each benchmark of the compiler 'tag' in its own process, pinned to one of 'cores' (each runs one benchmark
     at a time), and writes <kind>-<tag>-<n>.json in 'out'. With --resume, skips the benchmarks whose output exists: an
@@ -220,7 +231,7 @@ def run_benchmarks(out, tag, args, cores):
     min_time = [f"--benchmark_min_time={args.min_time:g}s"] if args.min_time else []
     tasks = []
     done = 0
-    for kind in KINDS:
+    for kind in (kind for kind in KINDS if kind in selected_kinds(args)):
         exe = os.path.join(out, BIN_DIR, tag, f"{kind}_benchmark")
         names = subprocess.run([exe, "--benchmark_list_tests=true"] + selection, capture_output=True, text=True,
                                check=True).stdout.splitlines()
@@ -293,6 +304,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--cxx", action="append", metavar="COMPILER",
                         help="C++ compiler to benchmark, repeatable (default: g++ and clang++-23)")
+    parser.add_argument("--kind", action="append", choices=KINDS,
+                        help="benchmark executable to build and run, repeatable (default: all of them). The import "
+                        "only replaces the stored results of these ones")
     parser.add_argument("--cpu", default="auto", metavar="auto|CPU[,CPU...]",
                         help="CPU to pin the benchmarks to (default: auto, a core among the fastest ones of the "
                         "machine: highest frequency, then biggest L3 cache). A list runs a benchmark on each CPU at "
@@ -356,7 +370,7 @@ def main():
         out = args.out or tempfile.mkdtemp(prefix="amc-bench-results-", dir=ram)
         os.makedirs(out, exist_ok=True)
         try:
-            build_all(compilers, out, ram)
+            build_all(compilers, selected_kinds(args), out, ram)
         except BaseException:  # nothing to resume: a new run only loses the builds
             shutil.rmtree(os.path.join(out, BIN_DIR) if args.out else out, ignore_errors=True)
             raise
