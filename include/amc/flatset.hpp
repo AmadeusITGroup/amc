@@ -510,11 +510,11 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
 
   node_type extract(const key_type& key) {
     miterator it = mfind(key);
-    node_type nh(get_allocator());
-    if (it != _sortedVector.end()) {
-      nh._optV = std::move(*it);
-      EraseFromVector(_sortedVector, it);
+    if (it == _sortedVector.end()) {
+      return node_type();
     }
+    node_type nh(std::move(*it), get_allocator());
+    EraseFromVector(_sortedVector, it);
     return nh;
   }
 #endif

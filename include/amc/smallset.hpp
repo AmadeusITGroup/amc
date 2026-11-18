@@ -491,11 +491,11 @@ class SmallSet {
   node_type extract(const key_type& key) {
     if (isSmall()) {
       auto vecIt = mfind_small(key);
-      node_type nh(get_allocator());
-      if (vecIt != _vec.end()) {
-        nh._optV = std::move(*vecIt);
-        eraseFromVec(vecIt);
+      if (vecIt == _vec.end()) {
+        return node_type();
       }
+      node_type nh(std::move(*vecIt), get_allocator());
+      eraseFromVec(vecIt);
       return nh;
     }
     if constexpr (std::is_same_v<typename SetType::node_type, node_type>) {
@@ -637,11 +637,10 @@ class SmallSet {
   /// Our allocator is the one of the set, the allocator of an empty std::set node cannot be read.
   template <class SetNode>
   node_type FromSetNode(SetNode setNode) const {
-    node_type nh(get_allocator());
-    if (setNode) {
-      nh._optV = std::move(setNode.value());
+    if (!setNode) {
+      return node_type();
     }
-    return nh;
+    return node_type(std::move(setNode.value()), get_allocator());
   }
 
   template <class V>
