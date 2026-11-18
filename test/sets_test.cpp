@@ -23,6 +23,9 @@
 #ifdef AMC_CXX23
 #include <ranges>
 #endif
+#if __has_include(<memory_resource>)
+#include <memory_resource>
+#endif
 
 #include "testhelpers.hpp"
 #include "testmallocfailure.hpp"
@@ -1475,6 +1478,8 @@ TYPED_TEST_SUITE(SetListExtractTest, SetsExtractType, );
 TYPED_TEST(SetListExtractTest, Extract) {
   using SetType = TypeParam;
   using ValueType = typename SetType::value_type;
+  // like the standard node handles, the value of a const node can be modified
+  static_assert(std::is_same_v<decltype(std::declval<const typename SetType::node_type&>().value()), ValueType&>);
   SetType s;
   s.emplace(3);
   s.emplace(17);
@@ -1542,6 +1547,8 @@ TYPED_TEST(SetListExtractTest, Extract) {
   EXPECT_TRUE(nh2.empty());
   nh = s.extract(42);  // move assignment from an empty node, to an empty node
   EXPECT_TRUE(nh.empty());
+  auto nh3 = std::move(nh);  // move construction from an empty node
+  EXPECT_TRUE(nh3.empty());
 
   s.emplace(5);
   nh2 = s.extract(5);
@@ -1564,6 +1571,10 @@ TYPED_TEST(SetListExtractTest, Extract) {
   EXPECT_TRUE(nh.empty());
   ASSERT_FALSE(nh2.empty());
   EXPECT_EQ(nh2.value(), ValueType(5));
+  swap(nh, nh2);  // of an empty node
+  ASSERT_FALSE(nh.empty());
+  EXPECT_TRUE(nh2.empty());
+  EXPECT_EQ(nh.value(), ValueType(5));
 
   // Like the node handles of the standard sets, the ones of FlatSet and SmallSet only depend on the value and allocator
   // types: nodes move between sets of other comparators and underlying containers, in both directions.
@@ -1630,8 +1641,8 @@ TYPED_TEST(SetListExtractTest, InsertNodeAlreadyPresent) {
   }
 }
 
-// Like the standard node handles, swapping nodes exchanges their allocators too: an empty node may come from a
-// container with another allocator.
+// Like the standard node handles, an empty node holds no allocator: swapping it with a node holding an element gives it
+// the allocator of this element, also when it comes from a set of another allocator.
 template <class SetType>
 void ExpectNodeSwapExchangesAllocators() {
   using Alloc = typename SetType::allocator_type;
@@ -1644,7 +1655,7 @@ void ExpectNodeSwapExchangesAllocators() {
     }
     SetType s2(alloc2);
     typename SetType::node_type nh1 = s1.extract(0);
-    typename SetType::node_type nh2 = s2.extract(0);  // empty, with the allocator of s2
+    typename SetType::node_type nh2 = s2.extract(0);  // empty
     ASSERT_FALSE(nh1.empty());
     ASSERT_TRUE(nh2.empty());
     swap(nh1, nh2);
@@ -1666,6 +1677,151 @@ TEST(SetTest, NodeSwapExchangesAllocators) {
 #endif
   EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
 }
+
+// Like the standard node handles, a node takes the allocator of the node moved into it if it is empty, or if the
+// allocators propagate on move assignment. Two nodes holding elements exchange their allocators if they propagate on
+// swap (otherwise their allocators must be equal).
+template <class SetType>
+void ExpectNodeAssignmentsTakeAllocators() {
+  using Alloc = typename SetType::allocator_type;
+  const Alloc alloc1(ArenaAllocator(1));
+  const Alloc alloc2(ArenaAllocator(2));
+  for (int nbElems : {2, 6}) {  // small and large states of SmallSets
+    SetType s1(alloc1);
+    SetType s2(alloc2);
+    for (int i = 0; i < nbElems; ++i) {
+      s1.insert(i);
+      s2.insert(i);
+    }
+    typename SetType::node_type nh;
+    nh = s2.extract(0);  // to an empty node
+    ASSERT_FALSE(nh.empty());
+    EXPECT_TRUE(nh.get_allocator() == alloc2);
+    if constexpr (std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value) {
+      nh = s1.extract(0);  // to a node holding an element of another allocator
+      EXPECT_EQ(nh.value(), 0);
+      EXPECT_TRUE(nh.get_allocator() == alloc1);
+      typename SetType::node_type other = s2.extract(1);
+      swap(nh, other);
+      EXPECT_EQ(nh.value(), 1);
+      EXPECT_EQ(other.value(), 0);
+      EXPECT_TRUE(nh.get_allocator() == alloc2);
+      EXPECT_TRUE(other.get_allocator() == alloc1);
+      EXPECT_TRUE(s1.insert(std::move(other)).inserted);
+    }
+    EXPECT_TRUE(s2.insert(std::move(nh)).inserted);
+  }
+}
+
+TEST(SetTest, NodeAssignmentsTakeAllocators) {
+  const int64_t nbArenaMismatches = ArenaAllocator::NbArenaMismatches();
+  const int64_t nbLiveAllocations = ArenaAllocator::NbLiveAllocations();
+  ExpectNodeAssignmentsTakeAllocators<FlatSet<int, std::less<int>, ArenaAllocatorOf<int>>>();
+  ExpectNodeAssignmentsTakeAllocators<FlatSet<int, std::less<int>, PropagatingArenaAllocator<int>>>();
+#ifdef AMC_SMALLSET
+  ExpectNodeAssignmentsTakeAllocators<SmallSet<int, 4, std::less<int>, ArenaAllocatorOf<int>>>();
+  ExpectNodeAssignmentsTakeAllocators<SmallSet<int, 4, std::less<int>, PropagatingArenaAllocator<int>>>();
+  ExpectNodeAssignmentsTakeAllocators<SmallSet<int, 4, std::less<int>, PropagatingArenaAllocator<int>,
+                                               FlatSet<int, std::less<int>, PropagatingArenaAllocator<int>>>>();
+#endif
+  EXPECT_EQ(ArenaAllocator::NbArenaMismatches(), nbArenaMismatches);
+  EXPECT_EQ(ArenaAllocator::NbLiveAllocations(), nbLiveAllocations);
+}
+
+// The element of a node moves by construction, never by assignment: if this move throws, the assigned node is left
+// empty and the moved one keeps its element, as does the source of a move construction.
+template <class SetType>
+void ExpectThrowingNodeMovesKeepTheSource() {
+  using T = typename SetType::value_type;
+  using SizeType = typename SetType::size_type;
+  for (int nbElems : {3, 8}) {  // small and large states of SmallSets
+    SetType s;
+    for (int i = 0; i < nbElems; ++i) {
+      s.insert(i);
+    }
+    typename SetType::node_type nh = s.extract(T(0));
+    typename SetType::node_type other = s.extract(T(1));
+    T::NbMovesBeforeThrow() = 0;
+    EXPECT_THROW(nh = std::move(other), MoveForbiddenException);
+    EXPECT_TRUE(nh.empty());
+    ASSERT_FALSE(other.empty());  // NOLINT(bugprone-use-after-move)
+    EXPECT_EQ(static_cast<int32_t>(other.value()), 1);
+    T::NbMovesBeforeThrow() = 0;
+    EXPECT_THROW(typename SetType::node_type moved(std::move(other)), MoveForbiddenException);
+    ASSERT_FALSE(other.empty());  // NOLINT(bugprone-use-after-move)
+    EXPECT_EQ(static_cast<int32_t>(other.value()), 1);
+    T::NbMovesBeforeThrow() = -1;
+    // without exception
+    nh = std::move(other);
+    EXPECT_TRUE(other.empty());  // NOLINT(bugprone-use-after-move)
+    ASSERT_FALSE(nh.empty());
+    EXPECT_EQ(static_cast<int32_t>(nh.value()), 1);
+    EXPECT_TRUE(s.insert(std::move(nh)).inserted);
+    EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems - 1));
+  }
+}
+
+TEST(SetTest, ThrowingNodeMovesKeepTheSource) {
+  using T = ThrowingMoveType;
+  const int nbLive = T::NbLive();
+  ExpectThrowingNodeMovesKeepTheSource<FlatSet<T>>();
+#ifdef AMC_SMALLSET
+  ExpectThrowingNodeMovesKeepTheSource<SmallSet<T, 4>>();
+  ExpectThrowingNodeMovesKeepTheSource<SmallSet<T, 4, std::less<T>, amc::allocator<T>, FlatSet<T>>>();
+#endif
+  EXPECT_EQ(T::NbLive(), nbLive);
+}
+
+#ifdef __cpp_lib_memory_resource
+// A node keeps the allocator of its set, which it neither default constructs nor assigns (the assignment of
+// std::pmr::polymorphic_allocator is deleted), and builds its element with it (uses-allocator construction), like the
+// nodes of std::set: the element of a node uses the memory resource of the set, even if the vector of a FlatSet built
+// it with the default one.
+template <class SetType>
+void ExpectPolymorphicAllocatorNodes() {
+  using Alloc = typename SetType::allocator_type;
+  using SizeType = typename SetType::size_type;
+  constexpr std::size_t kLength = 30;  // too long for the small string optimization
+  std::pmr::monotonic_buffer_resource resource;
+  const Alloc alloc(&resource);
+  for (int nbElems : {3, 8}) {  // small and large states of SmallSets
+    SetType s(alloc);
+    for (int i = 0; i < nbElems; ++i) {
+      s.emplace(kLength, static_cast<char>('a' + i));
+    }
+    typename SetType::node_type nh = s.extract(s.begin());
+    ASSERT_FALSE(nh.empty());
+    EXPECT_EQ(nh.get_allocator().resource(), &resource);
+    EXPECT_EQ(nh.value().get_allocator().resource(), &resource);
+    // move assignments to an empty node, then to a node holding an element (of an equal allocator)
+    typename SetType::node_type other;
+    other = std::move(nh);
+    EXPECT_TRUE(nh.empty());  // NOLINT(bugprone-use-after-move)
+    nh = s.extract(s.begin());
+    nh = std::move(other);
+    EXPECT_TRUE(other.empty());  // NOLINT(bugprone-use-after-move)
+    ASSERT_FALSE(nh.empty());
+    EXPECT_EQ(nh.value(), std::pmr::string(kLength, 'a'));
+    EXPECT_EQ(nh.get_allocator().resource(), &resource);
+    other = s.extract(s.begin());
+    swap(nh, other);
+    EXPECT_EQ(other.value(), std::pmr::string(kLength, 'a'));
+    EXPECT_TRUE(s.insert(std::move(nh)).inserted);
+    EXPECT_TRUE(s.insert(std::move(other)).inserted);
+    EXPECT_EQ(s.size(), static_cast<SizeType>(nbElems - 1));
+  }
+}
+
+TEST(SetTest, PolymorphicAllocatorNodes) {
+  using T = std::pmr::string;
+  using Alloc = std::pmr::polymorphic_allocator<T>;
+  ExpectPolymorphicAllocatorNodes<FlatSet<T, std::less<T>, Alloc>>();
+#ifdef AMC_SMALLSET
+  ExpectPolymorphicAllocatorNodes<SmallSet<T, 4, std::less<T>, Alloc>>();
+  ExpectPolymorphicAllocatorNodes<SmallSet<T, 4, std::less<T>, Alloc, FlatSet<T, std::less<T>, Alloc>>>();
+#endif
+}
+#endif
 #endif
 
 template <typename T>
@@ -2013,7 +2169,7 @@ typedef ::testing::Types<FlatSet<int>
 #ifdef AMC_SMALLSET
                         ,SmallSet<int, 2>, 
                          SmallSet<int, 10>, 
-                         SmallSet<char, 3>,
+                         SmallSet<signed char, 3>,
                          SmallSet<int, 2, std::less<int>, amc::allocator<int>, FlatSet<int>>
 #endif
                         >

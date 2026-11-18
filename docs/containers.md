@@ -190,7 +190,7 @@ The small state is not sorted: iteration follows the insertion order, `lower_bou
 
 ## Node handles
 
-Like the node handles of `std::set`, the `node_type` of `FlatSet` and `SmallSet` only depends on the value and allocator types: `extract` and `insert` move elements between sets of different comparators and underlying containers, from a `FlatSet` to a `SmallSet` and back. A node holds its element by value, and is not compatible with the nodes of `std::set`. A `FlatSet` over a `FixedCapacityVector` has another allocator type (an empty tag), so its nodes are of another type.
+Like the node handles of `std::set`, the `node_type` of `FlatSet` and `SmallSet` only depends on the value and allocator types: `extract` and `insert` move elements between sets of different comparators and underlying containers, from a `FlatSet` to a `SmallSet` and back. A node holds its element by value, and is not compatible with the nodes of `std::set`. Like a node of `std::set`, it holds an allocator only while it holds an element, and builds and destroys its element with it: the `std::pmr` allocators work, although they cannot be assigned. A `FlatSet` over a `FixedCapacityVector` has another allocator type (an empty tag), so its nodes are of another type.
 
 ## Non-standard extensions
 
