@@ -63,14 +63,14 @@ Some results of the [benchmarks](docs/benchmarks.md), with GCC 13 and Clang 23 (
 
 | Benchmark                                                                                           | Compared to                      | amc                 |
 | --------------------------------------------------------------------------------------------------- | -------------------------------- | ------------------- |
-| Grow an `amc::vector<uint32_t>` to 1 million elements with `emplace_back`                           | `std::vector`                    | 2.2× faster         |
-| Insert copies at random positions of an `amc::vector` of a trivially relocatable type owning memory | `std::vector`                    | 10 to 11× faster    |
+| Grow an `amc::vector<uint32_t>` to 1 million elements with `emplace_back`                           | `std::vector`                    | 2.1× faster         |
+| Insert copies at random positions of an `amc::vector` of a trivially relocatable type owning memory | `std::vector`                    | 9.6 to 13× faster   |
 | Fill and read `SmallVector<uint32_t, 16>`, 90 % of them with at most 16 elements                    | `std::vector`                    | 2.7 to 3.3× faster  |
-| Chained lookups in an `amc::FlatSet<uint32_t>` of 1 million elements                                | `std::set`, `std::unordered_set` | 14× and 7.7× faster |
-| Fill `SmallSet<uint32_t, 16>` with a `FlatSet` as set type, all of them small                       | `std::set`                       | 6.3 to 8.1× faster  |
-| Insert at the end and erase at the front of an `amc::vector` of a type owning memory                | `std::vector`                    | 1.2 to 1.4× slower  |
-| Insert 200 random values in a `FlatSet` of a non trivially relocatable type                         | `std::set`                       | 4.1 to 4.2× slower  |
-| Erase all the elements of a `FlatSet<uint32_t>` of 100 000 elements                                 | `std::set`                       | 3.8 to 4.1× slower  |
+| Chained lookups in an `amc::FlatSet<uint32_t>` of 1 million elements                                | `std::set`, `std::unordered_set` | 11× and 6× faster   |
+| Fill `SmallSet<uint32_t, 16>` with a `FlatSet` as set type, all of them small                       | `std::set`                       | 6.8 to 8.2× faster  |
+| Insert at the end and erase at the front of an `amc::vector` of a type owning memory                | `std::vector`                    | 1.1 to 1.4× slower  |
+| Insert 200 random values in a `FlatSet` of a non trivially relocatable type                         | `std::set`                       | 4.1× slower         |
+| Erase all the elements of a `FlatSet<uint32_t>` of 100 000 elements                                 | `std::set`                       | 4.4 to 4.5× slower  |
 
 ## Drop-in compatibility
 
