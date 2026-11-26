@@ -430,20 +430,28 @@ class SmallSet {
     return isSmall() ? const_iterator(find_small(k)) : const_iterator(_set.find(k));
   }
 
-  bool contains(const_reference k) const { return isSmall() ? find_small(k) != _vec.end() : _set.count(k); }
+  /// In the large state, a lookup with 'find': for a key of another type, the 'count' of a std::set computes its
+  /// 'equal_range' in libstdc++ (two descents of the tree instead of one).
+  bool contains(const_reference k) const {
+    return isSmall() ? find_small(k) != _vec.end() : _set.find(k) != _set.end();
+  }
 
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
   bool contains(const K& k) const {
-    return isSmall() ? find_small(k) != _vec.end() : _set.count(k);
+    return isSmall() ? find_small(k) != _vec.end() : _set.find(k) != _set.end();
   }
 
   size_type count(const_reference v) const { return contains(v); }
 
+  /// Like the one of std::set, the number of elements equivalent to 'k', which may be several.
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
   size_type count(const K& k) const {
-    return contains(k);
+    if (isSmall()) {
+      return static_cast<size_type>(std::count_if(_vec.begin(), _vec.end(), FindFunctor<K>(key_comp(), k)));
+    }
+    return static_cast<size_type>(_set.count(k));
   }
 
   size_type erase(const_reference v) {
