@@ -949,6 +949,11 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
       return;
     }
     _sortedVector.adjustCapacity(maxMergedSize);
+    // the slots of the merged elements, and the ones left free in 'o' (see the AddressSanitizer annotations)
+    AMC_ASAN_ANNOTATE(vec::SizeAnnotation<T, VecType> annotation(_sortedVector));
+    AMC_ASAN_ANNOTATE(vec::SizeAnnotation<T, VecType> oAnnotation(o._sortedVector));
+    AMC_ASAN_ANNOTATE(annotation.prepare(maxMergedSize));
+    AMC_ASAN_ANNOTATE(oAnnotation.prepare(0U));
     pointer first1 = _sortedVector.data();
     pointer first2 = o._sortedVector.data();
     pointer last1 = first1 + size1;  // end of our elements not merged yet

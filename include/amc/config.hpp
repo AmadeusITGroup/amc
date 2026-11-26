@@ -126,3 +126,59 @@
 #else
 #define AMC_INLINE_VARIABLE
 #endif
+
+// AddressSanitizer annotations of the containers: the bytes of their storages which hold no element are poisoned, so
+// that the sanitizer reports their use (see docs/containers.md). Active with the sanitizer, unless
+// AMC_NO_ASAN_ANNOTATIONS is defined, which must then be in the whole program (the annotations change the destructor
+// of FixedCapacityVector, and the invalidation checks of the hash tables their size).
+#ifndef AMC_NO_ASAN_ANNOTATIONS
+#if defined(__SANITIZE_ADDRESS__)
+#define AMC_ASAN_ANNOTATIONS 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define AMC_ASAN_ANNOTATIONS 1
+#endif
+#endif
+#endif
+
+#ifdef AMC_ASAN_ANNOTATIONS
+#if defined(__has_include)
+#if __has_include(<sanitizer/asan_interface.h>)
+#include <sanitizer/asan_interface.h>
+#else
+#undef AMC_ASAN_ANNOTATIONS
+#endif
+#else
+#undef AMC_ASAN_ANNOTATIONS
+#endif
+#endif
+
+// The statements of the annotations. Without them, the preprocessor removes the statements: the code of the operations
+// is then the one without the annotations, which calls of empty inline functions would change (register allocation and
+// block layout of 20 to 49 of 300 functions of the hash tables, GCC 13 and Clang 23).
+#ifdef AMC_ASAN_ANNOTATIONS
+#define AMC_ASAN_ANNOTATE(...) __VA_ARGS__
+#else
+#define AMC_ASAN_ANNOTATE(...)
+#endif
+
+// States an invariant the compiler cannot deduce: asserted in debug builds, assumed by the optimizer otherwise.
+// Avoids GCC -Warray-bounds false positives and dead code on the excluded paths.
+// 'cond' must have no side effects, as whether it is evaluated depends on the build and compiler.
+#ifndef NDEBUG
+#include <cassert>
+#define AMC_ASSUME(cond) assert(cond)
+#elif defined(__GNUC__) || defined(__clang__)
+// LCOV_EXCL_START the branch of __builtin_unreachable, which the coverage build (with NDEBUG) never takes
+#define AMC_ASSUME(cond)       \
+  do {                         \
+    if (!(cond)) {             \
+      __builtin_unreachable(); \
+    }                          \
+  } while (false)
+// LCOV_EXCL_STOP
+#elif defined(_MSC_VER)
+#define AMC_ASSUME(cond) __assume(cond)
+#else
+#define AMC_ASSUME(cond) static_cast<void>(0)
+#endif

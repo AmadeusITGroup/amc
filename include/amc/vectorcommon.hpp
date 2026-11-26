@@ -90,6 +90,91 @@ inline T AsValueType(U&& v) {
   return static_cast<T>(std::forward<U>(v));
 }
 
+#ifdef AMC_ASAN_ANNOTATIONS
+/// AddressSanitizer annotations of the vectors (see AMC_ASAN_ANNOTATIONS): the slots of their storages which hold no
+/// element are poisoned, from their size to their capacity, as well as the bytes of the inline storage of a SmallVector
+/// after the pointer to its dynamic storage. An inline storage is poisoned from its construction and unpoisoned at its
+/// destruction (a FixedCapacityVector then has a destructor), a dynamic one is unpoisoned before its deallocation, as
+/// an allocator may give its memory to other objects. The slots where an operation constructs elements are unpoisoned
+/// first (SizeAnnotation), and the bytes of the elements only move with their poisoning (see RelocateBytes): they are
+/// never unpoisoned, as they may hold poisoned bytes themselves (a vector of SmallVector). Only defined with the
+/// annotations, like the members of the storages which call them: the operations call them through AMC_ASAN_ANNOTATE or
+/// under AMC_ASAN_ANNOTATIONS.
+template <class T>
+inline void PoisonSlots(const T* first, std::uintmax_t n) noexcept {
+  memory_details::PoisonBytes(first, static_cast<std::size_t>(n) * sizeof(T));
+}
+
+template <class T>
+inline void UnpoisonSlots(const T* first, std::uintmax_t n) noexcept {
+  memory_details::UnpoisonBytes(first, static_cast<std::size_t>(n) * sizeof(T));
+}
+
+/// Annotations of an operation changing the size of the vector 'v' in its storage. 'prepare(upper)', called once the
+/// storage does not change any more, unpoisons the slots from the size up to 'upper' (at most the capacity: beyond, a
+/// FixedCapacityVector of UncheckedGrowingPolicy overflows, which the sanitizer may report), where the operation
+/// constructs elements. At the end of the scope, even if the operation throws, the slots from the size up to the
+/// largest of 'upper' and the size at 'prepare' are poisoned: they hold no element. Without 'prepare', it does
+/// nothing.
+template <class T, class V>
+class SizeAnnotation {
+ public:
+  explicit SizeAnnotation(const V& v) noexcept : _v(v) {}
+
+  SizeAnnotation(const SizeAnnotation&) = delete;
+  SizeAnnotation& operator=(const SizeAnnotation&) = delete;
+
+  ~SizeAnnotation() {
+    if (_prepared) {
+      assert(_v.begin() == _first);
+      const std::uintmax_t size = static_cast<std::uintmax_t>(_v.size());
+      assert(size <= _end);
+      PoisonSlots(_first + static_cast<std::size_t>(size), _end - size);
+    }
+  }
+
+  void prepare(std::uintmax_t upper) noexcept {
+    const std::uintmax_t size = static_cast<std::uintmax_t>(_v.size());
+    _prepared = true;
+    _first = _v.begin();
+    _end = std::max(std::min(upper, static_cast<std::uintmax_t>(_v.capacity())), size);
+    UnpoisonSlots(_first + static_cast<std::size_t>(size), _end - size);
+  }
+
+ private:
+  const V& _v;
+  bool _prepared = false;
+  const T* _first = nullptr;
+  std::uintmax_t _end = 0;
+};
+
+/// Annotations of a change of the dynamic storage of the vector 'v' (reallocation, or allocation if it has none), if
+/// 'active': its free slots are unpoisoned for the change (the allocator may copy them), and those of its storage at
+/// the end of the scope (the new one, or the old one if the change throws) are poisoned.
+template <class T, class V>
+class FreeSlotsAnnotation {
+ public:
+  FreeSlotsAnnotation(const V& v, bool active) noexcept : _v(v), _active(active) {
+    if (active) {
+      UnpoisonSlots(v.begin() + v.size(), static_cast<std::uintmax_t>(v.capacity() - v.size()));
+    }
+  }
+
+  FreeSlotsAnnotation(const FreeSlotsAnnotation&) = delete;
+  FreeSlotsAnnotation& operator=(const FreeSlotsAnnotation&) = delete;
+
+  ~FreeSlotsAnnotation() {
+    if (_active) {
+      PoisonSlots(_v.begin() + _v.size(), static_cast<std::uintmax_t>(_v.capacity() - _v.size()));
+    }
+  }
+
+ private:
+  const V& _v;
+  bool _active;
+};
+#endif
+
 /// Shift 'n' elements starting at 'first' one slot to the right
 /// Requirements: n != 0, with uninitialized memory starting at 'first + n'
 /// Warning: no destroy is called for elements which has been moved from.
@@ -482,9 +567,8 @@ struct NbSlots : std::integral_constant<std::size_t, (ElemSize < NbBytes ? NbByt
 
 /// This class represents a merge of a pointer and some inline storage elements.
 /// Thanks to this optimization, SmallVector behaves like a string type with SSO
-/// Example : for a system with pointer size of 8 bytes,
-///           sizeof(SmallVector<char, 8>) == sizeof(vector<char>)
-///           because 8 chars can be stored in a pointer.
+/// Example : for a system with pointer size of 8 bytes, sizeof(SmallVector<char, 8>) == sizeof(vector<char>) because 8
+/// chars can be stored in a pointer.
 template <class T>
 class ElemWithPtrStorage {
  public:
@@ -501,8 +585,6 @@ class ElemWithPtrStorage {
 
   // Return the pointer stored in the first bytes of this object to the dynamic storage.
   pointer dyn() const noexcept {
-    // use memcpy to avoid breaking strict aliasing rule, will be optimized away by the compiler.
-    // (confirmed with clang and gcc from O2)
     pointer p;
     std::memcpy(std::addressof(p), std::addressof(_el), sizeof(pointer));
     return p;
@@ -633,23 +715,39 @@ class StaticVectorBase {
   SizeType capacity() const noexcept { return static_cast<SizeType>(_capa); }
 
  protected:
-  explicit StaticVectorBase(SizeType inplaceCapa) noexcept
-      : _capa(static_cast<StoredSizeType>(inplaceCapa)), _size(0) {}
+  // the inline storage holds no element (see the AddressSanitizer annotations)
+  explicit StaticVectorBase(SizeType inplaceCapa) noexcept : _capa(static_cast<StoredSizeType>(inplaceCapa)), _size(0) {
+    AMC_ASAN_ANNOTATE(PoisonSlots(begin(), _capa));
+  }
 
   StaticVectorBase(SizeType inplaceCapa, const EmptyAlloc&) noexcept
-      : _capa(static_cast<StoredSizeType>(inplaceCapa)), _size(0) {}
+      : _capa(static_cast<StoredSizeType>(inplaceCapa)), _size(0) {
+    AMC_ASAN_ANNOTATE(PoisonSlots(begin(), _capa));
+  }
 
   void swap_impl(StaticVectorBase& o) noexcept(is_swap_noexcept<T>::value) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVectorBase> oAnnotation(o));
+    AMC_ASAN_ANNOTATE(annotation.prepare(std::max(_size, o._size)));
+    AMC_ASAN_ANNOTATE(oAnnotation.prepare(std::max(_size, o._size)));
     swap_deep(begin(), _size, o.begin(), o._size);
     std::swap(_size, o._size);
   }
 
   void move_construct(StaticVectorBase&& o, SizeType) noexcept(is_move_construct_nothrow<T>::value) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVectorBase> oAnnotation(o));
+    AMC_ASAN_ANNOTATE(annotation.prepare(o._size));
+    AMC_ASAN_ANNOTATE(oAnnotation.prepare(o._size));
     amc::uninitialized_relocate_n(o.begin(), o._size, begin());
     _size = amc::exchange(o._size, StoredSizeType{0});
   }
 
   void move_assign(StaticVectorBase&& o, SizeType) noexcept(is_shift_nothrow<T>::value) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVectorBase> oAnnotation(o));
+    AMC_ASAN_ANNOTATE(annotation.prepare(o._size));
+    AMC_ASAN_ANNOTATE(oAnnotation.prepare(o._size));
     move_n(o.begin(), o._size, begin(), _size);
     _size = amc::exchange(o._size, StoredSizeType{0});
   }
@@ -667,12 +765,26 @@ class StaticVectorBase {
   /// construction, as the new element may alias it (an element type of chars, or of integers of the type of SizeType).
   template <class... Args>
   T* constructBack(Args&&... args) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(_size) + 1U));
     const StoredSizeType size = _size;
     T* endIt = begin() + size;
     amc::construct_at(endIt, std::forward<Args>(args)...);
     _size = static_cast<StoredSizeType>(size + 1);
     return endIt;
   }
+
+#ifdef AMC_ASAN_ANNOTATIONS
+  /// Unpoisons the inline storage before the destruction (see the AddressSanitizer annotations).
+  void unpoisonForDestruction() noexcept { UnpoisonSlots(begin(), _capa); }
+
+  /// Re-establishes the annotations of the inline storage after a move of the bytes of the vector (see
+  /// memory_details::AsanReannotate), and of its elements.
+  void reannotate(SizeType) const noexcept {
+    PoisonSlots(begin() + _size, _capa - _size);
+    memory_details::ReannotateObjects(begin(), _size);
+  }
+#endif
 
  private:
   // Capacity is added as member of the object to decrease code generation.
@@ -740,6 +852,7 @@ class StdVectorBase : private Alloc {
 
     if (oldStorage != nullptr) {
       amc::destroy_n(oldStorage, oldSize);
+      AMC_ASAN_ANNOTATE(UnpoisonSlots(oldStorage, oldCapa));  // see the AddressSanitizer annotations
       this->deallocate(oldStorage, static_cast<std::size_t>(oldCapa));
     }
   }
@@ -796,6 +909,8 @@ class StdVectorBase : private Alloc {
   /// StaticVectorBase::constructBack).
   template <class... Args>
   T* constructBack(Args&&... args) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StdVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(_size) + 1U));
     const SizeType size = _size;
     T* endIt = _storage + size;
     amc::construct_at(endIt, std::forward<Args>(args)...);
@@ -804,6 +919,13 @@ class StdVectorBase : private Alloc {
   }
 
   iterator dynStorage() const noexcept { return _storage; }
+
+#ifdef AMC_ASAN_ANNOTATIONS
+  /// Nothing inline to unpoison before the destruction, or to annotate again after a move of the bytes of the vector
+  /// (see the AddressSanitizer annotations).
+  void unpoisonForDestruction() noexcept {}
+  void reannotate(SizeType) const noexcept {}
+#endif
 
  private:
   void shrink();
@@ -848,6 +970,7 @@ class SmallVectorBase : private Alloc {
     if (!isSmall()) {
       freeStorage();
     }
+    AMC_ASAN_ANNOTATE(unpoisonInlineStorage());
   }
 
  protected:
@@ -864,10 +987,15 @@ class SmallVectorBase : private Alloc {
   /// Invariant: a large SmallVector has a capacity larger than its inline capacity. It grows from the inline capacity,
   /// shrink_to_fit comes back to the small state if the elements fit inline, and dynamic storages taken from other
   /// vectors (move construction from a vector, swap2) are larger than the inline capacity too.
-  explicit SmallVectorBase(SizeType inplaceCapa) noexcept : _capa(0), _size(SmallSizeMember(inplaceCapa)) {}
+  /// The inline storage holds no element (see the AddressSanitizer annotations).
+  explicit SmallVectorBase(SizeType inplaceCapa) noexcept : _capa(0), _size(SmallSizeMember(inplaceCapa)) {
+    AMC_ASAN_ANNOTATE(poisonInline(inplaceCapa));
+  }
 
   SmallVectorBase(SizeType inplaceCapa, const Alloc& alloc) noexcept
-      : Alloc(alloc), _capa(0), _size(SmallSizeMember(inplaceCapa)) {}
+      : Alloc(alloc), _capa(0), _size(SmallSizeMember(inplaceCapa)) {
+    AMC_ASAN_ANNOTATE(poisonInline(inplaceCapa));
+  }
 
   /// Size member of a small vector of inline capacity 'inplaceCapa' (see above).
   static SizeType SmallSizeMember(SizeType inplaceCapa) noexcept { return static_cast<SizeType>(inplaceCapa + 1); }
@@ -877,8 +1005,12 @@ class SmallVectorBase : private Alloc {
   /// swap_impl is called by public method 'swap' for same SmallVector (same number of inplace elements).
   /// No need to check / adjust capacity for small states then (no throw guaranteed).
   void swap_impl(SmallVectorBase& o) noexcept(is_swap_noexcept<T>::value) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> oAnnotation(o));
     if (isSmall()) {
       if (o.isSmall()) {
+        AMC_ASAN_ANNOTATE(annotation.prepare(std::max(_capa, o._capa)));
+        AMC_ASAN_ANNOTATE(oAnnotation.prepare(std::max(_capa, o._capa)));
         swap_deep(_storage.ptr(), _capa, o._storage.ptr(), o._capa);
       } else {
         SwapDynamicBuffer(o, *this);
@@ -895,10 +1027,16 @@ class SmallVectorBase : private Alloc {
   }
 
   void move_construct(SmallVectorBase&& o, SizeType inplaceCapa) noexcept(is_move_construct_nothrow<T>::value) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> oAnnotation(o));
     if (o.isSmall()) {
+      AMC_ASAN_ANNOTATE(annotation.prepare(o._capa));
+      AMC_ASAN_ANNOTATE(oAnnotation.prepare(o._capa));
       amc::uninitialized_relocate_n(o._storage.ptr(), o._capa, _storage.ptr());
     } else {
+      AMC_ASAN_ANNOTATE(annotateLargeInline(inplaceCapa));
       _storage.setDyn(o._storage.dyn());
+      AMC_ASAN_ANNOTATE(o.poisonInline(inplaceCapa));  // 'o' becomes small and empty
     }
     _capa = amc::exchange(o._capa, SizeType{0});
     _size = amc::exchange(o._size, SmallSizeMember(inplaceCapa));
@@ -908,6 +1046,7 @@ class SmallVectorBase : private Alloc {
                       SizeType inplaceCapa) noexcept(is_move_construct_nothrow<T>::value) {
     if (inplaceCapa < o._capa) {
       // Steal the dynamic buffer, larger than the inline storage, to make move construct faster
+      AMC_ASAN_ANNOTATE(annotateLargeInline(inplaceCapa));
       _storage.setDyn(amc::exchange(o._storage, nullptr));
       _capa = amc::exchange(o._capa, SizeType{0});
       _size = amc::exchange(o._size, SizeType{0});
@@ -915,6 +1054,8 @@ class SmallVectorBase : private Alloc {
       // A large SmallVector has a capacity larger than the inline one: relocate the elements of 'o' inline instead.
       // If a move throws, 'o' keeps all its elements (the moved ones in a moved-from state) and we stay small and
       // empty.
+      AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> annotation(*this));
+      AMC_ASAN_ANNOTATE(annotation.prepare(o._size));
       (void)amc::uninitialized_relocate_n(o._storage, o._size, _storage.ptr());
       setSize(o._size);
       o._size = 0;
@@ -935,6 +1076,10 @@ class SmallVectorBase : private Alloc {
       // To sum-up, in this context, we do not touch our capacity, only move and relocates o's elements
       // (move construction from a vector and swap2 only take dynamic storages larger than the inline capacity too)
       assert(isSmall() || inplaceCapa < _capa);
+      AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> annotation(*this));
+      AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> oAnnotation(o));
+      AMC_ASAN_ANNOTATE(annotation.prepare(o._capa));
+      AMC_ASAN_ANNOTATE(oAnnotation.prepare(o._capa));
       move_n(o._storage.ptr(), o._capa, begin(), size());
       setSize(o._capa);
       o.setSize(0);
@@ -942,8 +1087,10 @@ class SmallVectorBase : private Alloc {
       T* dynStorage = o._storage.dyn();
       const SizeType capa = amc::exchange(o._capa, SizeType{0});
       const SizeType size = amc::exchange(o._size, SmallSizeMember(inplaceCapa));
+      AMC_ASAN_ANNOTATE(o.poisonInline(inplaceCapa));  // 'o' is small and empty, and may be destroyed below
       destroyFreeStorage();
       // set last: our inline elements share their first bytes with the pointer to the dynamic storage
+      AMC_ASAN_ANNOTATE(annotateLargeInline(inplaceCapa));
       _storage.setDyn(dynStorage);
       _capa = capa;
       _size = size;
@@ -1021,6 +1168,8 @@ class SmallVectorBase : private Alloc {
   /// StaticVectorBase::constructBack).
   template <class... Args>
   T* constructBack(Args&&... args) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, SmallVectorBase> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(size()) + 1U));
     // The members are read as two scalars: copied together in a struct, Clang loads them as a single 64 bits value,
     // which cannot be forwarded from the two 32 bits stores of the previous call in a loop (2 to 3 times slower).
     const SizeType capa = _capa;
@@ -1046,18 +1195,56 @@ class SmallVectorBase : private Alloc {
 
   iterator dynStorage() const noexcept { return _storage.dyn(); }
 
+#ifdef AMC_ASAN_ANNOTATIONS
+  /// The inline storage is unpoisoned by the destructor of SmallVectorBase (see the AddressSanitizer annotations).
+  void unpoisonForDestruction() noexcept {}
+
+  // AddressSanitizer annotations of the inline storage, of 'inplaceCapa' elements (see PoisonSlots)
+
+  /// The small state without element: the whole inline storage is poisoned.
+  void poisonInline(SizeType inplaceCapa) noexcept { PoisonSlots(_storage.ptr(), inplaceCapa); }
+
+  /// The large state, whose inline storage holds no element: only the pointer to the dynamic storage is accessible.
+  void annotateLargeInline(SizeType inplaceCapa) const noexcept {
+    PoisonSlots(_storage.ptr(), inplaceCapa);
+    memory_details::UnpoisonBytes(_storage.ptr(), sizeof(T*));
+  }
+
+  /// Re-establishes the annotations of the inline storage after a move of the bytes of the vector (see
+  /// memory_details::AsanReannotate), and of its inline elements.
+  void reannotate(SizeType inplaceCapa) const noexcept {
+    if (isSmall()) {
+      PoisonSlots(_storage.ptr() + _capa, inplaceCapa - _capa);
+      memory_details::ReannotateObjects(_storage.ptr(), _capa);
+    } else {
+      annotateLargeInline(inplaceCapa);
+    }
+  }
+
+  /// Before the destruction: the bytes of '_storage', the first inline elements (the next ones are unpoisoned by the
+  /// destructor of VectorWithInplaceStorage).
+  void unpoisonInlineStorage() noexcept { memory_details::UnpoisonBytes(std::addressof(_storage), sizeof(_storage)); }
+#endif
+
  private:
   /// The inline elements of 'vSmall' are relocated to the inline storage of 'vDynBuf', which shares its first bytes
-  /// with the pointer to its dynamic storage: if a move throws, this pointer is restored.
+  /// with the pointer to its dynamic storage: if a move throws, this pointer is restored. With the annotations, the
+  /// inline storage of 'vDynBuf' is unpoisoned for the relocation, and its slots without element poisoned after it,
+  /// while 'vSmall' takes the inline annotations of the large state.
   /// (not declared noexcept(is_swap_noexcept<T>::value), as GCC warns about the rethrow when it is true)
   static void SwapDynamicBuffer(SmallVectorBase& vDynBuf, SmallVectorBase& vSmall) {
     T* oDynStorage = vDynBuf._storage.dyn();
+    AMC_ASAN_ANNOTATE(const SizeType inplaceCapa = vSmall.capacity());
+    AMC_ASAN_ANNOTATE(UnpoisonSlots(vDynBuf._storage.ptr(), inplaceCapa));
     AMC_TRY {
       (void)amc::uninitialized_relocate_n(vSmall._storage.ptr(), vSmall._capa, vDynBuf._storage.ptr());
     } AMC_CATCH_ALL {
       vDynBuf._storage.setDyn(oDynStorage);
+      AMC_ASAN_ANNOTATE(vDynBuf.annotateLargeInline(inplaceCapa));
       AMC_RETHROW;
     }
+    AMC_ASAN_ANNOTATE(PoisonSlots(vDynBuf._storage.ptr() + vSmall._capa, inplaceCapa - vSmall._capa));
+    AMC_ASAN_ANNOTATE(vSmall.annotateLargeInline(inplaceCapa));
     vSmall._storage.setDyn(oDynStorage);
   }
 
@@ -1084,6 +1271,11 @@ void swap2_deep(V1& lhs, V2& rhs) {
   const SizeType1 size1 = lhs.size();
   const SizeType2 size2 = rhs.size();
   assert(CapacitiesFitEachOther(size1, size2));
+  AMC_ASAN_ANNOTATE(using T = typename std::remove_reference<decltype(*lhs.begin())>::type);
+  AMC_ASAN_ANNOTATE(SizeAnnotation<T, V1> lAnnotation(lhs));
+  AMC_ASAN_ANNOTATE(SizeAnnotation<T, V2> rAnnotation(rhs));
+  AMC_ASAN_ANNOTATE(lAnnotation.prepare(std::max<std::uintmax_t>(size1, size2)));
+  AMC_ASAN_ANNOTATE(rAnnotation.prepare(std::max<std::uintmax_t>(size1, size2)));
   swap_deep(lhs.begin(), size1, rhs.begin(), size2);
   lhs.setSize(static_cast<SizeType1>(size2));
   rhs.setSize(static_cast<SizeType2>(size1));
@@ -1109,6 +1301,8 @@ class StaticVector : public StaticVectorBase<T, SizeType, typename StaticPolicy:
   iterator emplace(const_iterator position, Args&&... args) {
     assert(position >= this->cbegin() && position <= this->cbegin() + this->size());
     StaticPolicy::GrowingPolicy::Check(this->size() + 1U, this->capacity());
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, StaticVector> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator pos = const_cast<iterator>(position);
     emplace_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::forward<Args>(args)...);
     this->incrSize();
@@ -1256,6 +1450,8 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
       return emplaceGrowing(typename GrowingInsertOf<Alloc, WithInlineElements>::type(),
                             static_cast<SizeType>(position - this->begin()), std::forward<Args>(args)...);
     }
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, DynamicVector> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator pos = const_cast<iterator>(position);
     emplace_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::forward<Args>(args)...);
     this->incrSize();
@@ -1374,6 +1570,8 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   iterator emplaceBackGrowing(std::true_type, Args&&... args) {
     TemporaryElem<T> e(std::forward<Args>(args)...);
     this->grow(static_cast<std::uintmax_t>(this->size()) + 1U);
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, DynamicVector> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator endIt = this->dynStorage() + this->size();
     amc::relocate_at(e.ptr(), endIt);
     e.release();
@@ -1390,6 +1588,8 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   iterator emplaceGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>, SizeType idx, Args&&... args) {
     TemporaryElem<T> e(std::forward<Args>(args)...);
     this->grow(static_cast<std::uintmax_t>(this->size()) + 1U);
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, DynamicVector> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator pos = this->begin() + idx;
     relocate_insert_n(pos, static_cast<SizeType>(this->size() - idx), e.ptr());
     e.release();
@@ -1415,6 +1615,8 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
   // 'adjustCapacity' finds it back in the grown storage. Being non-templates, these overloads win over the ones above.
   iterator emplaceBackGrowing(std::true_type, T&& v) {
     const T& newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, DynamicVector> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator endIt = this->dynStorage() + this->size();
     amc::construct_at(endIt, std::move(const_cast<T&>(newV)));
     this->incrSize();
@@ -1423,6 +1625,8 @@ class DynamicVector : public DynamicVectorBaseTypeDispatcher<T, Alloc, SizeType,
 
   iterator emplaceGrowing(GrowingInsertTag<GrowingInsert::kGrowAndShift>, SizeType idx, T&& v) {
     const T& newV = this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + 1U, v);
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, DynamicVector> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator pos = this->begin() + idx;
     // 'newV' may be one of the elements to shift: 'emplace_n' moves from it before shifting them
     emplace_n(pos, static_cast<SizeType>(this->size() - idx), std::move(const_cast<T&>(newV)));
@@ -1447,7 +1651,10 @@ struct VectorBaseTypeDispatcher {
 template <class T, class Alloc, class SizeType, bool WithInlineElements, class GrowingPolicy, bool DefineDestructor>
 class VectorDestr : public VectorBaseTypeDispatcher<T, Alloc, SizeType, WithInlineElements, GrowingPolicy>::type {
  public:
-  ~VectorDestr() { amc::destroy_n(this->begin(), this->size()); }
+  ~VectorDestr() {
+    amc::destroy_n(this->begin(), this->size());
+    AMC_ASAN_ANNOTATE(this->unpoisonForDestruction());
+  }
 
  protected:
   template <class... Args>
@@ -1469,8 +1676,18 @@ class VectorDestr<T, Alloc, SizeType, WithInlineElements, GrowingPolicy, false>
 /// Whether VectorDestr defines a destructor: only for elements which are not trivially destructible, so that a
 /// FixedCapacityVector of a trivially destructible type is trivially destructible (also without capacity). amc::vector
 /// always defines it, as it may be instantiated with an incomplete type: the other vectors store elements inline.
+/// With the AddressSanitizer annotations, a FixedCapacityVector with inline elements always has one, which unpoisons
+/// its inline storage: the memory of the object may then hold other objects.
+#ifdef AMC_ASAN_ANNOTATIONS
+template <class T, bool WithInlineElements, class GrowingPolicy>
+struct DefineDestructor
+    : std::integral_constant<bool,
+                             !std::is_trivially_destructible<T>::value ||
+                                 (WithInlineElements && !std::is_same<GrowingPolicy, DynamicGrowingPolicy>::value)> {};
+#else
 template <class T, bool WithInlineElements, class GrowingPolicy>
 struct DefineDestructor : std::integral_constant<bool, !std::is_trivially_destructible<T>::value> {};
+#endif
 
 template <class T>
 struct DefineDestructor<T, false, DynamicGrowingPolicy> : std::integral_constant<bool, true> {};
@@ -1584,6 +1801,7 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     assert(!empty());
     amc::destroy_at(this->end() - 1);
     this->decrSize();
+    AMC_ASAN_ANNOTATE(PoisonSlots(end(), 1U));  // see the AddressSanitizer annotations
   }
 
 #ifdef AMC_NONSTD_FEATURES
@@ -1595,11 +1813,14 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 #endif
 
   void clear() noexcept {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(0U));
     amc::destroy_n(this->begin(), this->size());
     this->setSize(0);
   }
 
   void assign(size_type count, const_reference v) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
     if (static_cast<std::uintmax_t>(this->size()) < ToUnsignedCount(count)) {
       if (static_cast<std::uintmax_t>(this->capacity()) < ToUnsignedCount(count)) {
         // 'v' may refer to an element (or to an object owned by one): it is not copied, as the elements are only
@@ -1607,10 +1828,12 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
         this->assignInNewStorage(ToUnsignedCount(count),
                                  [&v, count](T* storage) { std::uninitialized_fill_n(storage, count, v); });
       } else {
+        AMC_ASAN_ANNOTATE(annotation.prepare(ToUnsignedCount(count)));
         fill(this->begin(), this->size(), count, v);
       }
     } else {
       // copy to already existing elements and destroy remaining ones
+      AMC_ASAN_ANNOTATE(annotation.prepare(ToUnsignedCount(count)));
       std::fill_n(this->begin(), count, v);
       amc::destroy_n(this->begin() + count, this->size() - count);
     }
@@ -1647,6 +1870,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
     if (this->isFull()) {
       return this->emplace(position, v);
     }
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator pos = const_cast<iterator>(position);
     insert_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), v);
     this->incrSize();
@@ -1659,6 +1884,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       // 'v' may be an element of the vector, like for 'push_back(T&&)', and keeps its value if the growth throws
       return this->emplace(position, std::move(v));
     }
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + 1U));
     iterator pos = const_cast<iterator>(position);
     insert_n(pos, static_cast<SizeType>(this->size() - (pos - this->begin())), std::move(v));
     this->incrSize();
@@ -1706,6 +1933,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// @return iterator to the element immediately after the removed one
   iterator erase(const_iterator position) {
     assert(position >= this->cbegin() && position < cend());
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(0U));
     const iterator it = const_cast<iterator>(position);
     erase_n(it, SizeType{1}, static_cast<SizeType>(this->size() - (position - this->begin()) - 1));
     this->decrSize();
@@ -1714,6 +1943,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   iterator erase(const_iterator first, const_iterator last) {
     assert(first <= last && first >= this->cbegin() && last <= cend());
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(0U));
     const iterator mfirst = const_cast<iterator>(first);
     if (first == last) {
       // Nothing to erase. Return early, as 'erase_n' would self move assign all next elements, which may change them.
@@ -1738,20 +1969,26 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   void push_back(T&& v) { this->emplace_back(std::move(v)); }
 
   void resize(size_type count) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
     if (static_cast<std::uintmax_t>(this->size()) < ToUnsignedCount(count)) {
       this->adjustCapacity(ToUnsignedCount(count));
+      AMC_ASAN_ANNOTATE(annotation.prepare(ToUnsignedCount(count)));
       amc::uninitialized_value_construct_n(end(), count - this->size());
     } else {
+      AMC_ASAN_ANNOTATE(annotation.prepare(0U));
       amc::destroy_n(this->begin() + count, this->size() - count);
     }
     this->setSize(count);
   }
 
   void resize(size_type count, const_reference v) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
     if (static_cast<std::uintmax_t>(this->size()) < ToUnsignedCount(count)) {
       const_reference newV = this->adjustCapacity(ToUnsignedCount(count), v);
+      AMC_ASAN_ANNOTATE(annotation.prepare(ToUnsignedCount(count)));
       std::uninitialized_fill_n(end(), count - this->size(), newV);
     } else {
+      AMC_ASAN_ANNOTATE(annotation.prepare(0U));
       amc::destroy_n(this->begin() + count, this->size() - count);
     }
     this->setSize(count);
@@ -1772,12 +2009,16 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   void append(size_type count) {
     this->adjustCapacity(NeededCapacity(this->size(), count));
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(NeededCapacity(this->size(), count)));
     amc::uninitialized_value_construct_n(end(), count);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
 
   void append(size_type count, const_reference v) {
     const_reference newV = this->adjustCapacity(NeededCapacity(this->size(), count), v);
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(NeededCapacity(this->size(), count)));
     std::uninitialized_fill_n(end(), count, newV);
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
@@ -1805,6 +2046,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       // compute in uintmax_t as the size of the range may not fit in SizeType
       const std::uintmax_t count = std::min(static_cast<std::uintmax_t>(std::ranges::size(rg)),
                                             static_cast<std::uintmax_t>(this->capacity() - this->size()));
+      AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+      AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + count));
       amc::uninitialized_copy_n(first, static_cast<SizeType>(count), this->end());
       this->setSize(static_cast<SizeType>(this->size() + count));
       return first + static_cast<std::ranges::range_difference_t<R> >(count);
@@ -1865,16 +2108,19 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   template <class ForwardIt>
   void assignN(ForwardIt first, std::uintmax_t count) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
     if (static_cast<std::uintmax_t>(this->size()) < count) {
       if (static_cast<std::uintmax_t>(this->capacity()) < count) {
         this->assignInNewStorage(count, [&first, count](T* storage) {
           amc::uninitialized_copy_n(first, static_cast<SizeType>(count), storage);
         });
       } else {
+        AMC_ASAN_ANNOTATE(annotation.prepare(count));
         assign_n(first, static_cast<SizeType>(count), this->begin(), this->size());
       }
     } else {
       // copy to already existing elements and destroy remaining ones
+      AMC_ASAN_ANNOTATE(annotation.prepare(count));
       amc::destroy(std::copy_n(first, static_cast<SizeType>(count), this->begin()), end());
     }
     this->setSize(static_cast<SizeType>(count));
@@ -1889,6 +2135,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
       *it = AsValueType<T>(*first);
     }
     if (it != endIt) {
+      AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+      AMC_ASAN_ANNOTATE(annotation.prepare(0U));
       amc::destroy(it, endIt);
       this->setSize(static_cast<SizeType>(it - this->begin()));
     } else {
@@ -1920,6 +2168,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
 
   /// Inserts 'count' (> 0) copies of 'v' at 'pos', the capacity being large enough.
   iterator insertFill(iterator pos, size_type count, const_reference v) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(count)));
     const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
     if (nElemsToShift == 0) {
       std::uninitialized_fill_n(pos, count, v);
@@ -1982,6 +2232,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   /// Inserts the 'n' (> 0) elements starting at 'first' at 'pos', the capacity being large enough.
   template <class ForwardIt>
   iterator insertCopy(iterator pos, ForwardIt first, SizeType n) {
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + ToUnsignedCount(n)));
     const SizeType nElemsToShift = static_cast<SizeType>(this->size() - (pos - this->begin()));
     if (nElemsToShift == 0) {
       amc::uninitialized_copy_n(first, n, pos);
@@ -2012,6 +2264,8 @@ class VectorImpl : public VectorDestr<T, Alloc, SizeType, WithInlineElements, Gr
   template <class ForwardIt>
   void appendN(ForwardIt first, std::uintmax_t count) {
     this->adjustCapacity(static_cast<std::uintmax_t>(this->size()) + count);
+    AMC_ASAN_ANNOTATE(SizeAnnotation<T, VectorImpl> annotation(*this));
+    AMC_ASAN_ANNOTATE(annotation.prepare(static_cast<std::uintmax_t>(this->size()) + count));
     amc::uninitialized_copy_n(first, static_cast<SizeType>(count), end());
     this->setSize(static_cast<SizeType>(this->size() + count));
   }
@@ -2056,6 +2310,12 @@ class VectorWithInplaceStorage : public VectorImpl<T, Alloc, SizeType, true, Gro
   template <class... Args>
   explicit VectorWithInplaceStorage(Args&&... args) noexcept
       : VectorImpl<T, Alloc, SizeType, true, GrowingPolicy>(std::forward<Args&&>(args)...) {}
+
+#ifdef AMC_ASAN_ANNOTATIONS
+  /// Unpoisons the next inline elements, which the base classes do not know in the large state of a SmallVector (see
+  /// the AddressSanitizer annotations).
+  ~VectorWithInplaceStorage() { memory_details::UnpoisonBytes(_elems, sizeof(_elems)); }
+#endif
 
  private:
   ElemStorage<T>
@@ -2306,6 +2566,11 @@ class Vector : public vec::VectorBase<T, Alloc, SizeType, GrowingPolicy, N> {
 #endif
 
   void shrink_to_fit() { this->shrink_impl(kInlineCapacity); }
+
+#ifdef AMC_ASAN_ANNOTATIONS
+  /// Re-establishes the annotations of 'v' after a move of its bytes (see memory_details::AsanReannotate).
+  friend void AsanReannotate(const Vector& v) noexcept { v.reannotate(kInlineCapacity); }
+#endif
 
 #ifdef AMC_CXX20
   template <class V>

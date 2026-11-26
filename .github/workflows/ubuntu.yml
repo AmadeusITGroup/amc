@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install compiler
         run: |
-          echo "deb http://dk.archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install compiler
         run: |
-          echo "deb http://dk.archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://archive.ubuntu.com/ubuntu/ focal main universe" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.compiler }}
       - name: cmake
@@ -171,21 +171,31 @@ jobs:
         run: |
           wget --retry-connrefused --waitretry=5 --tries=5 https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get install -y llvm-21
+          sudo ./llvm.sh 23
+          sudo apt-get install -y llvm-23
+      # Two runs, merged by Codecov (a line is covered if one of them covers it): without the address sanitizer, for the
+      # malloc failure injection tests which it prevents, and with it, for the AddressSanitizer annotations of the
+      # containers, which only exist with it.
       - name: cmake
-        run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-21 -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_COVERAGE=ON -DAMC_WARNINGS_AS_ERRORS=ON
+        run: |
+          cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-23 -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_COVERAGE=ON -DAMC_WARNINGS_AS_ERRORS=ON
+          cmake -S . -B build-asan -DCMAKE_CXX_COMPILER=clang++-23 -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_COVERAGE=ON -DAMC_WARNINGS_AS_ERRORS=ON -DAMC_ENABLE_ASAN=ON
       - name: build, test and report coverage
-        run: cmake --build build --target coverage --parallel
+        run: |
+          cmake --build build --target coverage --parallel
+          cmake --build build-asan --target coverage --parallel
       - name: summary
         run: |
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          cat build/coverage/report.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          for build in build build-asan; do
+            echo "### $build" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            cat $build/coverage/report.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          done
       - name: upload to Codecov
         uses: codecov/codecov-action@v7
         with:
-          files: build/coverage/amc.lcov
+          files: build/coverage/amc.lcov,build-asan/coverage/amc.lcov
           disable_search: true
           use_oidc: true
           fail_ci_if_error: false # a Codecov outage should not fail the CI
@@ -196,6 +206,8 @@ jobs:
           path: |
             build/coverage/html
             build/coverage/amc.lcov
+            build-asan/coverage/html
+            build-asan/coverage/amc.lcov
 
   # Sanity check of benchmark/run_benchmarks.py with a single compiler: builds the benchmarks, runs each of them once,
   # shortly, and imports the results into docs/. The times of a shared runner mean nothing: the job only checks that it

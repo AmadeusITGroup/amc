@@ -44,8 +44,20 @@ inline SizeType SafeNextCapacity(SizeType oldCapa, std::uintmax_t newSize, std::
   return static_cast<SizeType>(std::min(std::max(grownCapa, newSize), maxCapa));
 }
 
+// With the AddressSanitizer annotations, elements holding poisoned bytes (those of the amc containers they hold) are
+// relocated to a new storage instead (trivially relocatable elements, which cannot throw): 'reallocate' would not keep
+// them. Not shared with the overload below, as the additional call changes the inlining decisions of GCC 13 without the
+// annotations (80 of 448 functions of the vectors in C++11 at -O2).
 template <class Alloc, class T, class SizeType, typename std::enable_if<CanReallocate<Alloc>::value, bool>::type = true>
 inline T* Reallocate(Alloc& alloc, T* p, SizeType oldCapa, SizeType newCapa, SizeType size) {
+#ifdef AMC_ASAN_ANNOTATIONS
+  if (memory_details::HasPoisonedBytes(p, static_cast<std::size_t>(size) * sizeof(T))) {
+    T* newPtr = alloc.allocate(static_cast<std::size_t>(newCapa));
+    (void)amc::uninitialized_relocate_n(p, size, newPtr);
+    alloc.deallocate(p, static_cast<std::size_t>(oldCapa));
+    return newPtr;
+  }
+#endif
   // capacities do not exceed the max_size() of the allocator (see MaxCapacity)
   using AllocSizeType = typename Alloc::size_type;
   return alloc.reallocate(p, static_cast<AllocSizeType>(oldCapa), static_cast<AllocSizeType>(newCapa),
@@ -119,6 +131,7 @@ inline T* AllocateInsert(Alloc& alloc, T* p, SizeType size, SizeType newCapa, Si
 // instead of registers in the loops that fill it (up to 20 % slower on small vectors).
 template <class T, class Alloc, class SizeType>
 inline void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
+  AMC_ASAN_ANNOTATE(const FreeSlotsAnnotation<T, SmallVectorBase> annotation(*this, !isSmall()));
   SizeType newCapa;
   const std::uintmax_t maxCapa = MaxCapacity<SizeType>(static_cast<const Alloc&>(*this));
   if (isSmall()) {
@@ -131,6 +144,7 @@ inline void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bo
       this->deallocate(dynStorage, static_cast<std::size_t>(newCapa));
       AMC_RETHROW;
     }
+    AMC_ASAN_ANNOTATE(annotateLargeInline(oldCapa));  // see the AddressSanitizer annotations
     _storage.setDyn(dynStorage);
     _size = _capa;
   } else {
@@ -138,10 +152,12 @@ inline void SmallVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bo
     _storage.setDyn(vec::Reallocate(static_cast<Alloc&>(*this), _storage.dyn(), _capa, newCapa, _size));
   }
   _capa = newCapa;
+  AMC_ASAN_ANNOTATE(PoisonSlots(_storage.dyn() + _size, _capa - _size));
 }
 
 template <class T, class Alloc, class SizeType>
 inline void StdVectorBase<T, Alloc, SizeType>::grow(std::uintmax_t minSize, bool exact) {
+  AMC_ASAN_ANNOTATE(const FreeSlotsAnnotation<T, StdVectorBase> annotation(*this, true));
   SizeType newCapa = SafeNextCapacity(_capa, minSize, MaxCapacity<SizeType>(static_cast<const Alloc&>(*this)),
                                       MaxDoublingCapacity<T>(), exact);
   // Without capacity there is no storage: allocate it rather than reallocating a null pointer, which is slower
@@ -172,6 +188,7 @@ void SmallVectorBase<T, Alloc, SizeType>::assignInNewStorage(std::uintmax_t n, C
     AMC_RETHROW;
   }
   destroyFreeStorage();
+  AMC_ASAN_ANNOTATE(if (isSmall()) { annotateLargeInline(capacity()); });  // see the AddressSanitizer annotations
   _storage.setDyn(dynStorage);
   _capa = capa;
   _size = capa;
@@ -215,9 +232,11 @@ inline T* SmallVectorBase<T, Alloc, SizeType>::growInsert(SizeType pos, std::uin
   if (!isSmall()) {
     freeStorage();
   }
+  AMC_ASAN_ANNOTATE(if (isSmall()) { annotateLargeInline(capacity()); });  // see the AddressSanitizer annotations
   _storage.setDyn(dynStorage);
   _capa = newCapa;
   _size = static_cast<SizeType>(newSize);
+  AMC_ASAN_ANNOTATE(PoisonSlots(dynStorage + _size, _capa - _size));
   return dynStorage + pos;
 }
 
@@ -234,17 +253,20 @@ inline T* StdVectorBase<T, Alloc, SizeType>::growInsert(SizeType pos, std::uintm
   _storage = storage;
   _capa = newCapa;
   _size = static_cast<SizeType>(newSize);
+  AMC_ASAN_ANNOTATE(PoisonSlots(_storage + _size, _capa - _size));  // see the AddressSanitizer annotations
   return storage + pos;
 }
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::shrink() {
+  AMC_ASAN_ANNOTATE(const FreeSlotsAnnotation<T, SmallVectorBase> annotation(*this, true));
   _storage.setDyn(vec::Reallocate(static_cast<Alloc&>(*this), _storage.dyn(), _capa, _size, _size));
   _capa = _size;
 }
 
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::shrink() {
+  AMC_ASAN_ANNOTATE(const FreeSlotsAnnotation<T, StdVectorBase> annotation(*this, true));
   if (_size == 0U) {
     this->deallocate(_storage, static_cast<std::size_t>(_capa));
     _storage = nullptr;
@@ -256,26 +278,32 @@ void StdVectorBase<T, Alloc, SizeType>::shrink() {
 
 template <class T, class Alloc, class SizeType>
 void StdVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
+  AMC_ASAN_ANNOTATE(UnpoisonSlots(_storage, _capa));  // see the AddressSanitizer annotations
   this->deallocate(_storage, static_cast<std::size_t>(_capa));
 }
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::resetToSmall(SizeType inplaceCapa) {
   T* dynStorage = _storage.dyn();
+  AMC_ASAN_ANNOTATE(UnpoisonSlots(_storage.ptr(), _size));  // see the AddressSanitizer annotations
   AMC_TRY {
     (void)amc::uninitialized_relocate_n(dynStorage, _size, _storage.ptr());
   } AMC_CATCH_ALL {
     // the inline storage shares its first bytes with the pointer to the dynamic storage
     _storage.setDyn(dynStorage);
+    AMC_ASAN_ANNOTATE(annotateLargeInline(inplaceCapa));
     AMC_RETHROW;
   }
+  AMC_ASAN_ANNOTATE(UnpoisonSlots(dynStorage, _capa));
   this->deallocate(dynStorage, static_cast<std::size_t>(_capa));
+  AMC_ASAN_ANNOTATE(PoisonSlots(_storage.ptr() + _size, inplaceCapa - _size));
   _capa = _size;
   _size = SmallSizeMember(inplaceCapa);
 }
 
 template <class T, class Alloc, class SizeType>
 void SmallVectorBase<T, Alloc, SizeType>::freeStorage() noexcept {
+  AMC_ASAN_ANNOTATE(UnpoisonSlots(_storage.dyn(), _capa));  // see the AddressSanitizer annotations
   this->deallocate(_storage.dyn(), static_cast<std::size_t>(_capa));
 }
 }  // namespace vec

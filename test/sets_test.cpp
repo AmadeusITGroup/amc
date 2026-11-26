@@ -27,6 +27,7 @@
 #include <memory_resource>
 #endif
 
+#include "asanannotations.hpp"
 #include "testhelpers.hpp"
 #include "testmallocfailure.hpp"
 #include "testtypes.hpp"
@@ -2255,6 +2256,23 @@ TEST(FlatSetTest, MergeDifferentCompare) {
   s1.merge(RevSetType{30, 4, -5});
   EXPECT_EQ(s1, SetType({-5, -2, 0, 2, 3, 4, 6, 17, 19, 23, 30}));
 }
+
+#ifdef AMC_NONSTD_FEATURES
+// The merge of sets of trivially relocatable elements relocates the new elements out of the source: with the
+// AddressSanitizer annotations, the slots they leave are poisoned, like the free slots of the merged set.
+TEST(FlatSetTest, MergeAsanAnnotations) {
+  FlatSet<int> s1{1, 3, 5};
+  FlatSet<int> s2{2, 3, 4, 6, 8};
+  s1.merge(s2);
+  EXPECT_EQ(s1, FlatSet<int>({1, 2, 3, 4, 5, 6, 8}));
+  EXPECT_EQ(s2, FlatSet<int>({3}));
+  EXPECT_TRUE(annotations_test::NoBytePoisoned(s1.data(), s1.size() * sizeof(int), "elements"));
+  EXPECT_TRUE(annotations_test::BytesPoisoned(s1.data() + s1.size(), s1.data() + s1.capacity(), "free slots"));
+  EXPECT_TRUE(annotations_test::NoBytePoisoned(s2.data(), s2.size() * sizeof(int), "elements of the source"));
+  EXPECT_TRUE(
+      annotations_test::BytesPoisoned(s2.data() + s2.size(), s2.data() + s2.capacity(), "free slots of the source"));
+}
+#endif
 
 // Like std::set, a FlatSet accepts comparators which cannot be derived from: a function pointer and a final class. It
 // holds them as a member, the empty ones taking no space otherwise. A function pointer is a comparator with a state:

@@ -879,6 +879,9 @@ class SmallSet {
     PtrVec sortedPtrs;
     std::transform(c.begin(), c.end(), std::back_inserter(sortedPtrs),
                    [](const_reference r) { return std::addressof(r); });
+    // GCC does not know that the vector holds at most N pointers: it would keep the code of the sort of larger ranges
+    // (and warn about out of bounds accesses in it, see AMC_ASSUME)
+    AMC_ASSUME(sortedPtrs.size() <= N);
     std::sort(sortedPtrs.begin(), sortedPtrs.end(),
               [&comp](const_pointer p1, const_pointer p2) { return comp(*p1, *p2); });
     return sortedPtrs;
