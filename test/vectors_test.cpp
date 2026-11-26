@@ -15,6 +15,7 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -35,6 +36,7 @@
 #endif
 #endif
 
+#include "asanannotations.hpp"
 #include "testhelpers.hpp"
 #include "testmallocfailure.hpp"
 #include "testtypes.hpp"
@@ -666,8 +668,14 @@ TEST(VectorTest, CustomOperations) {
   using IntVectorType = FixedCapacityVector<int, kStaticSize>;
   using OtherVectorType = FixedCapacityVector<NonTriviallyRelocatableType, 42>;
 
+#ifdef AMC_ASAN_ANNOTATIONS
+  // its destructor unpoisons its inline storage (see the AddressSanitizer annotations)
+  static_assert(!std::is_trivially_destructible<IntVectorType>::value,
+                "FixedCapacityVector with inline elements has a destructor with the AddressSanitizer annotations");
+#else
   static_assert(std::is_trivially_destructible<IntVectorType>::value,
                 "FixedCapacityVector of a trivially copyable type should be trivially destructible");
+#endif
   static_assert(std::is_trivially_destructible<FixedCapacityVector<int, 0>>::value,
                 "FixedCapacityVector without capacity of a trivially copyable type should be trivially destructible");
   static_assert(!std::is_trivially_destructible<OtherVectorType>::value,
@@ -802,7 +810,9 @@ TEST(VectorTest, FixedCapacityVectorStoresSmallestSizeType) {
   static_assert(sizeof(FixedCapacityVector<int, 10, vec::ExceptionGrowingPolicy, uint32_t>) ==
                     sizeof(FixedCapacityVector<int, 10>),
                 "");
+#ifndef AMC_ASAN_ANNOTATIONS
   static_assert(std::is_trivially_destructible<inplace_vector<int, 4>>::value, "");
+#endif
   static_assert(is_trivially_relocatable<inplace_vector<int, 4>>::value, "");
 
   using VectorType = inplace_vector<uint32_t, 300>;  // size and capacity stored in a uint16_t
@@ -816,7 +826,7 @@ TEST(VectorTest, FixedCapacityVectorStoresSmallestSizeType) {
   EXPECT_EQ(v.try_push_back(1), nullptr);
   EXPECT_THROW(v.push_back(1), std::bad_alloc);
   // counts which would wrap around to a smaller value in a uint16_t
-  constexpr std::size_t kWrappingCount = std::size_t{1} << 16;
+  constexpr std::size_t kWrappingCount = static_cast<std::size_t>(1) << 16;
   EXPECT_THROW(v.resize(kWrappingCount + 1), std::bad_alloc);
   EXPECT_THROW(v.reserve(kWrappingCount), std::bad_alloc);
   EXPECT_THROW(v.insert(v.begin(), kWrappingCount, 1U), std::bad_alloc);
@@ -3822,5 +3832,726 @@ TEST(VectorTest, IncompleteType) {
 }
 
 #endif
+
+// AddressSanitizer annotations (see vec::PoisonSlots). Without them, the checks of the annotations hold, and the tests
+// still compare the operations with a model.
+
+namespace annotations_test {
+
+/// Value of an element of the tests, all of them converting to an integer.
+template <class T>
+long long ValueOf(const T& elem) {
+  return static_cast<long long>(elem);
+}
+
+/// Whether 'v' holds the values of 'model', with the annotations of its state.
+template <class V>
+bool MatchesModel(const V& v, const std::vector<int>& model) {
+  if (static_cast<std::size_t>(v.size()) != model.size()) {
+    std::fprintf(stderr, "size %zu instead of %zu\n", static_cast<std::size_t>(v.size()), model.size());
+    return false;
+  }
+  for (std::size_t i = 0; i < model.size(); ++i) {
+    if (ValueOf(v[static_cast<typename V::size_type>(i)]) != model[i]) {
+      std::fprintf(stderr, "element %zu differs\n", i);
+      return false;
+    }
+  }
+  return VectorAnnotationsMatch(v);
+}
+
+/// The values 'vals' as a stream, read through input iterators (single pass, of unknown size): the vectors construct
+/// their elements one by one.
+inline std::istringstream ValuesStream(const std::vector<int>& vals) {
+  std::ostringstream os;
+  for (int x : vals) {
+    os << x << ' ';
+  }
+  return std::istringstream(os.str());
+}
+
+/// Appends the elements of [first, last) to 'v' (with 'append', a non-standard extension, if available).
+template <class V, class It>
+void Append(V& v, It first, It last) {
+#ifdef AMC_NONSTD_FEATURES
+  v.append(first, last);
+#else
+  v.insert(v.end(), first, last);
+#endif
+}
+
+}  // namespace annotations_test
+
+template <typename V>
+class VectorAnnotationsTest : public ::testing::Test {};
+
+// The flavors of vectors, with elements trivially copyable or not, trivially relocatable or not, smaller than the
+// pointer of a SmallVector (sharing its bytes), unaligned to the granules of AddressSanitizer, over-aligned, and
+// allocators with and without 'reallocate'.
+using AnnotatedVectorTypes = ::testing::Types<
+    FixedCapacityVector<int, 9>, FixedCapacityVector<char, 13>,
+    FixedCapacityVector<ComplexNonTriviallyRelocatableType, 7>, FixedCapacityVector<ComplexTriviallyRelocatableType, 8>,
+    SmallVector<int, 4>, SmallVector<char, 5>, SmallVector<UnalignedToPtr<3>, 4>,
+    SmallVector<ComplexTriviallyRelocatableType, 3>,
+    SmallVector<ComplexNonTriviallyRelocatableType, 3, std::allocator<ComplexNonTriviallyRelocatableType>>,
+    SmallVector<int, 4, std::allocator<int>>, SmallVector<OverAlignedType, 2>, vector<int>,
+    vector<int, std::allocator<int>>, vector<ComplexTriviallyRelocatableType>,
+    vector<ComplexNonTriviallyRelocatableType>>;
+TYPED_TEST_SUITE(VectorAnnotationsTest, AnnotatedVectorTypes, );
+
+/// Random operations, compared with a model, checking the annotations of the vectors after each of them.
+TYPED_TEST(VectorAnnotationsTest, RandomOperations) {
+  using V = TypeParam;
+  using T = typename V::value_type;
+  using annotations_test::MatchesModel;
+  constexpr bool kFixed = std::is_same<typename V::allocator_type, vec::EmptyAlloc>::value;
+  const std::size_t maxSize = kFixed ? static_cast<std::size_t>(V().capacity()) : 40U;
+
+  std::mt19937 rng(7);
+  const auto rnd = [&rng](std::size_t n) { return std::uniform_int_distribution<std::size_t>(0, n)(rng); };
+  const auto values = [&rnd](std::size_t n, int x) {
+    std::vector<int> r;
+    for (std::size_t i = 0; i < n; ++i) {
+      r.push_back(x + static_cast<int>(rnd(9)));
+    }
+    return r;
+  };
+  const auto elems = [](const std::vector<int>& vals) {
+    std::vector<T> r;
+    for (int x : vals) {
+      r.emplace_back(x);
+    }
+    return r;
+  };
+
+  V v;
+  std::vector<int> model;
+  for (int op = 0; op < 3000; ++op) {
+    const int x = static_cast<int>(rnd(99));
+    const std::size_t size = model.size();
+    const std::size_t room = maxSize - size;
+    const std::size_t pos = rnd(size);
+    const auto it = v.begin() + static_cast<std::ptrdiff_t>(pos);
+    const auto modelIt = model.begin() + static_cast<std::ptrdiff_t>(pos);
+    switch (rnd(22)) {
+      case 0:
+        if (room != 0) {
+          v.push_back(T(x));
+          model.push_back(x);
+        }
+        break;
+      case 1:
+        if (room != 0) {
+          v.emplace_back(x);
+          model.push_back(x);
+        }
+        break;
+      case 2:
+        if (room != 0) {
+          v.insert(it, T(x));
+          model.insert(modelIt, x);
+        }
+        break;
+      case 3: {
+        const std::size_t count = rnd(std::min<std::size_t>(room, 5U));
+        v.insert(it, static_cast<typename V::size_type>(count), T(x));
+        model.insert(modelIt, count, x);
+        break;
+      }
+      case 4: {
+        const std::vector<int> vals = values(rnd(std::min<std::size_t>(room, 6U)), x);
+        if (x % 2 == 0) {
+          const std::vector<T> src = elems(vals);
+          v.insert(it, src.begin(), src.end());
+        } else {
+          std::istringstream in = annotations_test::ValuesStream(vals);
+          v.insert(it, std::istream_iterator<int>(in), std::istream_iterator<int>());
+        }
+        model.insert(modelIt, vals.begin(), vals.end());
+        break;
+      }
+      case 5:
+        if (room != 0 && size != 0) {
+          // an element of the vector, possibly shifted by the insertion
+          const std::size_t i = rnd(size - 1U);
+          v.insert(it, v[static_cast<typename V::size_type>(i)]);
+          model.insert(modelIt, model[i]);
+        }
+        break;
+      case 6:
+        if (room != 0) {
+          v.emplace(it, x);
+          model.insert(modelIt, x);
+        }
+        break;
+      case 7:
+        if (size != 0) {
+          const std::size_t i = rnd(size - 1U);
+          v.erase(v.begin() + static_cast<std::ptrdiff_t>(i));
+          model.erase(model.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+        break;
+      case 8: {
+        const std::size_t last = pos + rnd(size - pos);
+        v.erase(it, v.begin() + static_cast<std::ptrdiff_t>(last));
+        model.erase(modelIt, model.begin() + static_cast<std::ptrdiff_t>(last));
+        break;
+      }
+      case 9:
+        if (size != 0) {
+          v.pop_back();
+          model.pop_back();
+        }
+        break;
+      case 10:
+        if (rnd(4) == 0) {
+          v.clear();
+          model.clear();
+        }
+        break;
+      case 11: {
+        const std::size_t n = rnd(maxSize);
+        if constexpr (std::is_default_constructible<T>::value) {
+          v.resize(static_cast<typename V::size_type>(n));
+          model.resize(n, static_cast<int>(annotations_test::ValueOf(T())));
+        } else {
+          v.resize(static_cast<typename V::size_type>(n), T(x));
+          model.resize(n, x);
+        }
+        break;
+      }
+      case 12: {
+        const std::size_t n = rnd(maxSize);
+        v.resize(static_cast<typename V::size_type>(n), T(x));
+        model.resize(n, x);
+        break;
+      }
+      case 13: {
+        const std::size_t n = rnd(maxSize);
+        v.assign(static_cast<typename V::size_type>(n), T(x));
+        model.assign(n, x);
+        break;
+      }
+      case 14: {
+        const std::vector<int> vals = values(rnd(maxSize), x);
+        if (x % 2 == 0) {
+          const std::vector<T> src = elems(vals);
+          v.assign(src.begin(), src.end());
+        } else {
+          std::istringstream in = annotations_test::ValuesStream(vals);
+          v.assign(std::istream_iterator<int>(in), std::istream_iterator<int>());
+        }
+        model = vals;
+        break;
+      }
+      case 15:
+        v.reserve(static_cast<typename V::size_type>(rnd(maxSize)));
+        break;
+      case 16:
+        v.shrink_to_fit();
+        break;
+      case 17: {
+        V copy(v);
+        ASSERT_TRUE(MatchesModel(copy, model));
+        V moved(std::move(copy));
+        ASSERT_TRUE(MatchesModel(moved, model));
+        ASSERT_TRUE(annotations_test::VectorAnnotationsMatch(copy));  // NOLINT(bugprone-use-after-move)
+        V assigned;
+        assigned = moved;
+        ASSERT_TRUE(MatchesModel(assigned, model));
+        v = std::move(assigned);
+        ASSERT_TRUE(annotations_test::VectorAnnotationsMatch(assigned));  // NOLINT(bugprone-use-after-move)
+        break;
+      }
+      case 18: {
+        const std::vector<int> vals = values(rnd(maxSize), x);
+        const std::vector<T> src = elems(vals);
+        V other(src.begin(), src.end());
+        std::vector<int> otherModel = vals;
+        v.swap(other);
+        model.swap(otherModel);
+        ASSERT_TRUE(MatchesModel(other, otherModel));
+        break;
+      }
+      case 19: {
+        // move assignment from a smaller or larger vector, inline or not
+        const std::vector<int> vals = values(rnd(maxSize), x);
+        const std::vector<T> src = elems(vals);
+        V other(src.begin(), src.end());
+        v = std::move(other);
+        model = vals;
+        ASSERT_TRUE(annotations_test::VectorAnnotationsMatch(other));  // NOLINT(bugprone-use-after-move)
+        break;
+      }
+      case 20: {
+        const std::size_t count = rnd(std::min<std::size_t>(room, 5U));
+#ifdef AMC_NONSTD_FEATURES
+        v.append(static_cast<typename V::size_type>(count), T(x));
+#else
+        v.insert(v.end(), static_cast<typename V::size_type>(count), T(x));
+#endif
+        model.insert(model.end(), count, x);
+        break;
+      }
+      default: {
+        const std::vector<int> vals = values(rnd(std::min<std::size_t>(room, 6U)), x);
+        if (x % 2 == 0) {
+          const std::vector<T> src = elems(vals);
+          annotations_test::Append(v, src.begin(), src.end());
+        } else {
+          std::istringstream in = annotations_test::ValuesStream(vals);
+          annotations_test::Append(v, std::istream_iterator<int>(in), std::istream_iterator<int>());
+        }
+        model.insert(model.end(), vals.begin(), vals.end());
+        break;
+      }
+    }
+    ASSERT_TRUE(MatchesModel(v, model)) << "after operation " << op;
+  }
+}
+
+/// Operations whose copies or moves of elements throw: the annotations stay the ones of the state of the vector. The
+/// vector is on the heap: at each throw, AddressSanitizer unpoisons the whole stack of the thread, except the frames on
+/// its fake stack (detect_stack_use_after_return, off by default before GCC 13 and LLVM 15).
+template <class V>
+void CheckAnnotationsAfterExceptions() {
+  std::mt19937 rng(11);
+  const auto rnd = [&rng](std::size_t n) { return std::uniform_int_distribution<std::size_t>(0, n)(rng); };
+  constexpr bool kFixed = std::is_same<typename V::allocator_type, vec::EmptyAlloc>::value;
+  const std::size_t maxSize = kFixed ? static_cast<std::size_t>(V().capacity()) : 30U;
+  const std::unique_ptr<V> holder = std::make_unique<V>();
+  V& v = *holder;
+  int nbExceptions = 0;
+  for (int op = 0; op < 2000; ++op) {
+    const std::size_t size = static_cast<std::size_t>(v.size());
+    const std::size_t room = maxSize - size;
+    const auto it = v.begin() + static_cast<std::ptrdiff_t>(rnd(size));
+    const ThrowingMoveType elem(static_cast<int32_t>(rnd(99)));
+    ThrowingMoveType::NbCopiesBeforeThrow() = static_cast<int>(rnd(4));
+    ThrowingMoveType::NbMovesBeforeThrow() = static_cast<int>(rnd(12));
+    try {
+      switch (rnd(8)) {
+        case 0:
+          if (room != 0) {
+            v.push_back(elem);
+          }
+          break;
+        case 1:
+          if (room != 0) {
+            v.insert(it, elem);
+          }
+          break;
+        case 2:
+          v.insert(it, static_cast<typename V::size_type>(rnd(std::min<std::size_t>(room, 4U))), elem);
+          break;
+        case 3:
+          v.resize(static_cast<typename V::size_type>(rnd(maxSize)), elem);
+          break;
+        case 4:
+          v.assign(static_cast<typename V::size_type>(rnd(maxSize)), elem);
+          break;
+        case 5: {
+          const V copy(v);
+          V other;
+          other = copy;
+          v.swap(other);
+          break;
+        }
+        case 6:
+          // a large SmallVector small enough moves its elements back to its inline storage
+          v.shrink_to_fit();
+          break;
+        default:
+          if (size != 0) {
+            v.erase(v.begin() + static_cast<std::ptrdiff_t>(rnd(size - 1U)));
+          }
+          break;
+      }
+    } catch (const CopyException&) {
+      ++nbExceptions;
+    } catch (const MoveForbiddenException&) {
+      ++nbExceptions;
+    }
+    ThrowingMoveType::NbCopiesBeforeThrow() = -1;
+    ThrowingMoveType::NbMovesBeforeThrow() = -1;
+    ASSERT_TRUE(annotations_test::VectorAnnotationsMatch(v)) << "after operation " << op;
+    for (const ThrowingMoveType& e : v) {
+      annotations_test::ReadBytes(e);
+    }
+  }
+  EXPECT_GT(nbExceptions, 100);
+}
+
+TEST(VectorAnnotationsTest, Exceptions) {
+  CheckAnnotationsAfterExceptions<FixedCapacityVector<ThrowingMoveType, 9>>();
+  CheckAnnotationsAfterExceptions<SmallVector<ThrowingMoveType, 4>>();
+  CheckAnnotationsAfterExceptions<vector<ThrowingMoveType>>();
+  CheckAnnotationsAfterExceptions<vector<ThrowingMoveType, std::allocator<ThrowingMoveType>>>();
+}
+
+/// Random operations on a vector of vectors 'V', whose elements are relocated with their poisoned bytes (see
+/// RelocateBytes), compared with a model, checking the annotations of the vectors and of their elements.
+template <class V>
+void CheckNestedAnnotations() {
+  using Inner = typename V::value_type;
+  constexpr bool kFixed = std::is_same<typename V::allocator_type, vec::EmptyAlloc>::value;
+  constexpr bool kInnerFixed = std::is_same<typename Inner::allocator_type, vec::EmptyAlloc>::value;
+  const std::size_t maxSize = kFixed ? static_cast<std::size_t>(V().capacity()) : 30U;
+  const std::size_t maxInnerSize = kInnerFixed ? static_cast<std::size_t>(Inner().capacity()) : 6U;
+
+  std::mt19937 rng(3);
+  const auto rnd = [&rng](std::size_t n) { return std::uniform_int_distribution<std::size_t>(0, n)(rng); };
+  const auto make = [&](std::vector<int>& model) {
+    Inner inner;
+    for (std::size_t i = rnd(maxInnerSize); i > 0; --i) {
+      const int x = static_cast<int>(rnd(99));
+      inner.emplace_back(x);
+      model.push_back(x);
+    }
+    return inner;
+  };
+  const auto matches = [](const V& v, const std::vector<std::vector<int>>& model) {
+    if (static_cast<std::size_t>(v.size()) != model.size() || !annotations_test::VectorAnnotationsMatch(v)) {
+      return false;
+    }
+    for (std::size_t i = 0; i < model.size(); ++i) {
+      if (!annotations_test::MatchesModel(v[static_cast<typename V::size_type>(i)], model[i])) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  V v;
+  std::vector<std::vector<int>> model;
+  for (int op = 0; op < 2000; ++op) {
+    const std::size_t size = model.size();
+    const std::size_t pos = rnd(size);
+    switch (rnd(9)) {
+      case 0:
+      case 1:
+        if (size < maxSize) {
+          std::vector<int> m;
+          v.push_back(make(m));
+          model.push_back(m);
+        }
+        break;
+      case 2:
+        if (size < maxSize) {
+          // shifts the next elements with their poisoned bytes
+          std::vector<int> m;
+          v.insert(v.begin() + static_cast<std::ptrdiff_t>(pos), make(m));
+          model.insert(model.begin() + static_cast<std::ptrdiff_t>(pos), m);
+        }
+        break;
+      case 3:
+        if (size != 0) {
+          const std::size_t i = rnd(size - 1U);
+          v.erase(v.begin() + static_cast<std::ptrdiff_t>(i));
+          model.erase(model.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+        break;
+      case 4:
+        if (size != 0) {
+          // an element grows or shrinks
+          Inner& inner = v[static_cast<typename V::size_type>(rnd(size - 1U))];
+          std::vector<int>& m = model[static_cast<std::size_t>(&inner - v.data())];
+          if (m.size() < maxInnerSize && rnd(1) == 0) {
+            inner.push_back(static_cast<typename Inner::value_type>(m.size()));
+            m.push_back(static_cast<int>(m.size()));
+          } else if (!m.empty()) {
+            inner.pop_back();
+            m.pop_back();
+          }
+        }
+        break;
+      case 5:
+        v.reserve(static_cast<typename V::size_type>(rnd(maxSize)));
+        break;
+      case 6:
+        v.shrink_to_fit();
+        break;
+      case 7: {
+        V copy(v);
+        V moved(std::move(copy));
+        v.swap(moved);
+        break;
+      }
+      default:
+        if (rnd(5) == 0) {
+          v.clear();
+          model.clear();
+        }
+        break;
+    }
+    ASSERT_TRUE(matches(v, model)) << "after operation " << op;
+  }
+}
+
+TEST(VectorAnnotationsTest, NestedVectors) {
+  CheckNestedAnnotations<vector<SmallVector<int, 2>>>();
+  CheckNestedAnnotations<vector<SmallVector<int, 2>, std::allocator<SmallVector<int, 2>>>>();
+  CheckNestedAnnotations<vector<FixedCapacityVector<int, 3>>>();
+  CheckNestedAnnotations<SmallVector<FixedCapacityVector<int, 2>, 3>>();
+  CheckNestedAnnotations<SmallVector<SmallVector<char, 3>, 2>>();
+  CheckNestedAnnotations<FixedCapacityVector<SmallVector<int, 2>, 6>>();
+}
+
+TEST(VectorAnnotationsTest, StandardContainersOfVectors) {
+  // they move their elements one by one
+  std::vector<FixedCapacityVector<int, 3>> fixedVectors;
+  std::vector<SmallVector<int, 2>> smallVectors;
+  for (int i = 0; i < 100; ++i) {
+    fixedVectors.emplace(fixedVectors.begin(), static_cast<FixedCapacityVector<int, 3>::size_type>(i % 3), i);
+    smallVectors.emplace(smallVectors.begin(), static_cast<SmallVector<int, 2>::size_type>(i % 5), i);
+  }
+  for (std::size_t i = 0; i < fixedVectors.size(); ++i) {
+    EXPECT_TRUE(annotations_test::VectorAnnotationsMatch(fixedVectors[i]));
+    EXPECT_TRUE(annotations_test::VectorAnnotationsMatch(smallVectors[i]));
+  }
+}
+
+#ifdef AMC_NONSTD_FEATURES
+TEST(VectorAnnotationsTest, Swap2) {
+  SmallVector<int, 4> smallVec{1, 2};
+  vector<int> vec{3, 4, 5, 6, 7};
+  FixedCapacityVector<int, 10> fixedVec{8};
+  SmallVector<int, 8> otherSmallVec{9, 10, 11};
+  for (int i = 0; i < 20; ++i) {
+    smallVec.swap2(vec);
+    vec.swap2(fixedVec);
+    fixedVec.swap2(otherSmallVec);
+    otherSmallVec.swap2(smallVec);
+    if (i % 4 == 0 && vec.size() < 7 && smallVec.size() < 7) {
+      // at most 10 elements in each vector
+      vec.push_back(i);
+      smallVec.insert(smallVec.begin(), 2, i);
+    }
+    EXPECT_TRUE(annotations_test::VectorAnnotationsMatch(smallVec));
+    EXPECT_TRUE(annotations_test::VectorAnnotationsMatch(vec));
+    EXPECT_TRUE(annotations_test::VectorAnnotationsMatch(fixedVec));
+    EXPECT_TRUE(annotations_test::VectorAnnotationsMatch(otherSmallVec));
+  }
+}
+#endif
+
+/// The destruction unpoisons the inline storage, as the memory of the vector may then hold other objects.
+template <class V>
+void CheckMemoryReusableAfterDestruction(std::size_t n) {
+  alignas(V) unsigned char buffer[sizeof(V)];
+  V* const v = ::new (static_cast<void*>(buffer)) V(static_cast<typename V::size_type>(n), 1);
+  v->pop_back();
+  v->~V();
+  EXPECT_TRUE(annotations_test::NoBytePoisoned(buffer, sizeof(buffer), "destroyed vector"));
+}
+
+TEST(VectorAnnotationsTest, MemoryReusableAfterDestruction) {
+  CheckMemoryReusableAfterDestruction<FixedCapacityVector<int, 8>>(3);
+  CheckMemoryReusableAfterDestruction<FixedCapacityVector<int, 1>>(1);
+  CheckMemoryReusableAfterDestruction<FixedCapacityVector<ComplexNonTriviallyRelocatableType, 8>>(3);
+  CheckMemoryReusableAfterDestruction<SmallVector<int, 8>>(3);    // small
+  CheckMemoryReusableAfterDestruction<SmallVector<int, 8>>(1);    // small, no element in the bytes of the pointer
+  CheckMemoryReusableAfterDestruction<SmallVector<int, 8>>(30);   // large
+  CheckMemoryReusableAfterDestruction<SmallVector<char, 3>>(30);  // inline elements in the bytes of the pointer only
+  CheckMemoryReusableAfterDestruction<SmallVector<long double, 3>>(30);  // large, the first element after the pointer
+  CheckMemoryReusableAfterDestruction<vector<int>>(3);
+
+  // like a std::variant changing of alternative, whose destructor would otherwise leave poisoned bytes
+  std::variant<FixedCapacityVector<int, 8>, std::array<int, 8>> variant;
+  std::get<0>(variant).push_back(1);
+  variant = std::array<int, 8>{1, 2, 3, 4, 5, 6, 7, 8};
+  EXPECT_EQ(std::get<1>(variant)[7], 8);
+}
+
+/// Element holding a vector, declared trivially relocatable: the amc vectors relocate it with the poisoned bytes of the
+/// inline storage of its member (see memory_details::RelocateBytes), without re-annotating it (only the amc containers
+/// are, see memory_details::AsanReannotate). Aligned on the granules of AddressSanitizer (8 bytes), it keeps its
+/// position in them when relocated, and its member its poisoning (on 32-bit targets, 'std::uint64_t' members are only
+/// aligned on 4 bytes).
+struct alignas(8) InlineVectorHolder {
+  explicit InlineVectorHolder(int x)
+      : values(static_cast<FixedCapacityVector<std::uint64_t, 3>::size_type>(x % 4), static_cast<std::uint64_t>(x)),
+        key(x) {}
+
+  using trivially_relocatable = std::true_type;
+
+  FixedCapacityVector<std::uint64_t, 3> values;
+  std::int64_t key;
+};
+
+namespace annotations_test {
+
+template <>
+struct HoldsAnnotations<InlineVectorHolder> : std::true_type {};
+
+/// Whether the annotations of the vector 'v', and of the vectors it holds at any depth, are the ones of their states.
+template <class V>
+bool DeepAnnotationsMatch(const V& v);
+
+inline bool DeepAnnotationsMatch(const InlineVectorHolder& holder) { return DeepAnnotationsMatch(holder.values); }
+
+template <class V>
+bool DeepAnnotationsMatch(const V& v) {
+  if (!VectorAnnotationsMatch(v)) {
+    return false;
+  }
+  if constexpr (HoldsAnnotations<typename V::value_type>::value) {
+    for (const auto& elem : v) {
+      if (!DeepAnnotationsMatch(elem)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+}  // namespace annotations_test
+
+/// Random insertions and erasures in a vector of type V, which shift its elements: it relocates them with the poisoned
+/// bytes of the vectors they hold. 'make(x)' makes an element. The annotations of all the vectors are checked.
+template <class V, class Make>
+void CheckRelocatedNestedVectors(Make make) {
+  std::mt19937 rng(5);
+  const auto rnd = [&rng](std::size_t n) { return std::uniform_int_distribution<std::size_t>(0, n)(rng); };
+  V v;
+  for (int op = 0; op < 500; ++op) {
+    const std::size_t size = static_cast<std::size_t>(v.size());
+    if (rnd(2) != 0) {
+      if (size < 20U) {
+        v.insert(v.begin() + static_cast<std::ptrdiff_t>(rnd(size)), make(static_cast<int>(rnd(99))));
+      }
+    } else if (size != 0) {
+      v.erase(v.begin() + static_cast<std::ptrdiff_t>(rnd(size - 1U)));
+    }
+    ASSERT_TRUE(annotations_test::DeepAnnotationsMatch(v)) << "after operation " << op;
+  }
+}
+
+TEST(VectorAnnotationsTest, RelocatedNestedVectors) {
+  // vectors of 4 ints in vectors of 2 of them (20 and 44 bytes with sizes of 4 bytes): shifted, they change of position
+  // in the granules of AddressSanitizer, which loses a part of their poisoning, re-established at each depth (see
+  // memory_details::AsanReannotate)
+  using Inner = FixedCapacityVector<int, 4>;
+  using Middle = FixedCapacityVector<Inner, 2>;
+  const auto makeMiddle = [](int x) {
+    Middle middle;
+    for (int i = 0; i < x % 3; ++i) {
+      middle.emplace_back(static_cast<Inner::size_type>((x + i) % 5), x);
+    }
+    return middle;
+  };
+  CheckRelocatedNestedVectors<vector<Middle>>(makeMiddle);
+  CheckRelocatedNestedVectors<SmallVector<Middle, 3>>(makeMiddle);
+  // SmallVectors of 68 bytes aligned on 4 bytes on 32-bit targets (72 bytes aligned on 8 on 64-bit ones), small or not
+  CheckRelocatedNestedVectors<vector<SmallVector<Inner, 3>>>([](int x) {
+    SmallVector<Inner, 3> smallVec;
+    for (int i = 0; i < x % 5; ++i) {
+      smallVec.emplace_back(static_cast<Inner::size_type>((x + i) % 5), x);
+    }
+    return smallVec;
+  });
+  CheckRelocatedNestedVectors<vector<InlineVectorHolder>>([](int x) { return InlineVectorHolder(x); });
+}
+
+#ifdef __cpp_lib_memory_resource
+/// The storages deallocated by a vector of type V are unpoisoned: given back by the resource to the next allocations of
+/// the same size, they are written without AddressSanitizer report. Each storage is deallocated with free slots.
+template <class V>
+int CheckDeallocatedStorageUnpoisoned() {
+  annotations_test::RecyclingResource resource;
+  const typename V::allocator_type alloc(&resource);
+  for (int round = 0; round < 3; ++round) {
+    V v(alloc);
+    for (int i = 0; i < 40; ++i) {
+      v.emplace_back();
+    }
+    v.resize(5);
+    V other(alloc);
+    other.resize(30);
+    v = std::move(other);  // deallocates the storage of 40 elements or more
+    v.resize(10);
+    v.shrink_to_fit();  // deallocates the storage of 30 elements
+    v.resize(3);
+    v.shrink_to_fit();  // deallocates the storage of 10 elements (a SmallVector goes back to its inline storage)
+    v.clear();
+    v.shrink_to_fit();  // deallocates the storage of 3 elements (amc::vector)
+    V last(alloc);
+    last.reserve(50);
+    last.emplace_back();  // its storage is deallocated by its destructor
+  }
+  return resource.nbReused();
+}
+
+TEST(VectorAnnotationsTest, DeallocatedStorageUnpoisoned) {
+  EXPECT_GE((CheckDeallocatedStorageUnpoisoned<vector<int, std::pmr::polymorphic_allocator<int>>>()), 8);
+  EXPECT_GE((CheckDeallocatedStorageUnpoisoned<SmallVector<int, 4, std::pmr::polymorphic_allocator<int>>>()), 6);
+  using Fixed = FixedCapacityVector<int, 3>;
+  EXPECT_GE((CheckDeallocatedStorageUnpoisoned<vector<Fixed, std::pmr::polymorphic_allocator<Fixed>>>()), 8);
+}
+#endif
+
+#ifdef AMC_ASAN_ANNOTATIONS
+constexpr bool kAsanAnnotations = true;
+#else
+constexpr bool kAsanAnnotations = false;
+#endif
+
+/// With the annotations, the accesses to a slot without element of a vector of type V of ints are reported: after the
+/// last element, after pop_back, erase and clear (with elements of 4 bytes, each slot is the last bytes of its granule
+/// or a whole granule).
+template <class V>
+void CheckStaleAccessesReported() {
+  using annotations_test::ReadBytes;
+  V v{1, 2, 3};
+  v.reserve(8);
+  const int* const data = v.data();
+  EXPECT_DEATH(ReadBytes(data[3]), "use-after-poison");
+  v.pop_back();
+  EXPECT_DEATH(ReadBytes(data[2]), "use-after-poison");
+  v.erase(v.begin());
+  EXPECT_DEATH(ReadBytes(data[1]), "use-after-poison");
+  v.clear();
+  EXPECT_DEATH(ReadBytes(data[0]), "use-after-poison");
+  EXPECT_TRUE(annotations_test::VectorAnnotationsMatch(v));
+}
+
+TEST(VectorAnnotationsTest, StaleAccessesReported) {
+  if (!kAsanAnnotations) {
+    GTEST_SKIP() << "without the AddressSanitizer annotations";
+  }
+  using annotations_test::ReadBytes;
+  CheckStaleAccessesReported<FixedCapacityVector<int, 8>>();
+  CheckStaleAccessesReported<SmallVector<int, 8>>();
+  CheckStaleAccessesReported<vector<int>>();
+  CheckStaleAccessesReported<vector<int, std::allocator<int>>>();
+
+  // a reference to an inline element kept while a SmallVector grows into a dynamic storage (but the first bytes of its
+  // inline storage hold the pointer to it)
+  SmallVector<int, 8> smallVec{1, 2, 3, 4, 5, 6, 7, 8};
+  const int* const inlineData = smallVec.data();
+  smallVec.push_back(9);
+  EXPECT_DEATH(ReadBytes(inlineData[4]), "use-after-poison");
+  EXPECT_DEATH(ReadBytes(smallVec.data()[9]), "use-after-poison");
+
+  // the source of a move
+  SmallVector<int, 8> source{1, 2, 3};
+  const SmallVector<int, 8> moved(std::move(source));
+  EXPECT_DEATH(ReadBytes(source.data()[0]), "use-after-poison");  // NOLINT(bugprone-use-after-move)
+
+  // the elements of vectors relocated with memcpy keep their poisoned bytes, when the vector grows or shifts them
+  vector<SmallVector<int, 4>> vectors(1);
+  vectors[0].push_back(1);
+  for (int i = 0; i < 100; ++i) {
+    vectors.emplace_back(2, i);
+  }
+  EXPECT_DEATH(ReadBytes(vectors[0].data()[1]), "use-after-poison");
+  FixedCapacityVector<FixedCapacityVector<int, 4>, 6> fixedVectors(3);
+  fixedVectors[2].push_back(1);
+  fixedVectors.insert(fixedVectors.begin(), FixedCapacityVector<int, 4>());
+  EXPECT_DEATH(ReadBytes(fixedVectors[3].data()[1]), "use-after-poison");
+  fixedVectors.erase(fixedVectors.begin(), fixedVectors.begin() + 2);
+  EXPECT_DEATH(ReadBytes(fixedVectors[1].data()[1]), "use-after-poison");
+  EXPECT_TRUE(annotations_test::NestedVectorAnnotationsMatch(fixedVectors));
+}
 
 }  // namespace amc

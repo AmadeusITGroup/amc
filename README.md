@@ -166,16 +166,18 @@ ctest --test-dir build --output-on-failure
 | `AMC_STD_STRING_TRIVIALLY_RELOCATABLE` | Declare [`std::string`](docs/containers.md#trivially-relocatable-types) trivially relocatable where it is: libc++, MSVC STL in Release (defines the macro for the targets linking `amc::amc`)    | `OFF`                                |
 | `AMC_STD_DEQUE_TRIVIALLY_RELOCATABLE`  | Declare [`std::deque`](docs/containers.md#trivially-relocatable-types) trivially relocatable where it is: libstdc++, libc++ (defines the macro for the targets linking `amc::amc`)               | `OFF`                                |
 
-Code coverage uses [LLVM source-based code coverage](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html), so it needs Clang, and `llvm-profdata` and `llvm-cov` of the same version (package `llvm-<version>` on Debian and Ubuntu):
+Code coverage uses [LLVM source-based code coverage](https://clang.llvm.org/docs/SourceBasedCodeCoverage.html), so it needs Clang, `llvm-profdata` and `llvm-cov` of the same version (package `llvm-<version>` on Debian and Ubuntu), and Python 3:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DAMC_ENABLE_COVERAGE=ON
 cmake --build build --target coverage
 ```
 
-It runs the unit tests and prints the coverage of each header. The report, with line and branch counts, is written to `build/coverage/html/index.html`, and an lcov export to `build/coverage/amc.lcov`.
+It runs the unit tests and prints the coverage of each header. The report, with line and branch counts, is written to `build/coverage/html/index.html`, and an lcov export to `build/coverage/amc.lcov`. The lcov export leaves out the lines that no test can execute, marked in the sources with the lcov markers `LCOV_EXCL_LINE` (one line) or `LCOV_EXCL_START` and `LCOV_EXCL_STOP` (the lines between them), which `llvm-cov` does not know (the HTML report still counts them).
 
-The CI builds and tests amc with GCC 8 to 13, Clang 17, 19, 20 and 21 (Linux), MSVC 2022 and clang-cl (Windows, 32 and 64-bit) and Apple Clang (macOS), in C++17, C++20 and C++23, with and without the sanitizers and the non-standard extensions. It tests the C++20 module with Clang 19 and 21, GCC 15 and MSVC 2022.
+The CI measures the coverage twice, without and with `AMC_ENABLE_ASAN`: the AddressSanitizer annotations of the containers only exist with the sanitizer, and the tests of allocation failures only run without it. Codecov merges the two reports.
+
+The CI builds and tests amc with GCC 8 to 13, Clang 17, 19, 20, 21 and 23 (Linux), MSVC 2022 and clang-cl (Windows, 32 and 64-bit) and Apple Clang (macOS), in C++17, C++20 and C++23, with and without the sanitizers and the non-standard extensions. It tests the C++20 module with Clang 19 and 21, GCC 15 and MSVC 2022.
 
 ## Documentation
 

@@ -134,7 +134,12 @@ static_assert(amc::is_trivially_relocatable_v<amc::FixedCapacityVector<Message, 
 static_assert(amc::is_trivially_relocatable_v<amc::FlatSet<int>>);
 static_assert(
     amc::is_trivially_relocatable_v<amc::SmallSet<int, 4, std::less<int>, amc::allocator<int>, amc::FlatSet<int>>>);
+#ifdef AMC_ASAN_ANNOTATIONS
+// its destructor unpoisons its inline storage (see the AddressSanitizer annotations)
+static_assert(!std::is_trivially_destructible_v<amc::FixedCapacityVector<int, 4>>);
+#else
 static_assert(std::is_trivially_destructible_v<amc::FixedCapacityVector<int, 4>>);
+#endif
 
 static_assert(std::is_same_v<amc::vector<int>,
                              amc::Vector<int, amc::allocator<int>, std::uint32_t, amc::vec::DynamicGrowingPolicy, 0>>);

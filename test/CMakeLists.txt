@@ -63,6 +63,11 @@ if (AMC_ENABLE_COVERAGE)
     message(FATAL_ERROR "AMC_ENABLE_COVERAGE requires llvm-profdata and llvm-cov (package llvm-${AMC_CLANG_MAJOR}), "
                         "set AMC_LLVM_PROFDATA and AMC_LLVM_COV to their paths if they are not found automatically")
   endif()
+  # For lcov_exclude.py, which removes the lines marked LCOV_EXCL_* from the lcov export
+  find_package(Python3 COMPONENTS Interpreter)
+  if (NOT Python3_Interpreter_FOUND)
+    message(FATAL_ERROR "AMC_ENABLE_COVERAGE requires Python 3")
+  endif()
 
   set(AMC_COVERAGE_DIR ${PROJECT_BINARY_DIR}/coverage)
   message(STATUS "[amc] Code coverage with ${AMC_LLVM_COV}, run target 'coverage' for a report in ${AMC_COVERAGE_DIR}")
@@ -181,6 +186,8 @@ endif()
 if (AMC_ENABLE_COVERAGE)
   # 'coverage' target: run all the tests from scratch, then report the coverage of the headers of include/ only.
   # Outputs in AMC_COVERAGE_DIR: html/index.html, amc.lcov (for Codecov) and report.txt (summary per file).
+  # llvm-cov has no exclusion markers: lcov_exclude.py removes from amc.lcov the lines that no test can execute, marked
+  # LCOV_EXCL_LINE or between LCOV_EXCL_START and LCOV_EXCL_STOP. The HTML report and report.txt still count them.
   # llvm-cov warns that "N functions have mismatched data": header functions that a test binary does not use get a
   # placeholder record, which conflicts with the real one of another binary. Harmless, the real record is kept.
   get_directory_property(amc_tests TESTS)
@@ -200,6 +207,8 @@ if (AMC_ENABLE_COVERAGE)
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure
     COMMAND ${AMC_LLVM_PROFDATA} merge -sparse ${AMC_COVERAGE_DIR}/profraw -o ${AMC_COVERAGE_DIR}/amc.profdata
     COMMAND ${AMC_LLVM_COV} export ${amc_cov_args} -format=lcov > ${AMC_COVERAGE_DIR}/amc.lcov
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/lcov_exclude.py ${AMC_COVERAGE_DIR}/amc.lcov
+            ${AMC_COVERAGE_DIR}/amc.lcov
     COMMAND ${AMC_LLVM_COV} show ${amc_cov_args} ${amc_cov_show_args} -format=html -output-dir=${AMC_COVERAGE_DIR}/html
     COMMAND ${AMC_LLVM_COV} report ${amc_cov_args} > ${AMC_COVERAGE_DIR}/report.txt
     COMMAND ${AMC_LLVM_COV} report ${amc_cov_args}

@@ -9,6 +9,7 @@
 - [FlatSet](#flatset)
 - [SmallSet](#smallset)
 - [Node handles](#node-handles)
+- [AddressSanitizer annotations](#addresssanitizer-annotations)
 - [Non-standard extensions](#non-standard-extensions)
 
 Each container has its own header in `include/amc/`, and from C++20 the module `amc` provides all of them (`import amc;`, see the [README](../README.md#c20-module)). All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. The containers are not designed to be base classes: deriving from them is undefined behavior. They also compile with exceptions disabled (`-fno-exceptions`): the errors which would throw then abort the program, like with libstdc++ and libc++. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
@@ -191,6 +192,23 @@ The small state is not sorted: iteration follows the insertion order, `lower_bou
 ## Node handles
 
 Like the node handles of `std::set`, the `node_type` of `FlatSet` and `SmallSet` only depends on the value and allocator types: `extract` and `insert` move elements between sets of different comparators and underlying containers, from a `FlatSet` to a `SmallSet` and back. A node holds its element by value, and is not compatible with the nodes of `std::set`. Like a node of `std::set`, it holds an allocator only while it holds an element, and builds and destroys its element with it: the `std::pmr` allocators work, although they cannot be assigned. A `FlatSet` over a `FixedCapacityVector` has another allocator type (an empty tag), so its nodes are of another type.
+
+## AddressSanitizer annotations
+
+With AddressSanitizer, the containers poison the bytes of their storages which hold no element, so that the sanitizer reports their use (use-after-poison), like the use of a node freed by a standard node-based container (heap-use-after-free):
+
+- the vectors: the slots from `size()` to `capacity()`, of the dynamic storage as well as of the inline one (`SmallVector`, `FixedCapacityVector`), and the bytes of the inline storage of a `SmallVector` grown into a dynamic storage, after the pointer to it. Using an element after `pop_back`, `erase` or `clear`, the capacity after the last element, or a reference to an inline element kept while a `SmallVector` grows, is reported. `FlatSet` and `SmallSet` keep their elements in such vectors;
+
+AddressSanitizer tracks the memory in granules of 8 bytes, which can only be poisoned from their end: the bytes of a free slot followed by accessible bytes in the same granule (an element, a member of the container) stay accessible, which only matters for elements whose size is not a multiple of 8. The first bytes of the inline storage of a large `SmallVector` hold the pointer to its dynamic storage: a reference kept to its first inline element is not reported.
+
+The amc containers move their trivially relocatable elements with `memcpy` and `memmove`, which AddressSanitizer checks: they move the poisoned bytes of an element with it (those of the amc containers it holds, like the inline storage of the `SmallVector` of a `std::pair<const int, amc::SmallVector<int, 4>>`), and an amc container moved this way, as an element or in a `std::pair`, then poisons its free slots again from its state, as the granules at its new address may allow more of them. An amc container member of another type is not re-annotated: moved to another position in the granules (an element whose size is not a multiple of 8), it may lose a part of its poisoning, which only misses reports. A vector whose elements hold poisoned bytes grows by moving them to a new storage, rather than with the `reallocate` method of its allocator, which would lose them. A program copying the bytes of an amc container itself (`memcpy`, `memcmp`, its own relocation of the types declared trivially relocatable) has these copies reported.
+
+The inline storages are poisoned from their construction and unpoisoned at their destruction, as their memory may then hold other objects: with the annotations, a `FixedCapacityVector` with inline elements, `amc::inplace_vector` included, is never trivially destructible. The memory of a container which is reused without its destructor being called (an arena released without destroying its objects) keeps its poisoned bytes.
+
+Some uses of the inline storage of a container on the stack are not reported:
+
+- with optimizations, Clang does not check the accesses that its stack safety analysis proves within the bounds of a local variable, whether their bytes are poisoned or not: once the code is inlined, reading a slot without element of a local `FixedCapacityVector` through a pointer to its storage is such an access;
+- at each throw, AddressSanitizer unpoisons the whole stack of the thread, except the frames on its fake stack: the containers on the stack may then lose a part of the poisoning of their inline storage. The local variables of a function are on the fake stack with `ASAN_OPTIONS=detect_stack_use_after_return=1`, the default on Linux from the runtimes of LLVM 15 and GCC 13, except, with Clang, in a function holding inline assembly or a call to `setjmp`.
 
 ## Non-standard extensions
 

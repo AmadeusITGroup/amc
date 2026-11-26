@@ -536,7 +536,9 @@ struct MoveForbidden {
 /// moves have been done (never if negative). After a throw, 'NbMovesBeforeThrow()' is set to 'NbMovesBeforeNextThrow()'
 /// (-1 by default, throwing only once): the operation undoing a failed one may throw as well. A throwing move has
 /// already written its value: relocating elements to the inline storage of a SmallVector, which shares its first bytes
-/// with the pointer to its dynamic storage, then overwrites this pointer. Counts its live objects, to detect leaks.
+/// with the pointer to its dynamic storage, then overwrites this pointer. Its copy constructions throw CopyException
+/// once 'NbCopiesBeforeThrow()' copies have been done (never if negative): containers copy the elements whose moves may
+/// throw. Counts its live objects, to detect leaks.
 struct ThrowingMoveType {
   static int& NbMovesBeforeThrow() {
     static int nbMovesBeforeThrow = -1;
@@ -546,13 +548,23 @@ struct ThrowingMoveType {
     static int nbMovesBeforeNextThrow = -1;
     return nbMovesBeforeNextThrow;
   }
+  static int& NbCopiesBeforeThrow() {
+    static int nbCopiesBeforeThrow = -1;
+    return nbCopiesBeforeThrow;
+  }
   static int& NbLive() {
     static int nbLive = 0;
     return nbLive;
   }
 
   ThrowingMoveType(int32_t i = 0) : _i(i) { ++NbLive(); }
-  ThrowingMoveType(const ThrowingMoveType& o) : _i(o._i) { ++NbLive(); }
+  ThrowingMoveType(const ThrowingMoveType& o) : _i(o._i) {
+    int& nbCopiesBeforeThrow = NbCopiesBeforeThrow();
+    if (nbCopiesBeforeThrow >= 0 && nbCopiesBeforeThrow-- == 0) {
+      throw CopyException();
+    }
+    ++NbLive();
+  }
   ThrowingMoveType(ThrowingMoveType&& o) : _i(o._i) {
     Move();
     ++NbLive();

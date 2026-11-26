@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -424,6 +425,127 @@ inline std::pair<InputIt, OutputIt> uninitialized_move_n(InputIt first, Size cou
 }
 #endif
 
+#ifdef AMC_ASAN_ANNOTATIONS
+/// AddressSanitizer annotations (see AMC_ASAN_ANNOTATIONS). Only defined with them: the containers call them through
+/// AMC_ASAN_ANNOTATE or under AMC_ASAN_ANNOTATIONS, and without the sanitizer, inline functions which nothing calls
+/// would count as uncovered lines in the coverage report.
+namespace memory_details {
+/// Tells AddressSanitizer that the 'n' bytes at 'p' must not be accessed: it then reports their use (use-after-poison).
+/// Its shadow memory describes granules of 8 bytes by the number of their first bytes which may be accessed: a granule
+/// whose last bytes are outside the range and accessible is not poisoned.
+inline void PoisonBytes(const void* p, std::size_t n) noexcept { __asan_poison_memory_region(p, n); }
+
+/// Tells AddressSanitizer that the 'n' bytes at 'p' may be accessed again.
+inline void UnpoisonBytes(const void* p, std::size_t n) noexcept { __asan_unpoison_memory_region(p, n); }
+
+/// Whether one of the 'n' bytes at 'p' is poisoned.
+inline bool HasPoisonedBytes(const void* p, std::size_t n) noexcept {
+  return n != 0U && __asan_region_is_poisoned(const_cast<void*>(p), n) != nullptr;
+}
+
+/// Copies the 'n' bytes at 'src' to 'dest', which do not overlap, with their poisoning: the poisoned bytes of 'src' are
+/// unpoisoned, and the same bytes of 'dest' (which must be accessible) are poisoned, as far as the granules of 'dest'
+/// allow it. The poisoned bytes of a granule being its last ones, a run of poisoned bytes ends at the start of a
+/// granule whose first byte is accessible.
+inline void CopyPoisonedBytes(char* dest, const char* src, std::size_t n) noexcept {
+  const char* const end = src + n;
+  while (src != end) {
+    const char* run = static_cast<const char*>(
+        __asan_region_is_poisoned(const_cast<char*>(src), static_cast<std::size_t>(end - src)));
+    const std::size_t accessible = static_cast<std::size_t>((run == nullptr ? end : run) - src);
+    std::memcpy(dest, src, accessible);
+    if (run == nullptr) {
+      return;
+    }
+    dest += accessible;
+    const char* runEnd = run + (8U - (reinterpret_cast<std::uintptr_t>(run) & 7U));
+    while (runEnd < end && __asan_address_is_poisoned(runEnd)) {
+      runEnd += 8;
+    }
+    if (end < runEnd) {
+      runEnd = end;
+    }
+    const std::size_t len = static_cast<std::size_t>(runEnd - run);
+    __asan_unpoison_memory_region(run, len);
+    std::memcpy(dest, run, len);
+    __asan_poison_memory_region(dest, len);
+    dest += len;
+    src = runEnd;
+  }
+}
+
+/// Moves the 'n' bytes of trivially relocatable objects of 'elemSize' bytes from 'src' to 'dest', which may overlap,
+/// like memmove. The objects keep their poisoned bytes (those of the amc containers they hold, like the inline storage
+/// of a SmallVector), the source ones being unpoisoned: the bytes of 'dest' outside 'src' must be accessible.
+/// Overlapping ranges are moved object by object, in the order of memmove: the source and destination of each object do
+/// not overlap, as they are at least an object apart. Returns whether poisoned bytes were moved.
+/// The poisoning of a granule shared with accessible bytes is lost (see PoisonBytes): the amc containers re-establish
+/// their own annotations after such a move (see ReannotateObjects).
+inline bool RelocateBytes(void* dest, const void* src, std::size_t n, std::size_t elemSize) noexcept {
+  if (dest != src && HasPoisonedBytes(src, n)) {
+    char* d = static_cast<char*>(dest);
+    const char* s = static_cast<const char*>(src);
+    const std::uintptr_t dAddr = reinterpret_cast<std::uintptr_t>(d);
+    const std::uintptr_t sAddr = reinterpret_cast<std::uintptr_t>(s);
+    if (dAddr + n <= sAddr || sAddr + n <= dAddr) {
+      CopyPoisonedBytes(d, s, n);
+    } else if (dAddr < sAddr) {
+      for (std::size_t pos = 0; pos != n; pos += elemSize) {
+        CopyPoisonedBytes(d + pos, s + pos, elemSize);
+      }
+    } else {
+      for (std::size_t pos = n; pos != 0;) {
+        pos -= elemSize;
+        CopyPoisonedBytes(d + pos, s + pos, elemSize);
+      }
+    }
+    return true;
+  }
+  std::memmove(dest, src, n);
+  return false;
+}
+
+/// Re-establishes the annotations of an object moved with its poisoned bytes (see RelocateBytes): nothing by default,
+/// the moved poisoning stays. The amc containers with an inline storage define an overload, found by argument-dependent
+/// lookup (a hidden friend of Vector and of HashTable), which poisons its slots without element from its state.
+template <class T>
+inline void AsanReannotate(const T&) noexcept {}
+
+template <class T1, class T2>
+inline void AsanReannotate(const std::pair<T1, T2>& p) noexcept {
+  AsanReannotate(p.first);
+  AsanReannotate(p.second);
+}
+
+/// Re-establishes the annotations of the 'n' objects starting at 'first', moved with their poisoned bytes. Trivially
+/// copyable objects hold no amc container: nothing to do.
+template <class T>
+inline void ReannotateObjects(const T* first, std::size_t n, std::false_type /*isTriviallyCopyable*/) noexcept {
+  for (std::size_t i = 0; i < n; ++i) {
+    AsanReannotate(first[i]);
+  }
+}
+
+template <class T>
+inline void ReannotateObjects(const T*, std::size_t, std::true_type /*isTriviallyCopyable*/) noexcept {}
+
+template <class T>
+inline void ReannotateObjects(const T* first, std::size_t n) noexcept {
+  ReannotateObjects(first, n, typename std::is_trivially_copyable<T>::type());
+}
+
+/// Relocation of the 'n' trivially relocatable objects starting at 'src' to 'dest', with their annotations. They are
+/// re-established even if the source showed no poisoned byte: its granules may not have allowed it (like those shared
+/// with the next object), while the ones of 'dest' do.
+template <class T>
+inline void RelocateObjects(T* dest, const T* src, std::size_t n) noexcept {
+  // The casts to void* tell GCC that copying the bytes of a non trivially copyable type is intended (-Wclass-memaccess)
+  RelocateBytes(static_cast<void*>(dest), static_cast<const void*>(src), n * sizeof(T), sizeof(T));
+  ReannotateObjects(dest, n);
+}
+}  // namespace memory_details
+#endif
+
 /// Useful helping functions taking advantage of the properties of trivially relocatable types.
 /// Relocate elements in [first, last) to another raw memory starting at dest, according to the traits of T.
 
@@ -455,8 +577,12 @@ inline T* relocate_at_impl(T* elem, T* dest, Default) {
 
 template <class T>
 inline T* relocate_at_impl(T* elem, T* dest, MemMove) {
+#ifdef AMC_ASAN_ANNOTATIONS
+  RelocateObjects(dest, elem, 1U);  // with the annotations of the object
+#else
   // The casts to void* tell GCC that copying the bytes of a non trivially copyable type is intended (-Wclass-memaccess)
   ::std::memmove(static_cast<void*>(dest), static_cast<const void*>(elem), sizeof(T));
+#endif
   return dest;
 }
 
@@ -490,8 +616,12 @@ inline OutputIt uninitialized_relocate_impl(InputIt first, InputIt last, OutputI
   using ValueType = typename std::iterator_traits<InputIt>::value_type;
   typename std::iterator_traits<InputIt>::difference_type count = last - first;
   if (count > 0) {
+#ifdef AMC_ASAN_ANNOTATIONS
+    RelocateObjects<ValueType>(dest, first, static_cast<std::size_t>(count));  // with the annotations of the objects
+#else
     ::std::memmove(static_cast<void*>(dest), static_cast<const void*>(first),
                    static_cast<std::size_t>(count) * sizeof(ValueType));
+#endif
   }
   return dest + count;
 }
@@ -527,8 +657,12 @@ template <class InputIt, class Size, class OutputIt>
 inline std::pair<InputIt, OutputIt> uninitialized_relocate_n_impl(InputIt first, Size count, OutputIt dest, MemMove) {
   using ValueType = typename std::iterator_traits<InputIt>::value_type;
   if (count > 0) {
+#ifdef AMC_ASAN_ANNOTATIONS
+    RelocateObjects<ValueType>(dest, first, static_cast<std::size_t>(count));  // with the annotations of the objects
+#else
     ::std::memmove(static_cast<void*>(dest), static_cast<const void*>(first),
                    static_cast<std::size_t>(count) * sizeof(ValueType));
+#endif
   }
   return std::pair<InputIt, OutputIt>(first + count, dest + count);
 }
