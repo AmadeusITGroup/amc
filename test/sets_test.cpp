@@ -2379,6 +2379,30 @@ TEST(FlatSetTest, EqualRangeOfKeyEquivalentToSeveralElements) {
   }
   EXPECT_EQ(s.equal_range(Tens{1}), std::make_pair(s.begin() + 1, s.begin() + 4));
 }
+
+/// Checks that 'count' and 'contains' of a key of another type, equivalent to several elements, give the results of a
+/// std::set of 'values'.
+template <class SetType>
+void ExpectCountsOfTens(const std::vector<int32_t>& values) {
+  const SetType s(values.begin(), values.end());
+  const std::set<int32_t, TensCompare> ref(values.begin(), values.end());
+  for (int32_t tens = 0; tens <= 7; ++tens) {
+    EXPECT_EQ(s.count(Tens{tens}), ref.count(Tens{tens})) << "tens " << tens;
+    EXPECT_EQ(s.contains(Tens{tens}), ref.count(Tens{tens}) != 0U) << "tens " << tens;
+  }
+}
+
+// Like with std::set, 'count' of a key of another type is the number of elements equivalent to it.
+TEST(SetTest, CountOfKeyEquivalentToSeveralElements) {
+  // tens: 1 element of 0, 3 of 1, 2 of 2 (the second one followed by another ten), none of 3, the last element of 6
+  const std::vector<int32_t> values{1, 12, 15, 18, 25, 29, 41, 63};
+  ExpectCountsOfTens<FlatSet<int32_t, TensCompare>>(values);
+#ifdef AMC_SMALLSET
+  ExpectCountsOfTens<SmallSet<int32_t, 8, TensCompare>>(values);  // small state
+  ExpectCountsOfTens<SmallSet<int32_t, 3, TensCompare>>(values);  // large state, in a std::set
+  ExpectCountsOfTens<SmallSet<int32_t, 3, TensCompare, amc::allocator<int32_t>, FlatSet<int32_t, TensCompare>>>(values);
+#endif
+}
 #endif
 
 #ifdef AMC_SMALLSET

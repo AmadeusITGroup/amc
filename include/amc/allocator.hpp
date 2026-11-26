@@ -16,10 +16,11 @@ namespace amc {
 
 /**
  * Adaptor that wraps a singleton class Alloc into a "basic" allocator.
- * Alloc is expected to model the "basic" allocator concept and to provide
- * a static instance() method to access singleton.
+ * Alloc is expected to model the "basic" allocator concept and to provide a static instance() method to access
+ * singleton.
  *
  * A basic allocator is a class that provides methods:
+ *
  * void *allocate(size_t n)
  * void *reallocate(void *p, size_t oldSz, size_t newSz)
  * void deallocate(void *p, size_t n)
@@ -65,11 +66,6 @@ class BasicAllocatorWrapper : private BasicAllocator {
   using const_reference = const T&;
 
   BasicAllocatorWrapper() = default;
-
-  BasicAllocatorWrapper(const BasicAllocatorWrapper&) = default;
-  BasicAllocatorWrapper(BasicAllocatorWrapper&&) = default;
-  BasicAllocatorWrapper& operator=(const BasicAllocatorWrapper&) noexcept = default;
-  BasicAllocatorWrapper& operator=(BasicAllocatorWrapper&&) noexcept = default;
 
   template <class U>
   BasicAllocatorWrapper(const BasicAllocatorWrapper<U, BasicAllocator>& o) : BasicAllocator(o) {}

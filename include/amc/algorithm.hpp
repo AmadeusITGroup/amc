@@ -96,10 +96,11 @@ concept DeclaresRelationalOperator =
 template <class Vec, class Pred>
 auto EraseIfFromSetVector(Vec& v, Pred& pred) {
   using T = typename Vec::value_type;
+  using SizeType = typename Vec::size_type;
   const auto last = v.end();
   auto dest = std::find_if(v.begin(), last, pred);
   if (dest == last) {
-    return typename Vec::size_type{0};
+    return SizeType{0};
   }
   auto it = std::next(dest);
   AMC_TRY {
@@ -117,7 +118,7 @@ auto EraseIfFromSetVector(Vec& v, Pred& pred) {
     }
     AMC_RETHROW;
   }
-  const auto nbErased = static_cast<typename Vec::size_type>(last - dest);
+  const auto nbErased = static_cast<SizeType>(last - dest);
   v.erase(dest, last);
   return nbErased;
 }
@@ -132,8 +133,12 @@ struct synth_three_way {
     if constexpr (algorithm_details::ThreeWayComparableWith<T, U>) {
       return t <=> u;
     } else {
-      if (t < u) return std::weak_ordering::less;
-      if (u < t) return std::weak_ordering::greater;
+      if (t < u) {
+        return std::weak_ordering::less;
+      }
+      if (u < t) {
+        return std::weak_ordering::greater;
+      }
       return std::weak_ordering::equivalent;
     }
   }

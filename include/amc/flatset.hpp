@@ -453,10 +453,21 @@ class FlatSet : private flatset_details::CompareHolder<Compare> {
     return find(k) != end();
   }
 
+  /// Like the one of std::set, the number of elements equivalent to 'k', which may be several (see equal_range). The
+  /// end of the range is only searched beyond the element after the first one.
   template <class K, typename std::enable_if<!std::is_same<T, K>::value && has_is_transparent<Compare>::value,
                                              bool>::type = true>
   size_type count(const K& k) const {
-    return contains(k);
+    const const_iterator first = lower_bound(k);
+    const const_iterator last = end();
+    if (first == last || compRef()(k, *first)) {
+      return 0U;
+    }
+    const const_iterator next = std::next(first);
+    if (next == last || compRef()(k, *next)) {
+      return 1U;
+    }
+    return static_cast<size_type>(std::upper_bound(next, last, k, compRef()) - first);
   }
 #endif
 
