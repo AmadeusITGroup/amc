@@ -183,6 +183,26 @@ if (NOT MSVC AND NOT AMC_ENABLE_COVERAGE)
   target_compile_options(no_exceptions_test PRIVATE -fno-exceptions)
 endif()
 
+# GDB pretty-printers test (tools/gdb/amc_printers.py): runs in Linux Debug builds when gdb and Python 3 are available.
+# Clang needs -fstandalone-debug so libstdc++'s std::string is complete in DWARF without libstdc++ debuginfo packages.
+if (NOT MSVC AND NOT APPLE AND CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT AMC_ENABLE_COVERAGE)
+  find_program(AMC_GDB gdb)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if (AMC_GDB AND Python3_Interpreter_FOUND)
+    add_executable(gdb_printers_test gdb_printers_test.cpp)
+    target_compile_features(gdb_printers_test PRIVATE cxx_std_17)
+    target_include_directories(gdb_printers_test PRIVATE ../include)
+    target_link_libraries(gdb_printers_test PRIVATE amc::amc)
+    AmcSetProjectProperties(gdb_printers_test)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      target_compile_options(gdb_printers_test PRIVATE -fstandalone-debug)
+    endif()
+    add_test(NAME gdb_printers_test
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_gdb_printers.py
+                     ${AMC_GDB} ${PROJECT_SOURCE_DIR}/tools/gdb/amc_printers.py $<TARGET_FILE:gdb_printers_test>)
+  endif()
+endif()
+
 if (AMC_ENABLE_COVERAGE)
   # 'coverage' target: run all the tests from scratch, then report the coverage of the headers of include/ only.
   # Outputs in AMC_COVERAGE_DIR: html/index.html, amc.lcov (for Codecov) and report.txt (summary per file).

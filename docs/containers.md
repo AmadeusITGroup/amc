@@ -10,6 +10,7 @@
 - [SmallSet](#smallset)
 - [Node handles](#node-handles)
 - [AddressSanitizer annotations](#addresssanitizer-annotations)
+- [Debugger visualizers](#debugger-visualizers)
 - [Non-standard extensions](#non-standard-extensions)
 
 Each container has its own header in `include/amc/`, and from C++20 the module `amc` provides all of them (`import amc;`, see the [README](../README.md#c20-module)). All the vectors share a single implementation, most of which does not depend on `N`, which limits the code generated for each inline capacity. The containers are not designed to be base classes: deriving from them is undefined behavior. They also compile with exceptions disabled (`-fno-exceptions`): the errors which would throw then abort the program, like with libstdc++ and libc++. See [compatibility.md](compatibility.md) for their differences with the standard containers, and [benchmarks.md](benchmarks.md) for their performance.
@@ -209,6 +210,33 @@ Some uses of the inline storage of a container on the stack are not reported:
 
 - with optimizations, Clang does not check the accesses that its stack safety analysis proves within the bounds of a local variable, whether their bytes are poisoned or not: once the code is inlined, reading a slot without element of a local `FixedCapacityVector` through a pointer to its storage is such an access;
 - at each throw, AddressSanitizer unpoisons the whole stack of the thread, except the frames on its fake stack: the containers on the stack may then lose a part of the poisoning of their inline storage. The local variables of a function are on the fake stack with `ASAN_OPTIONS=detect_stack_use_after_return=1`, the default on Linux from the runtimes of LLVM 15 and GCC 13, except, with Clang, in a function holding inline assembly or a call to `setjmp`.
+
+## Debugger visualizers
+
+Visualizers for the vectors (`vector`, `SmallVector`, `FixedCapacityVector`, `inplace_vector`) and the sets (`FlatSet`, `SmallSet`, the iterator of a `SmallSet` whose set iterator is not a pointer, and the node handles) are provided in `tools/`. The iterators of the vectors and of `FlatSet` are pointers, which the debuggers already show.
+
+- **GDB**: [`tools/gdb/amc_printers.py`](../tools/gdb/amc_printers.py). GDB does not load it by itself: amc is header-only, so there is no amc library for GDB to load a script with automatically, as it does for the printers of libstdc++. Load it at any point of a session with `source /path/to/amc/tools/gdb/amc_printers.py`, from the command line with `gdb -x /path/to/amc/tools/gdb/amc_printers.py <program>`, or in all sessions from `~/.gdbinit`:
+
+  ```gdb
+  python
+  import sys
+  sys.path.insert(0, "/path/to/amc/tools/gdb")
+  import amc_printers
+  amc_printers.register_amc_printers(None)
+  end
+  ```
+
+  With VS Code (the C/C++ extension, a `cppdbg` configuration with GDB), `~/.gdbinit` applies too, or load it from the `setupCommands` of the configuration in `launch.json`:
+
+  ```json
+  "setupCommands": [
+    { "text": "-enable-pretty-printing", "ignoreFailures": true },
+    { "text": "source /path/to/amc/tools/gdb/amc_printers.py" }
+  ]
+  ```
+
+  `info pretty-printer` lists the loaded printers (`amc`, with `FlatSet`, `NodeHandle`, `SmallSet`, `SmallSetIterator` and `Vector`), and `print/r` prints a variable without them. The printers show the container alias, element count and elements, with the capacity of the vectors, and whether a `SmallVector` or a `SmallSet` holds its elements inline (in insertion order for a `SmallSet`), for instance `amc::SmallVector with 3 elements, capacity 4, inline = {1, 2, 3}`. The `SmallSet` whose set is not an amc container (a `std::set`) and the `FlatSet` whose vector is not an amc vector nor a `std::vector` use the printers of these containers, like those of libstdc++, for their elements. Note that with Clang and libstdc++, printing `std::string` elements in GDB may require `-fstandalone-debug` (or libstdc++ debug symbols). The unit test `gdb_printers_test` checks the printers in the Debug builds on Linux, when CMake finds GDB and Python 3.
+- **Visual Studio**: [`tools/natvis/amc.natvis`](../tools/natvis/amc.natvis). Add it to a Visual Studio project, pass `/NATVIS:path\to\amc.natvis` to the linker, or copy it into `%USERPROFILE%\Documents\Visual Studio 2022\Visualizers\`. Unlike the GDB printers, it is not tested.
 
 ## Non-standard extensions
 

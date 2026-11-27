@@ -87,6 +87,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh ${{ matrix.compiler }}
+          sudo apt-get install -y gdb
       - name: cmake
         # libstdc++: std::deque is trivially relocatable when declared so (AddressSanitizer catches stale back pointers)
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON -DAMC_STD_DEQUE_TRIVIALLY_RELOCATABLE=ON
@@ -106,7 +107,7 @@ jobs:
       - name: Install compiler
         run: |
           sudo apt-get update
-          sudo apt-get install -y ${{ matrix.compiler }}
+          sudo apt-get install -y ${{ matrix.compiler }} gdb
       - name: cmake
         run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_STANDARD=${{ matrix.standard }} -DCMAKE_BUILD_TYPE=Debug -DAMC_ENABLE_ASAN=ON -DAMC_WARNINGS_AS_ERRORS=ON
       - name: build
