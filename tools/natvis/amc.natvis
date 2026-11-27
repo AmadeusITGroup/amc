@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <!--
+    Visual Studio debug visualizers for the amc containers: the vectors (vector, SmallVector, FixedCapacityVector,
+    inplace_vector) and the sets (FlatSet, SmallSet, the iterator of a SmallSet and their node handles).
+
+    Usage: add this file to a Visual Studio project or pass /NATVIS:amc.natvis
+    to the linker, or copy it to %USERPROFILE%\Documents\Visual Studio 2022\Visualizers\.
+  -->
+
+  <!--
+    Vectors: Vector<T, Alloc, SizeType, GrowingPolicy, N> derives from one of three storage classes, whose visualizers
+    it inherits: $T1=T. The elements after the first one of an inline storage are in a derived class
+    (VectorWithInplaceStorage), right after it.
+  -->
+
+  <!-- StdVectorBase<T, Alloc, SizeType>: amc::vector. -->
+  <Type Name="amc::vec::StdVectorBase&lt;*,*,*&gt;">
+    <DisplayString>{{ size={_size,d}, capacity={_capa,d} }}</DisplayString>
+    <Expand>
+      <Item Name="[capacity]">_capa,d</Item>
+      <ArrayItems>
+        <Size>_size</Size>
+        <ValuePointer>_storage</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+  <!--
+    SmallVectorBase<T, Alloc, SizeType>: SmallVector. Its inline state has no flag: the capacity member holds the size,
+    and the size member the inline capacity plus one, which is larger (_capa < _size), the elements starting at
+    _storage. Otherwise, the first bytes of _storage hold the pointer to the dynamic storage.
+  -->
+  <Type Name="amc::vec::SmallVectorBase&lt;*,*,*&gt;">
+    <Intrinsic Name="inlineState" Expression="_capa &lt; _size" />
+    <Intrinsic Name="elemCount" Expression="inlineState() ? _capa : _size" />
+    <Intrinsic Name="capacityOf" Expression="inlineState() ? _size - 1 : _capa" />
+    <Intrinsic Name="firstElem" Expression="inlineState() ? ($T1*)&amp;_storage : *($T1**)&amp;_storage" />
+    <DisplayString Condition="inlineState()">{{ size={elemCount(),d}, capacity={capacityOf(),d}, inline }}</DisplayString>
+    <DisplayString>{{ size={elemCount(),d}, capacity={capacityOf(),d} }}</DisplayString>
+    <Expand>
+      <Item Name="[capacity]">capacityOf(),d</Item>
+      <ArrayItems>
+        <Size>elemCount()</Size>
+        <ValuePointer>firstElem()</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+  <!-- StaticVectorBase<T, SizeType, StoredSizeType>: FixedCapacityVector and inplace_vector. -->
+  <Type Name="amc::vec::StaticVectorBase&lt;*,*,*&gt;">
+    <DisplayString>{{ size={(size_t)_size,d}, capacity={(size_t)_capa,d} }}</DisplayString>
+    <Expand>
+      <Item Name="[capacity]">(size_t)_capa,d</Item>
+      <ArrayItems>
+        <Size>(size_t)_size</Size>
+        <ValuePointer>($T1*)&amp;_firstEl</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+  <!-- FlatSet<T, Compare, Alloc, VecType>: the elements of its sorted vector. -->
+  <Type Name="amc::FlatSet&lt;*,*,*,*&gt;">
+    <DisplayString>{_sortedVector}</DisplayString>
+    <Expand>
+      <ExpandedItem>_sortedVector</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <!--
+    SmallSet<T, N, Compare, Alloc, SetType>: $T1=T. The elements of its inline vector (_vec, a FixedCapacityVector) in
+    insertion order while its set (_set) is empty, otherwise those of the set, the vector being then empty.
+  -->
+  <Type Name="amc::SmallSet&lt;*,*,*,*,*&gt;">
+    <DisplayString Condition="_vec._size != 0">{{ size={(size_t)_vec._size,d}, inline }}</DisplayString>
+    <DisplayString>{_set}</DisplayString>
+    <Expand>
+      <ArrayItems Condition="_vec._size != 0">
+        <Size>(size_t)_vec._size</Size>
+        <ValuePointer>($T1*)&amp;_vec._firstEl</ValuePointer>
+      </ArrayItems>
+      <ExpandedItem Condition="_vec._size == 0">_set</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <!--
+    SmallSetIterator<T, SetIt>, the iterator of a SmallSet whose set iterator is not a pointer: a std::variant of an
+    iterator of the set (alternative 0) and of a pointer to an element of the inline vector (alternative 1), read with
+    the members of std::variant in the Microsoft STL (_Which, _Head, _Tail).
+  -->
+  <Type Name="amc::SmallSetIterator&lt;*,*&gt;">
+    <DisplayString Optional="true" Condition="_iter._Which == 1">{*_iter._Tail._Head}</DisplayString>
+    <DisplayString Optional="true" Condition="_iter._Which == 0">{_iter._Head}</DisplayString>
+    <DisplayString>{_iter}</DisplayString>
+    <Expand>
+      <ExpandedItem Optional="true" Condition="_iter._Which == 1">*_iter._Tail._Head</ExpandedItem>
+      <ExpandedItem Optional="true" Condition="_iter._Which == 0">_iter._Head</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <!--
+    set_details::NodeHandle<T, Alloc>, the node handle of FlatSet and SmallSet. Its element is alive if and only if the
+    std::optional of its allocator holds a value (_Has_value in the Microsoft STL).
+  -->
+  <Type Name="amc::set_details::NodeHandle&lt;*,*&gt;">
+    <DisplayString Optional="true" Condition="!_alloc._Has_value">empty</DisplayString>
+    <DisplayString>{_s.v}</DisplayString>
+    <Expand>
+      <ExpandedItem Optional="true" Condition="_alloc._Has_value">_s.v</ExpandedItem>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

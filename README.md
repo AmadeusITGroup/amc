@@ -181,7 +181,7 @@ The CI builds and tests amc with GCC 8 to 13, Clang 17, 19, 20, 21 and 23 (Linux
 
 ## Documentation
 
-- [Containers guide](docs/containers.md): choosing a container, trivially relocatable types, details of each container, non-standard extensions.
+- [Containers guide](docs/containers.md): choosing a container, trivially relocatable types, details of each container, [debugger visualizers](docs/containers.md#debugger-visualizers) (GDB, Visual Studio), non-standard extensions.
 - [Compatibility](docs/compatibility.md): similarities and differences with `std::vector`, `std::inplace_vector` and `std::set`.
 - [Benchmarks](docs/benchmarks.md): charts, analysis and numbers.
 
